@@ -28,6 +28,43 @@ ns1-02.azure-dns.com   ns2-02.azure-dns.net
 ns3-02.azure-dns.org   ns4-02.azure-dns.info
 ```
 
+## Apex domain → Static Web App
+
+Two records at the apex, both in the Azure DNS zone. **Azure DNS supports Static Web Apps
+as an alias target** — confirmed working, which is the whole reason DNS left GoDaddy.
+GoDaddy's DNS has no ALIAS/ANAME/flattening, so the apex would otherwise have been stuck
+on a single-IP `A` record (losing SWA's global distribution) or a `www` redirect.
+
+| Type | Name | Value |
+|---|---|---|
+| TXT | `@` | validation token from `az staticwebapp hostname set` |
+| A (alias) | `@` | → the Static Web App **resource ID**, not an IP |
+
+```powershell
+# 1. Register the domain and get a validation token
+az staticwebapp hostname set -n stapp-theidentityplayground -g rg-theidentityplayground `
+  --hostname theidentityplayground.com --validation-method dns-txt-token
+
+# 2. TXT record carrying that token at the apex
+az network dns record-set txt add-record -g rg-theidentityplayground `
+  -z theidentityplayground.com -n "@" -v "<token>"
+
+# 3. Alias A record at the apex pointing at the SWA resource
+$swaId = az staticwebapp show -n stapp-theidentityplayground -g rg-theidentityplayground --query id -o tsv
+az network dns record-set a create -g rg-theidentityplayground `
+  -z theidentityplayground.com -n "@" --target-resource $swaId
+```
+
+**Two traps worth knowing:**
+
+- **Run these from PowerShell, not Git Bash.** Git Bash's MSYS path conversion rewrites the
+  leading `/` of an Azure resource ID into `C:/Program Files/Git/...` and the call fails with
+  a confusing `LinkedInvalidPropertyId`. Prefix with `MSYS_NO_PATHCONV=1` if you must use bash.
+- **The record set field is `TXTRecords`, not `txtRecords`.** JMESPath is case-sensitive, so
+  `--query 'txtRecords[].value'` silently returns nothing and looks exactly like an empty record.
+
+Apex changes can take up to 72 hours to propagate, though in practice it was minutes.
+
 ## Verified endpoints (External ID tenant)
 
 Read live from the tenant's OIDC discovery document rather than copied from docs:
