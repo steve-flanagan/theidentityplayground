@@ -1,0 +1,4 @@
+/* Tailwind v4 loads as a single import — no config file, no content globs
+   (that was v3). Utility classes get generated on demand from whatever the
+   source files actually use. */
+@import "tailwindcss";
