@@ -31,11 +31,14 @@ export const msalConfig: Configuration = {
     // so it must be declared. Omit this and every sign-in fails with an
     // "untrusted authority" error that reads like a config typo.
     knownAuthorities: ['theidentityplayground.ciamlogin.com'],
-    // Relative, so the same registration works from localhost, the apex, and
-    // www without three separate builds. MSAL resolves it against the current
-    // origin — which must still match a registered redirect URI.
-    redirectUri: '/',
-    postLogoutRedirectUri: '/',
+    // window.location.origin, not '/'. Both resolve to the same page, but '/'
+    // produces "http://localhost:5173/" WITH a trailing slash, while the app
+    // registration holds "http://localhost:5173" without one. Entra matches
+    // redirect URIs exactly, so that slash is a mismatch waiting to fail at
+    // code redemption. Using origin yields the registered string verbatim, and
+    // still works unchanged across localhost, the apex, and www.
+    redirectUri: window.location.origin,
+    postLogoutRedirectUri: window.location.origin,
     // Note: `navigateToLoginRequestUrl` and `storeAuthStateInCookie` existed in
     // MSAL v2/v3 and are gone in v5 — the latter was IE11 scaffolding. Passing
     // them here is a type error, which is the whole argument for TypeScript:
