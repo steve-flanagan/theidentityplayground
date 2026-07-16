@@ -1,0 +1,76 @@
+# Deploys web/ to Azure Static Web Apps.
+#
+# Note what this workflow does NOT do: deploy an API. Per the spec's hosting
+# decision, SWA hosts static files only and the backend lives in a separate
+# standalone Function App — SWA's managed API can't run timer triggers, and
+# Module 7's lifecycle job needs one. Hence api_location is empty.
+#
+# We build here rather than letting SWA's Oryx builder do it, so that `tsc -b`
+# runs and a type error fails the deploy instead of shipping.
+
+name: Deploy web
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main]
+
+# Least privilege: the deploy needs to read the repo and comment on PRs with
+# the preview URL. Nothing else.
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: deploy-web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build_and_deploy:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    runs-on: ubuntu-latest
+    name: Build and deploy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # `npm ci` not `npm install` — installs exactly the lockfile, and fails
+      # if package.json and the lock have drifted apart.
+      - name: Install
+        run: npm ci
+        working-directory: web
+
+      # Runs `tsc -b && vite build`. Type errors stop the deploy here.
+      - name: Build
+        run: npm run build
+        working-directory: web
+
+      - name: Deploy to Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: web/dist
+          api_location: ""
+          output_location: ""
+          skip_app_build: true
+
+  # SWA spins up a preview environment per PR; this tears it down on close.
+  close_pull_request:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close PR preview
+    steps:
+      - name: Close preview environment
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: close
