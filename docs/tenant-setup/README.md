@@ -11,11 +11,22 @@ Record here as they're created:
 
 | Thing | Value |
 |---|---|
-| External ID tenant — name / ID / initial domain | _pending_ |
-| Demo workforce tenant — name / ID / initial domain | _pending_ |
-| Azure subscription (hosting) | _pending_ |
-| Resource group | _pending_ |
-| Licence state (P1 / P2 trial + expiry) | _pending_ |
+| External ID tenant — org name | The Identity Playground |
+| External ID tenant — initial domain | `theidentityplayground.onmicrosoft.com` |
+| External ID tenant — tenant ID | _to record_ |
+| Demo workforce tenant | **blocked** — paid P1 now required to create a workforce tenant; see the spec |
+| Azure subscription (hosting) | existing pay-as-you-go |
+| Resource group | _to record_ |
+| DNS zone | `theidentityplayground.com` — delegated to Azure DNS, verified live |
+| Licence state (P1 / P2 trial + expiry) | _none yet_ |
+
+**DNS delegation — done.** GoDaddy remains the registrar; the zone is authoritative on
+Azure. Confirmed on public resolvers:
+
+```
+ns1-02.azure-dns.com   ns2-02.azure-dns.net
+ns3-02.azure-dns.org   ns4-02.azure-dns.info
+```
 
 **Never record secrets here.** App registration client IDs and tenant IDs are fine — they
 are not secrets. Client secrets, certificates, and tokens go in Key Vault and nowhere

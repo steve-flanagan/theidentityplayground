@@ -26,11 +26,27 @@ The differentiator: identity work is invisible in production. This makes it visi
 
 | Tenant | Purpose | Cost |
 |---|---|---|
-| **External ID tenant (new)** | Customer/CIAM sign-ups, the main public entry point | Free to 50,000 MAU |
-| **Demo workforce tenant (new)** | Fake "employee" accounts, B2B guest scenarios, SCIM provisioning source, sign-in log dashboard | Free tier + one Entra ID P1 license (~$6/mo, or 30-day P2 trial to start) |
-| **Steve's existing tenant** | NOT used. Never expose your real tenant to a public demo. | — |
+| **External ID tenant** | Customer/CIAM sign-ups, the main public entry point | Free to 50,000 MAU |
+| **Demo workforce tenant (new)** | Fake "employee" accounts, B2B guest scenarios, SCIM provisioning source, sign-in log dashboard | One Entra ID P1 ≈ $6/mo — but **acquisition is now blocked, see below** |
+| **Steve's existing tenant** | Never used for identity. Owns the Azure subscription that pays for hosting — that's all. | — |
 
 Document the tenant-separation rationale in the README — it demonstrates correct security architecture thinking.
+
+**Status (July 2026):** External ID tenant created — `theidentityplayground.onmicrosoft.com`, org name "The Identity Playground". Resource group and Azure DNS zone created; delegation to Azure DNS verified live on public resolvers. Demo workforce tenant **not yet created — blocked, see below**.
+
+> ### ⚠️ The demo workforce tenant can no longer be created for free
+>
+> **Microsoft now requires a *paid* Entra ID P1 or higher to create a workforce tenant from within an existing tenant. Trial P1/P2 licences explicitly do not qualify** — this was tightened deliberately after their security team found free trial-tenant creation being used for fraud and abuse. The result is a chicken-and-egg: you need a paid licence in a tenant to create the tenant you'd put the licence in.
+>
+> **This blocks Phase 2, not Phase 0 or 1.** Modules 1, 3, and 4 run entirely on the External ID tenant, which already exists. The workforce tenant is first needed by Module 2. Do not rabbit-hole on tenant procurement while the resume-worthy artifact (Phase 1) only needs what's already built.
+>
+> **The escape hatch: don't create it from inside the existing tenant.** The restriction applies to the Entra admin center's "Manage tenants → Create" path. Signing up as a *new customer* provisions a tenant through the ordinary onboarding flow, which that restriction doesn't cover. Ranked:
+>
+> 1. **M365 Developer Program** — free, renewable E5 sandbox (includes Entra ID P2). Requires a Visual Studio Professional/Enterprise *standard* subscription, or eligibility via ISV Success / AI Cloud Partner / Premier or Unified Support. **Check this first — if Steve qualifies through work, the licensing problem disappears entirely and costs $0.**
+> 2. **Fresh Azure account signup** with a different email → provisions a new tenant → activate the Entra ID P2 trial *inside* it (the restriction is on tenant *creation*, not on trial activation) → buy one P1 (~$6/mo) when the trial lapses.
+> 3. **M365 E5 trial signup** with a fresh account → new tenant with P2 for 30 days. **Requires a credit card and auto-converts to paid E5 (~$57/user/mo) if not cancelled.** Only take this path with a calendar reminder set.
+>
+> **Billing trap:** Azure Cost Management budget alerts **do not cover M365/Entra licence billing** — that's a separate billing system. The budget alerts in section 4 will not catch a runaway E5 auto-renewal. Licence spend needs its own calendar reminder; there is no automated backstop.
 
 ### Hosting (all on existing Azure pay-as-you-go subscription)
 

@@ -2,9 +2,20 @@
 // builds and deploys end to end. Auth (MSAL) arrives in Phase 1 — see spec
 // section 5. Nothing on this page talks to a tenant yet.
 
+// A union type rather than plain `string`: adding a status the styles don't
+// cover becomes a compile error instead of an undefined class name at runtime.
+type ModuleStatus = 'building' | 'planned' | 'live'
+
+type Module = {
+  phase: number
+  name: string
+  blurb: string
+  status: ModuleStatus
+}
+
 // Homepage roadmap, per spec section 5: "The site is never 'unfinished,' just
 // growing." Update `status` as phases land.
-const MODULES = [
+const MODULES: Module[] = [
   { phase: 1, name: 'Token Inspector', blurb: 'Sign in, then read your own ID token — every claim annotated.', status: 'building' },
   { phase: 2, name: 'Three Doors, One App', blurb: 'Customer, business guest, or employee. Compare what each token says.', status: 'planned' },
   { phase: 3, name: 'Auth Methods Arena', blurb: 'Password, email OTP, social, passkey — watch each flow execute.', status: 'planned' },
@@ -14,9 +25,12 @@ const MODULES = [
   { phase: 7, name: 'Self-Destructing Accounts', blurb: 'Every demo account expires. Here is the job that kills them.', status: 'planned' },
 ]
 
-const STATUS_STYLES = {
+// Record<ModuleStatus, string> forces this map to stay exhaustive: add a status
+// to the union above without adding styles here and the build fails.
+const STATUS_STYLES: Record<ModuleStatus, string> = {
   building: 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30',
   planned: 'bg-slate-500/10 text-slate-400 ring-slate-500/30',
+  live: 'bg-sky-500/10 text-sky-300 ring-sky-500/30',
 }
 
 function App() {
