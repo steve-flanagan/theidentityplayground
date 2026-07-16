@@ -103,11 +103,7 @@ Write this up in `docs/decisions/` — it's a clean "read the constraints, then 
 
 Try the federated approach at Phase 1; fall back to client credentials if it doesn't hold. Either way the decision goes in `docs/decisions/` — "how I did cross-tenant Graph without secrets" is exactly the writeup an IAM interviewer wants to read.
 
-> **⚠️ Known risk to the federated approach (found July 2026).** **External tenants only support single-tenant app registrations** — the multi-tenant option is not offered. The FIC pattern above assumes a *multi-tenant* app registration in the target tenant, so it may be inconstructible in the External ID tenant specifically. If so, the split is:
-> - **Demo workforce tenant** (an ordinary workforce tenant) → FIC likely works → secretless.
-> - **External ID tenant** → likely falls back to client credentials in Key Vault.
->
-> Verify before designing around it. A mixed outcome is fine and arguably a *better* writeup — "here's where the modern pattern works, here's where the platform doesn't support it yet, and here's how I handled each" beats a tidy story that skips the constraint.
+> **Multi-tenant app registrations ARE available in external tenants** — verified in the portal on 16 July 2026, which showed "Multiple Entra ID tenants" as a selectable account type in the External ID tenant. (An earlier draft of this spec claimed otherwise, based on a secondary source rather than the product. Wrong, and corrected.) So the FIC pattern is not ruled out on that basis in either tenant. It remains unverified end to end — build it and see.
 
 ### Domain & DNS
 
