@@ -15,6 +15,8 @@ Format: **Context** (what forced a choice) → **Decision** → **Rejected alter
 | 003 | Cross-tenant Graph: federated identity credentials vs. client secrets | **open** — verify FIC flow at Phase 1 |
 | 004 | Module 2's B2B invitation flow: how to avoid an open email relay | **open** — blocks Phase 2 |
 | 005 | On-demand provisioning instead of waiting for Entra's cycle | decided, not yet written up |
+| 006 | Standalone Function App over SWA managed API (timer triggers vs. $9/mo) | decided, not yet written up |
+| 007 | TypeScript over JavaScript across web/ and api/ | decided, not yet written up |
 
 Decisions 003 and 004 are open and both are load-bearing. See the spec for the options
 under consideration.

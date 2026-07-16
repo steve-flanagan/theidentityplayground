@@ -64,6 +64,28 @@ Document the tenant-separation rationale in the README — it demonstrates corre
 
 Reuse the Cost Management budget-alert pattern from the pipeline project (tiered alerts at 50/67/100%).
 
+### Decision — the backend is a standalone Function App, not SWA's managed API
+
+Static Web Apps offers two ways to host a backend, and they are not equivalent:
+
+| | Managed Functions | Bring-your-own Function App |
+|---|---|---|
+| Triggers | **HTTP only** — no timer, no Durable | Full Functions feature set |
+| SWA plan | Free | **Standard (~$9/mo)** |
+
+**Module 7's lifecycle cleanup is a timer trigger**, so managed Functions cannot host this backend. But the obvious fix — SWA Standard plus a linked backend — costs ~$9/mo, which triples hosting for convenience we don't need.
+
+**Decision:** SWA Free hosts the **static site only**. The entire backend, including timer triggers, lives in **one standalone Function App on consumption** (free grant: 1M executions/mo). The SPA calls it cross-origin.
+
+**Consequences, including what this makes harder:**
+- CORS must be configured on the Function App (allowlist the site origin). One-time setup, not a project.
+- No same-origin `/api` proxying — the SPA calls the Function App's own hostname. Expect the "why isn't the API behind `/api`?" question in an interview; the answer is this table.
+- SWA's built-in auth is unused — irrelevant, since MSAL does all auth per section 2.
+- Two deployments (SWA + Function App) instead of one.
+- **Cost: ~$0 instead of ~$9/mo.**
+
+Write this up in `docs/decisions/` — it's a clean "read the constraints, then price them" ADR.
+
 ### Subscription, tenants, and the cross-tenant Graph hop
 
 **Azure resources all live in the existing pay-as-you-go subscription, inside one dedicated resource group** (e.g. `rg-identityplayground`). That RG is the isolation boundary that matters: one budget scope, one RBAC boundary, one `az group delete` to erase the project. A second subscription or tenant buys nothing here.
