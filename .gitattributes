@@ -1,0 +1,23 @@
+# Normalize line endings. You develop on Windows; GitHub Actions builds on Linux
+# runners. Without this, files land in the repo with CRLF and shell steps in CI
+# fail with confusing "bad interpreter" / "\r command not found" errors.
+
+# Repo stores LF; working tree gets LF. Modern Windows tooling handles it fine.
+* text=auto eol=lf
+
+# Exceptions — Windows-native scripts need CRLF to execute correctly.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binaries — never normalize, never diff as text.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.pdf  binary
+*.woff binary
+*.woff2 binary
+*.pfx  binary

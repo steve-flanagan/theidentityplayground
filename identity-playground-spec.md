@@ -38,17 +38,33 @@ Document the tenant-separation rationale in the README — it demonstrates corre
 |---|---|---|---|
 | Front-end (SPA) | Azure Static Web Apps | Free | $0 |
 | Backend API | Azure Functions (consumption) | Free grant: 1M executions/mo | ~$0 |
-| SCIM mock app (module 5) | Azure Container Instances | Small (0.5 vCPU / 1 GB) | ~$3–8/mo always-on; less if start/stopped on schedule |
+| SCIM mock app (module 5) | Azure Container Apps | Consumption, scale-to-zero | ~$0 within monthly free grant |
+| DNS | Azure DNS (public zone) | Standard | ~$0.50/mo |
 | Secrets | Azure Key Vault | Standard | <$1/mo |
 | State (event feed, demo data) | Azure Table Storage or Cosmos DB free tier | — | ~$0 |
-| **Total** | | | **~$5–15/mo** |
+| **Total** | | | **~$1–3/mo** (+ ~$6/mo for the single P1 — see tenant table) |
+
+**Decision — Container Apps, not Container Instances.** Earlier drafts specified ACI at $3–8/mo always-on. Container Apps scales to zero, is covered by a monthly free grant at this volume, and provides HTTPS ingress out of the box — which also dissolves the "ACI endpoint must be HTTPS" problem in Module 5 rather than solving it with a reverse proxy. ACI was the only always-on cost in the design; removing it takes hosting to roughly nothing. Write this up in `docs/decisions/` — it's a clean cost-vs-architecture ADR.
 
 Reuse the Cost Management budget-alert pattern from the pipeline project (tiered alerts at 50/67/100%).
+
+### Domain & DNS
+
+**Domain:** `theidentityplayground.com`, registered at GoDaddy (3yr, purchased July 2026).
+
+**This is a hard dependency, not cosmetics.** Passkeys in External ID external tenants *require* a verified custom URL domain — no domain, no Module 3 passkey. Two constraints follow:
+
+- **Settle the domain before building Module 3.** A passkey binds to a single domain as its relying party, and Entra does not yet support related origins. Changing the domain later invalidates every registered passkey.
+- **DNS must be delegated away from GoDaddy.** Pointing the apex (`theidentityplayground.com`, no `www`) at Static Web Apps requires an ALIAS/ANAME record or CNAME flattening, and GoDaddy's DNS supports none of them. Registration stays at GoDaddy; nameservers point at **Azure DNS**, which handles apex→SWA via alias records and is Microsoft's documented answer to exactly this registrar gap.
+
+Azure DNS over Cloudflare (which is free and would also work): it keeps the project to one vendor and one budget, and a DNS zone is Bicep-templatable — making the `infra/` stretch goal real portfolio material instead of a checkbox in a web console.
+
+**Names needed** (one registration covers both): apex for the site, and `login.theidentityplayground.com` as the Entra custom URL domain. The subdomain is a plain CNAME — only the apex forces the delegation.
 
 ### Repo layout (single monorepo)
 
 ```
-identity-playground/
+theidentityplayground/     # Named to match the domain — keep repo, folder, and site name identical
 ├── README.md              # Project story, architecture diagram, module index
 ├── docs/
 │   ├── architecture.md
@@ -67,7 +83,7 @@ identity-playground/
 - **Backend:** Azure Functions, Node.js (keeps one language across front/back; Claude Code handles this well).
 - **Graph access:** Backend uses a Managed Identity or app registration with client credentials — never expose Graph tokens to the browser. Application permissions kept to the minimum per module (document each permission and why — that's an IAM skill on display).
 - **Automation/ops scripts:** PowerShell + Microsoft Graph PowerShell SDK (your home turf — these scripts are portfolio pieces themselves).
-- **SCIM mock:** Small Node.js (Express) app implementing SCIM 2.0 `/Users` endpoints, containerized, deployed to ACI.
+- **SCIM mock:** Small Node.js (Express) app implementing SCIM 2.0 `/Users` endpoints, containerized, deployed to Azure Container Apps.
 
 ---
 
@@ -116,6 +132,17 @@ Ordered by build sequence, not homepage order. Each lists: experience, what it p
 - Lock down what guests/demo employees can do: assign no roles, restrict default user permissions in the demo workforce tenant, disable guest self-service where possible.
 - Shared demo credentials on a public site = design the account so compromise is meaningless (no privileges, auto-rotated, auto-cleaned).
 
+> ### ⛔ BLOCKER — the B2B door is an open email relay. Resolve before this module ships.
+>
+> As drafted, any visitor types any address and the backend calls Graph `POST /invitations`, causing **Microsoft to send real mail from your tenant to a third party who never consented**. A visitor can enter `victim@theircompany.com` repeatedly and your tenant is the sender. The site-wide per-IP rate limiting in section 4 does **not** cover this — the problem isn't volume, it's sending unsolicited mail to a non-consenting address at all. Outcome if abused: your demo tenant gets spam-reported, which is a uniquely bad look for this particular portfolio piece.
+>
+> Pick one before writing the invite call:
+> 1. **Prove control first** — visitor completes an OTP to that address before any invitation is issued. Best demo (it's a real identity-proofing step, on-theme), most work.
+> 2. **Hard global cap** — invitations/day tenant-wide, not per-IP, with the door disabling itself on cap. Cheap, still sends some unsolicited mail.
+> 3. **Drop the live invite** — pre-redeemed guest account, visitor sees the resulting guest token. Zero risk, weakest demo.
+>
+> Decision goes in `docs/decisions/` either way — the writeup is itself interview material.
+
 ---
 
 ### Module 3 — Auth Methods Arena
@@ -133,9 +160,10 @@ Ordered by build sequence, not homepage order. Each lists: experience, what it p
 
 **Licensing:** Passkeys are included in External ID at no additional cost. **Avoid SMS MFA** — it's a paid add-on (~$0.03/attempt) and a cost-abuse vector on a public site.
 
-**Gotchas (verified July 2026 — recheck at build time):**
+**Gotchas (verified against Microsoft Learn, July 2026):**
 - Passkeys in External ID: only email+password / username+password local accounts can register one; MFA required before registration; NOT available for social-IdP or email-OTP users. Display this constraint in the UI — knowing platform limitations is expert signal.
-- Passkey support in external tenants may require a custom URL domain (CNAME + DNS verification). Budget a day; a cheap domain (~$10–15/yr) also makes the whole site look professional.
+- **Custom URL domain is required, not optional.** Confirmed: passkey registration in external tenants will not work without a verified custom URL domain. See "Domain & DNS" in section 2 — the domain is bought and the Azure DNS delegation must be done *before* this module, not during it.
+- **A passkey binds to one domain as its relying party.** Related-origins support does not exist yet, so a passkey registered against one origin will not work on another. Practical consequence: localhost dev and production are separate relying parties, so plan to test passkey registration against the real domain, and never change the domain after this module ships.
 - Email OTP as first factor can't also be the second factor.
 
 ---
@@ -167,7 +195,7 @@ Ordered by build sequence, not homepage order. Each lists: experience, what it p
 
 **Implementation:**
 - `scim-mock/`: Express app implementing SCIM 2.0 server basics: `GET/POST /Users`, `GET/PATCH/DELETE /Users/{id}`, `/ServiceProviderConfig`, `/Schemas`, filter support (`userName eq "..."`). Bearer-token auth. Microsoft publishes SCIM endpoint requirements and reference code — follow their spec doc.
-- Registered as a **non-gallery enterprise app** in the demo workforce tenant with automatic provisioning configured (tenant URL = ACI public endpoint, secret token from Key Vault).
+- Registered as a **non-gallery enterprise app** in the demo workforce tenant with automatic provisioning configured (tenant URL = the Container Apps HTTPS ingress FQDN, secret token from Key Vault).
 - Event feed: mock app writes every SCIM request it receives to Table Storage; front-end polls or uses SignalR (Functions binding) for the live feed.
 - "Hire" button → Function calls Graph to create user + group membership. Provisioning then happens on Entra's cycle.
 
@@ -176,7 +204,8 @@ Ordered by build sequence, not homepage order. Each lists: experience, what it p
 **Gotchas:**
 - Entra's provisioning cycle runs every ~20–40 minutes. For the live demo, use **on-demand provisioning** (Graph: `synchronization/jobs/{id}/provisionOnDemand`, or the portal's "Provision on demand") triggered by your Function so the visitor sees results in seconds, not half an hour. This is the module's key design decision — document it.
 - Append `?aadOptscim062020` to the tenant URL for standards-compliant PATCH behavior if you hit PATCH issues.
-- ACI endpoint must be HTTPS — put it behind a small reverse proxy with TLS or use Azure Container Apps (which gives you HTTPS ingress free; consider it over ACI, may be cheaper at this scale).
+- ~~ACI endpoint must be HTTPS — reverse proxy or Container Apps~~ — **resolved.** Container Apps is now the decision (section 2); its ingress is HTTPS by default, so there's no proxy to build.
+- **The live feed renders attacker-controlled input on a public page — encode it.** The mock writes every SCIM request body it receives to Table Storage, and the front-end renders that feed publicly. Anything reaching the endpoint therefore reaches a public page: that's a stored-XSS path. Two controls, both required: reject unauthenticated requests at the mock (bearer token enforced on every route, not just `POST /Users`), and treat every stored value as untrusted text at render time — never `dangerouslySetInnerHTML`, never inject raw JSON into the DOM. Do not rely on "only Entra can reach this endpoint" — it's a public URL.
 
 ---
 
@@ -192,7 +221,11 @@ Ordered by build sequence, not homepage order. Each lists: experience, what it p
 
 **Licensing:** Reading sign-in logs via Graph in a workforce tenant requires P1 (same license as Module 5). Verify what the External ID tenant exposes on the free tier at build time.
 
-**Gotchas:** Sign-in log entries can lag 1–5 minutes. Set the UI expectation ("your sign-in will appear within a few minutes") rather than promising real-time. Privacy: display only the current visitor's identifying details to that visitor; mask everyone else's.
+**Gotchas:** Sign-in log entries can lag 1–5 minutes. Set the UI expectation ("your sign-in will appear within a few minutes") rather than promising real-time.
+
+**Privacy rule — filter server-side, by the caller's own `oid`, always.** The API must never return another visitor's log entry to the browser under any circumstance, including "we mask it in the UI." Fetch-all-then-filter-client-side is not acceptable here: the unmasked rows are in the response body, one devtools tab away. The correlation must happen in the Function, scoped to the authenticated caller's `oid`, and only their own rows may leave the backend. Everyone else's activity is aggregate-only (counts, method types, policy names — never identifiers).
+
+Worth over-engineering: leaking visitor A's sign-in to visitor B is an ordinary bug on most sites and a credibility-ending one on a site whose entire thesis is that you understand identity.
 
 ---
 
@@ -214,12 +247,14 @@ Ordered by build sequence, not homepage order. Each lists: experience, what it p
 ## 4. Security & abuse controls (site-wide, not optional)
 
 1. **Nothing real anywhere.** No real data in either demo tenant. Assume every account gets compromised; design so it doesn't matter.
-2. **Rate limiting** on all backend Functions (per-IP throttling; Azure API Management consumption tier or in-code).
+2. **Rate limiting** on all backend Functions (per-IP throttling; Azure API Management consumption tier or in-code). Necessary but not sufficient — see item 8.
 3. **No SMS anywhere** (cost abuse vector).
 4. **Minimal Graph permissions** per Function, documented in `docs/` — the permission-scoping writeup is itself portfolio material.
 5. **Demo workforce tenant hardening:** restrict default user permissions, no admin roles on demo accounts, block legacy auth, guests restricted to the demo app.
-6. **Budget alerts** from day one; hard cap decision documented (what shuts off first if costs spike — likely the ACI).
-7. **Secrets in Key Vault only**; Functions use Managed Identity to read them. No secrets in repo, ever (add gitleaks or GitHub secret scanning).
+6. **Budget alerts** from day one — **and be clear that alerts do not cap anything.** Azure budgets only notify; they will not stop spend. The only real cap is automation that acts on the alert (action group → Function that disables the resource). Decide and document what shuts off first, then *build* the thing that shuts it off. With Container Apps replacing ACI the always-on floor is near zero, so the realistic runaway risks are Function invocations and any per-attempt identity charges — which is precisely why item 8 matters.
+7. **Secrets in Key Vault only**; Functions use Managed Identity to read them. No secrets in repo, ever (add gitleaks or GitHub secret scanning; `.gitignore` already carries an explicit secrets block).
+8. **Any endpoint that causes an email to be sent is an abuse vector, by default.** Module 2's B2B invitation is the live example (see its blocker), but the rule generalizes: if a stranger's input makes your tenant send mail, contact a third party, or incur a per-attempt charge, it needs a consent or proof-of-control step — not just a rate limit. Rate limiting throttles abuse; it doesn't make unsolicited mail consensual.
+9. **Treat all demo-tenant data as attacker-controlled on the way out.** Anything a visitor can influence (SCIM payloads, display names, sign-up fields) eventually renders on a public page. Encode at render; never trust because "only Entra writes this."
 
 ---
 
@@ -227,10 +262,11 @@ Ordered by build sequence, not homepage order. Each lists: experience, what it p
 
 | Phase | Ships | Definition of done |
 |---|---|---|
-| **0** | Tenants + scaffolding | External ID tenant created; demo workforce tenant created; P2 trial or P1 activated; repo initialized; Static Web App deployed with "hello world" SPA; budget alerts live |
+| **0** | Tenants + scaffolding | External ID tenant created; demo workforce tenant created; P2 trial or P1 activated; repo initialized; Static Web App deployed with "hello world" SPA; budget alerts live; **Azure DNS delegation done and apex resolving** (see 0.5 — do not link the site publicly until that gate passes) |
+| **0.5** | **Public-readiness gate** | Not a build phase — a checklist that must pass before *anything* is publicly linked, because Phase 1 puts a live sign-up form on the internet. Verify: rate limiting active on every Function; default user permissions restricted in both tenants; no admin roles on any demo account; budget alert **and its shut-off automation** both tested by firing them; secret scanning on the repo; no endpoint that emails a third party is reachable yet (Module 2 is not in this phase — keep it that way until its blocker is resolved) |
 | **1** | Module 1 + basic CIAM sign-in | Visitor can sign up/sign in (email + Google) and inspect their own annotated token. **This alone is resume-worthy — publish it.** |
-| **2** | Module 7 + Module 2 | Lifecycle cleanup running; three doors live with comparison table |
-| **3** | Module 3 | Auth arena incl. passkey (custom domain done here) |
+| **2** | Module 7 + Module 2 | Lifecycle cleanup running **and verified by watching a real account expire**; three doors live with comparison table; **Module 2's invitation blocker resolved and the decision written to `docs/decisions/`** — this phase does not ship with an open email relay |
+| **3** | Module 3 | Auth arena incl. passkey. **Custom domain is a prerequisite, not a deliverable of this phase** — it must already be live from Phase 0, since a passkey binds to the domain it was registered against |
 | **4** | Module 6 | Admin's view dashboard |
 | **5** | Module 4 | CA live demo (builds on 3 + 6 plumbing) |
 | **6** | Module 5 | SCIM mock + live provisioning feed |
@@ -285,15 +321,21 @@ Actions. Look these up rather than assuming.
 
 ## 7. Verify before building (things that change)
 
-At build time, have Claude Code or a search confirm current state of:
+**Settled since the first draft (July 2026) — don't re-research these:**
 
-- Passkey support scope in External ID (social/OTP user support was "on the roadmap" as of mid-2026; custom-domain requirement may have changed)
+- ✅ **Passkey custom-domain requirement** — confirmed still required for external tenants. Domain bought; Azure DNS delegation moved into Phase 0. Also confirmed: a passkey binds to a single relying-party domain, related origins unsupported.
+- ✅ **Container Apps vs. ACI** — decided in favour of Container Apps (scale-to-zero, free HTTPS ingress, free grant). ACI is out of the design.
+- ✅ **Static Web Apps free tier** — includes custom domains and managed TLS, apex included; apex needs ALIAS/ANAME or CNAME flattening, which is why DNS leaves GoDaddy.
+
+**Still open — confirm at build time:**
+
+- Passkey support scope in External ID (social/OTP user registration was "on the roadmap" — recheck; if it shipped, Module 3's UI constraint text changes)
 - CA capabilities in external tenants (authentication strengths were unsupported)
 - Whether Microsoft 365 Developer Program sandbox tenants are available to you (was restricted to partners/Visual Studio subscribers — if available, it changes the licensing math)
 - External ID free MAU limit (50k as of July 2026) and SMS add-on pricing
-- MSAL.js authority/configuration format for external tenants
+- MSAL.js authority/configuration format for external tenants (changed from B2C — verify current format, don't assume)
 - On-demand provisioning API surface for custom SCIM apps
-- Azure Container Apps vs. ACI pricing for the SCIM mock
+- What the External ID tenant exposes of sign-in logs on the free tier (Module 6 licensing)
 
 ---
 
