@@ -359,16 +359,34 @@ Actions. Look these up rather than assuming.
 - ✅ **Passkey custom-domain requirement** — confirmed still required for external tenants. Domain bought; Azure DNS delegation moved into Phase 0. Also confirmed: a passkey binds to a single relying-party domain, related origins unsupported.
 - ✅ **Container Apps vs. ACI** — decided in favour of Container Apps (scale-to-zero, free HTTPS ingress, free grant). ACI is out of the design.
 - ✅ **Static Web Apps free tier** — includes custom domains and managed TLS, apex included; apex needs ALIAS/ANAME or CNAME flattening, which is why DNS leaves GoDaddy.
+- ✅ **MSAL authority format for external tenants** — verified by pulling the live OIDC discovery document from the real tenant, not from docs. See below.
+- ✅ **Workforce tenant creation** — requires a *paid* P1+; trials excluded. See the tenant table.
+- ⚠️ **M365 Developer Program** — still exists and is **not** discontinued. Free renewable E5 sandbox (incl. P2) for Visual Studio Professional/Enterprise *standard* subscribers, or via ISV Success / AI Cloud Partner / Premier or Unified Support. **Steve to check personal eligibility** — if he qualifies, the workforce-tenant licensing problem costs $0.
+
+### Verified authority + endpoints (External ID tenant)
+
+Pulled live from `.../v2.0/.well-known/openid-configuration`:
+
+```
+MSAL authority:  https://theidentityplayground.ciamlogin.com/7e8da8a9-67bc-4d53-bfc7-fe3e13128382
+authorize:       https://theidentityplayground.ciamlogin.com/{tenantId}/oauth2/v2.0/authorize
+token:           https://theidentityplayground.ciamlogin.com/{tenantId}/oauth2/v2.0/token
+jwks:            https://theidentityplayground.ciamlogin.com/{tenantId}/discovery/v2.0/keys
+issuer:          https://7e8da8a9-67bc-4d53-bfc7-fe3e13128382.ciamlogin.com/{tenantId}/v2.0
+```
+
+**Gotcha worth a claim annotation in Module 1: the issuer and the endpoints use different hostnames.** Endpoints are on the *tenant-name* subdomain (`theidentityplayground.ciamlogin.com`); the `iss` claim uses the *tenant-GUID* subdomain (`7e8da8a9-….ciamlogin.com`). Anyone who assumes `iss` matches the authority host they configured will write a broken validator. This is exactly the kind of thing the Token Inspector exists to make visible — annotate it.
+
+Other confirmed facts: `scopes_supported` is `openid profile email offline_access`; ID tokens are RS256; `response_modes_supported` includes `query`, `fragment`, `form_post`; region scope NA.
 
 **Still open — confirm at build time:**
 
 - Passkey support scope in External ID (social/OTP user registration was "on the roadmap" — recheck; if it shipped, Module 3's UI constraint text changes)
 - CA capabilities in external tenants (authentication strengths were unsupported)
-- Whether Microsoft 365 Developer Program sandbox tenants are available to you (was restricted to partners/Visual Studio subscribers — if available, it changes the licensing math)
 - External ID free MAU limit (50k as of July 2026) and SMS add-on pricing
-- MSAL.js authority/configuration format for external tenants (changed from B2C — verify current format, don't assume)
 - On-demand provisioning API surface for custom SCIM apps
 - What the External ID tenant exposes of sign-in logs on the free tier (Module 6 licensing)
+- **Whether SWA's managed Functions API can host this backend at all** — it does not support timer triggers, and Module 7's lifecycle job needs one. Likely answer: standalone Function App linked to SWA as a "bring your own" backend. Decide before the Phase 0 deploy.
 
 ---
 

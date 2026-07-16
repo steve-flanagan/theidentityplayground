@@ -13,10 +13,10 @@ Record here as they're created:
 |---|---|
 | External ID tenant — org name | The Identity Playground |
 | External ID tenant — initial domain | `theidentityplayground.onmicrosoft.com` |
-| External ID tenant — tenant ID | _to record_ |
+| External ID tenant — tenant ID | `7e8da8a9-67bc-4d53-bfc7-fe3e13128382` |
 | Demo workforce tenant | **blocked** — paid P1 now required to create a workforce tenant; see the spec |
 | Azure subscription (hosting) | existing pay-as-you-go |
-| Resource group | _to record_ |
+| Resource group | `rg-theidentityplayground` |
 | DNS zone | `theidentityplayground.com` — delegated to Azure DNS, verified live |
 | Licence state (P1 / P2 trial + expiry) | _none yet_ |
 
@@ -26,6 +26,25 @@ Azure. Confirmed on public resolvers:
 ```
 ns1-02.azure-dns.com   ns2-02.azure-dns.net
 ns3-02.azure-dns.org   ns4-02.azure-dns.info
+```
+
+## Verified endpoints (External ID tenant)
+
+Read live from the tenant's OIDC discovery document rather than copied from docs:
+
+```
+MSAL authority:  https://theidentityplayground.ciamlogin.com/7e8da8a9-67bc-4d53-bfc7-fe3e13128382
+issuer (iss):    https://7e8da8a9-67bc-4d53-bfc7-fe3e13128382.ciamlogin.com/7e8da8a9-.../v2.0
+```
+
+**The issuer host is not the authority host.** Endpoints live on the tenant-*name*
+subdomain; the `iss` claim uses the tenant-*GUID* subdomain. Assume they match and your
+token validation breaks. Worth annotating in Module 1.
+
+To re-check after any tenant change:
+
+```bash
+curl -s https://theidentityplayground.ciamlogin.com/7e8da8a9-67bc-4d53-bfc7-fe3e13128382/v2.0/.well-known/openid-configuration | jq
 ```
 
 **Never record secrets here.** App registration client IDs and tenant IDs are fine — they
