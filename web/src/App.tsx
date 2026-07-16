@@ -1,9 +1,12 @@
 import { useMemo } from 'react'
+import { useMsal } from '@azure/msal-react'
 import { TokenInspector } from './components/TokenInspector'
+import { SignInPanel } from './components/SignInPanel'
 import { buildSampleToken } from './lib/sampleToken'
 
-// Phase 1 in progress. The inspector is real; the token it's reading is a
-// sample until MSAL is wired (needs the app registration's client ID).
+// Phase 1. Sign in and the inspector reads your real ID token; otherwise it
+// falls back to a clearly-labelled sample so the page still demonstrates
+// something to a visitor who doesn't want an account.
 
 // A union type rather than plain `string`: adding a status the styles don't
 // cover becomes a compile error instead of an undefined class name at runtime.
@@ -37,8 +40,14 @@ const STATUS_STYLES: Record<ModuleStatus, string> = {
 }
 
 function App() {
+  const { accounts } = useMsal()
+
   // Built once per mount so the validity window reads relative to now.
   const sampleToken = useMemo(() => buildSampleToken(), [])
+
+  // MSAL caches the raw ID token on the account it hands back. No extra call
+  // needed — it's the token the visitor was just issued.
+  const realIdToken = accounts[0]?.idToken ?? null
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-300">
@@ -71,13 +80,24 @@ function App() {
               Every claim annotated: what it is, why it's in your token, and which tenant
               configuration produced it. Click any claim to expand it.
             </p>
-            <p className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-200/70">
-              <span className="font-medium text-amber-300">This is a sample token.</span> Sign-in
-              isn't wired up yet — when it is, this panel will read the real token you were just
-              issued, and the claims below will be yours.
-            </p>
           </div>
-          <TokenInspector token={sampleToken} label="Sample ID token" />
+
+          <div className="mb-4">
+            <SignInPanel />
+          </div>
+
+          {!realIdToken && (
+            <p className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-200/70">
+              <span className="font-medium text-amber-300">Showing a sample token.</span> Sign in and
+              this panel reads the real one you were just issued — same claims, but yours, and the
+              values will differ in ways worth reading.
+            </p>
+          )}
+
+          <TokenInspector
+            token={realIdToken ?? sampleToken}
+            label={realIdToken ? 'Your ID token' : 'Sample ID token'}
+          />
         </section>
 
         <section className="mt-16" aria-labelledby="roadmap">
