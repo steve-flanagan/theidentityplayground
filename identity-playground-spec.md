@@ -364,7 +364,114 @@ sites: two sites doubles the build and halves the polish on both. "Guided" canno
 narrated playback (it would violate snappiness); it means a suggested reading order over the
 same artifact, with more pointing.
 
-### Creative direction
+### The spine: causality, not observation — ADOPTED 16 July
+
+**Revised thesis.** The old one — *"identity work is invisible; this makes it visible"* — is
+passive. It makes the site an **observatory**: here is what happened. Every module as designed
+answers that, and none answers *"here is what I did to make it happen."*
+
+> **A recording proves he can watch. A diff proves he can cause.**
+> **Engineers are hired for what they can change.**
+
+**New thesis:** *identity work is invisible, and it's a machine with knobs. Here are the knobs,
+and here's what each one just did to you.*
+
+**The organising grammar is the diff.** Every module on the list is secretly a comparison
+already — customer vs guest vs employee, password vs passkey, policy on vs off, claim present
+vs absent. Two real artifacts side by side with the differences marked.
+
+Why it fits this brief better than anything else considered:
+- **A diff cannot play.** It is structurally incapable of the failure mode Steve rejected.
+- Engineers read diffs daily. It's native grammar, and jwt.io-adjacent.
+- **It subsumes per-claim provenance** — provenance is a diff against a counterfactual.
+  `IF OFF: this row would not exist` *is* a diff.
+- The recruiter moment needs no theater: two walls of gibberish, seven lines glowing.
+  *"These two people signed in to the same app. This is every difference. I control all of it."*
+- Mobile is solved by a convention that exists for this exact reason: unified diff view.
+
+**Honest correction to an earlier claim in this spec:** "Strip Chart's ontology survives, the
+theater dies" was optimistic. Strip the pen, paper, playback and stretch and what remains is a
+timeline *component*, not an organising idea. Time is one axis. **Configuration is the other,
+and it's the one that carries the thesis.**
+
+### The design system: Figure and Key — ADOPTED 16 July
+
+Full system in [docs/design/figure-and-key.md](docs/design/figure-and-key.md). The unblocking
+distinction: **reference is not metaphor.** "Don't replace the artifact with a metaphor" governs
+the *artifact* — the JWT stays a JWT. The design system may still have a lineage. The costume
+rule applies to the specimen, not the page it's set on.
+
+**The diagnostic, which explains Steve's own reactions better than he did:** corporate training
+modules **ration information** — one idea per screen, a Next button, a progress bar. The sin is
+*pacing*: deciding how fast you're allowed to know things. That's the same reflex behind "if they
+have to wait, they're gone." One instinct, two symptoms.
+
+**The seven laws** (see the design doc for the full argument):
+
+1. The artifact is the substrate, not the content of a card. **No cards, no shadows, no radius.**
+   Hairline rules. Full bleed.
+2. **Monospace means "this is literal," never "this is technical."** Machine strings only — never
+   a label, heading, or button. `MONO UPPERCASE MICRO-LABELS` on human text is **60% of the LLM
+   look on its own.**
+3. **The only saturated colour on the page is the data.** If you can't say what a colour *means*,
+   it isn't allowed.
+4. **The biggest type on the page is a measurement**, not a heading. `1,412 ms` at 48px+.
+5. Numbers are typeset, not printed. `tabular-nums` globally, units suffixed at 85% in grey.
+6. **Interaction may add, emphasise, or connect. Never remove or replace.** Kills the slideshow
+   failure mode structurally rather than by discipline.
+7. The system may move; the story may not. Live data may animate. Nothing narrative. Nothing on
+   first paint.
+
+**Light ground** (`~#FAF9F7`, ink `~#16181C`). The argument isn't aesthetic: RFC 7519 is black on
+white, the OIDC Core spec is black on white, jwt.io defaults light. *Nothing says "I have read
+the spec" like looking like the spec.*
+
+**Type = three epistemic registers.** Mono = the machine said this literally (ligatures **off** —
+a ligature in a JWT is a lie about the bytes). Sans = the interface is speaking. Serif = a human
+wrote this analysis. Free stack: JetBrains Mono / IBM Plex Sans / IBM Plex Serif. Not Inter, not
+Geist.
+
+**Interaction: brushing and linking** (Becker/Cleveland, late 1980s — canonical, not invented).
+Base64 wall, decoded JSON, and claims table are one dataset in three renderings, all on screen
+permanently. Touch any one → the corresponding span highlights in all three, 0ms. Callouts are
+**margin notes with hairline leaders, typeset not popped**, in a permanent margin column so the
+artifact is never occluded.
+
+**Steve's stretch returns as a control, not a movie:** drag a span on the time axis, it rescales
+instantly. Which is exactly Powers of Ten — his own reference. An animation is decoration; a
+zoomable time axis over real timestamps is a tool.
+
+**Annotate the absence.** The `amr` gap becomes the highest-credibility row on the site:
+
+```
+amr    —  (absent)
+       WHY   Not issued on this flow by External ID.
+       COST  Module 3 reads the method from sign-in logs instead.
+```
+
+*An artifact that annotates its own gaps is more credible than a complete one.*
+
+**Also adopted:** failure states (a real `AADSTS` code and the token that was *not* issued);
+the live `exp` countdown (the one claim a non-technical person understands, an "oh" for free);
+and "why this token is useless to you," which preempts the "isn't this leaking?" reaction a
+security-minded reader has within ten seconds of seeing a real JWT on a public page.
+
+### What adopting this costs
+
+**Phase 1's UI is a rebuild, not a polish.** The current page violates laws 1, 2, 3, and 4
+simultaneously — it is cards on slate-950 with an emerald accent and mono uppercase labels,
+which is the exact aesthetic the system disqualifies.
+
+What survives untouched: `lib/jwt.ts` (the decoder and its UTF-8/base64url handling),
+`lib/claims.ts` (the annotation content is good — it gains provenance fields), the MSAL wiring,
+and `lib/sampleToken.ts`. **The logic survives; the presentation doesn't.**
+
+Genuinely new technical work: **mapping each claim to its character range in the raw base64.**
+Base64 packs 3 payload bytes into 4 characters, so a JSON substring maps to a real character
+span with a little bleed at the edges. Engineers will check it. It's the strongest "he
+understands the encoding" signal on the site.
+
+### Creative direction — the exploration that produced this
 
 See [docs/design/creative-directions.md](docs/design/creative-directions.md) for the three
 territories explored on 16 July.
