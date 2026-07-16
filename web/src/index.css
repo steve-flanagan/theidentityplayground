@@ -2,3 +2,55 @@
    (that was v3). Utility classes get generated on demand from whatever the
    source files actually use. */
 @import "tailwindcss";
+
+/* The zoom transition.
+   ~160ms: long enough to register which direction you moved through the scale,
+   short enough that you never wait for it. Powers of Ten IS a zoom — cutting
+   the motion entirely throws away the idea and leaves you disoriented about
+   where you just landed. "Snappy" means don't make me wait, not don't move. */
+@keyframes zoom-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes zoom-out {
+  from { opacity: 0; transform: scale(1.04); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.zoom-in  { animation: zoom-in  160ms cubic-bezier(0.2, 0, 0, 1); }
+.zoom-out { animation: zoom-out 160ms cubic-bezier(0.2, 0, 0, 1); }
+
+/* The continuous zoom — the one animation that carries meaning.
+   Every bar is positioned in absolute time against a WINDOW. Change the window
+   and every bar animates to its new place at once: the slice you clicked
+   stretches to fill the track, its neighbours slide out, and its children grow
+   in from slivers they were already occupying. Nothing is replaced; the camera
+   moves. That is Powers of Ten, and it's why this motion isn't decoration.
+   420ms: long enough to follow, far too short to be a wait. */
+.zoom-bar {
+  transition:
+    left 420ms cubic-bezier(0.2, 0, 0, 1),
+    width 420ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 240ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zoom-bar { transition: none; }
+}
+
+/* "Nothing happened here" — Conditional Access and MFA on a flow that triggered
+   neither. Hatched, not transparent: a transparent bar punches a hole in the
+   track and reads as missing data, when the truth is the opposite — we know
+   exactly what happened here, which is nothing, and that's a finding. */
+.hatch {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgb(100 116 139 / 0.55) 0 2px,
+    rgb(15 23 42 / 0.9) 2px 5px
+  );
+}
+
+/* Respect the OS setting. Someone who has asked for less motion gets none. */
+@media (prefers-reduced-motion: reduce) {
+  .zoom-in, .zoom-out { animation: none; }
+}

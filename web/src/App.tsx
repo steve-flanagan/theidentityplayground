@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useMsal } from '@azure/msal-react'
 import { TokenInspector } from './components/TokenInspector'
+import { JourneyTimeline } from './components/JourneyTimeline'
 import { SignInPanel } from './components/SignInPanel'
 import { buildSampleToken } from './lib/sampleToken'
 
@@ -51,7 +52,7 @@ function App() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-300">
-      <div className="mx-auto max-w-3xl px-6 py-20">
+      <div className="mx-auto max-w-3xl px-6 pb-8 pt-20">
         <header>
           <p className="font-mono text-xs uppercase tracking-widest text-emerald-400">
             Phase 1 · token inspector
@@ -70,8 +71,38 @@ function App() {
             the tenant config and source that produced it.
           </p>
         </header>
+      </div>
 
-        <section className="mt-16" aria-labelledby="inspector">
+      {/* The timeline is the page, not a widget in a column — so it breaks out
+          of the max-w-3xl prose measure and gets the full width to zoom in. */}
+      <section className="mx-auto max-w-7xl px-6 py-8" aria-labelledby="journey">
+        <div className="mb-5">
+          <h2 id="journey" className="text-sm font-medium uppercase tracking-widest text-slate-500">
+            SISU journey — prototype
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
+            The whole sign-in stays on the overview bar. Below it, every step on its own axis —
+            click one with subsections and the detail rescales to just that slice, while the
+            brush above shows where you are in the 1.4 seconds. Every step deep-links, so you
+            can send someone the exact one.
+          </p>
+        </div>
+
+        <p className="mb-4 max-w-3xl rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-200/70">
+          <span className="font-medium text-amber-300">Sample timings.</span> The event sequence
+          is the real flow and the token is really decoded — but the milliseconds are plausible,
+          not measured. Real MSAL timing replaces them when this is wired: same shape, real
+          numbers.
+        </p>
+
+        <JourneyTimeline
+          token={realIdToken ?? sampleToken}
+          tokenLabel={realIdToken ? 'Your ID token' : 'Sample ID token'}
+        />
+      </section>
+
+      <div className="mx-auto max-w-3xl px-6 pb-20">
+        <section className="mt-8" aria-labelledby="inspector">
           <div className="mb-6">
             <h2 id="inspector" className="text-sm font-medium uppercase tracking-widest text-slate-500">
               Token inspector
