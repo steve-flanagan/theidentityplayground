@@ -306,7 +306,21 @@ Worth over-engineering: leaking visitor A's sign-in to visitor B is an ordinary 
 3. **No SMS anywhere** (cost abuse vector).
 4. **Minimal Graph permissions** per Function, documented in `docs/` — the permission-scoping writeup is itself portfolio material.
 5. **Demo workforce tenant hardening:** restrict default user permissions, no admin roles on demo accounts, block legacy auth, guests restricted to the demo app.
-6. **Budget alerts** from day one — **and be clear that alerts do not cap anything.** Azure budgets only notify; they will not stop spend. The only real cap is automation that acts on the alert (action group → Function that disables the resource). Decide and document what shuts off first, then *build* the thing that shuts it off. With Container Apps replacing ACI the always-on floor is near zero, so the realistic runaway risks are Function invocations and any per-attempt identity charges — which is precisely why item 8 matters.
+6. **Budget alerts** from day one — **and be clear that alerts do not cap anything.** Azure budgets only notify; they will not stop spend. **Live:** `budget-theidentityplayground`, $10/mo, scoped to `rg-theidentityplayground`, actual-cost alerts at 50/67/100%. (Note: the `az consumption budget` preview CLI exposes no `thresholdType`, so *forecasted* alerts aren't available through it — actual-cost only. The REST API supports them if it ever matters.)
+
+   **Correction to an earlier draft — the "kill switch" framing was wrong for this project.** It was inherited from the pipeline project, where the runaway vector is compute. Here it isn't. Trace what can actually run away:
+
+   | Resource | Can it run away? |
+   |---|---|
+   | Azure DNS zone | No — fixed ~$0.50/mo |
+   | Static Web Apps (Free) | No — hard quotas; it stops serving rather than billing |
+   | Function App (consumption) | Barely — 1M executions/mo free grant; rate limiting (item 2) is the real control |
+   | Container Apps (Phase 6) | **Yes** — first genuinely unbounded resource in the design |
+   | External ID MAU | **Yes** — and **you cannot shut this off without killing the demo** |
+
+   So the honest controls are: **rate limiting** (item 2) and **Module 7's lifecycle job** (which deletes demo accounts and therefore holds MAU down) are the cost controls that matter. They are not merely security features — they *are* the cap. A kill-switch automation only becomes meaningful at Phase 6 when Container Apps lands. Until then, alert → human acts is proportionate for a $10/mo budget, and pretending otherwise is theatre.
+
+   **The uncoverable gap:** Azure budgets do not see M365/Entra licence billing. If a P1 or E5 subscription is ever bought, no Azure alert will ever fire on it. That needs a calendar reminder; there is no technical backstop.
 7. **Secrets in Key Vault only**; Functions use Managed Identity to read them. No secrets in repo, ever (add gitleaks or GitHub secret scanning; `.gitignore` already carries an explicit secrets block).
 8. **Any endpoint that causes an email to be sent is an abuse vector, by default.** Module 2's B2B invitation is the live example (see its blocker), but the rule generalizes: if a stranger's input makes your tenant send mail, contact a third party, or incur a per-attempt charge, it needs a consent or proof-of-control step — not just a rate limit. Rate limiting throttles abuse; it doesn't make unsolicited mail consensual.
 9. **Treat all demo-tenant data as attacker-controlled on the way out.** Anything a visitor can influence (SCIM payloads, display names, sign-up fields) eventually renders on a public page. Encode at render; never trust because "only Entra writes this."
@@ -317,8 +331,8 @@ Worth over-engineering: leaking visitor A's sign-in to visitor B is an ordinary 
 
 | Phase | Ships | Definition of done |
 |---|---|---|
-| **0** | Tenants + scaffolding | External ID tenant created; demo workforce tenant created; P2 trial or P1 activated; repo initialized; Static Web App deployed with "hello world" SPA; budget alerts live; **Azure DNS delegation done and apex resolving** (see 0.5 — do not link the site publicly until that gate passes) |
-| **0.5** | **Public-readiness gate** | Not a build phase — a checklist that must pass before *anything* is publicly linked, because Phase 1 puts a live sign-up form on the internet. Verify: rate limiting active on every Function; default user permissions restricted in both tenants; no admin roles on any demo account; budget alert **and its shut-off automation** both tested by firing them; secret scanning on the repo; no endpoint that emails a third party is reachable yet (Module 2 is not in this phase — keep it that way until its blocker is resolved) |
+| **0** | Tenants + scaffolding | ✅ **Complete.** External ID tenant created; repo initialized and public; Static Web App deployed with placeholder SPA; Azure DNS delegated and apex bound via alias record; budget alert live. **Demo workforce tenant deferred to Phase 2** — creating one now requires a paid P1 (trials excluded), and modules 1, 3, 4 don't need it. Do not link the site publicly until the 0.5 gate passes. |
+| **0.5** | **Public-readiness gate** | Not a build phase — a checklist that must pass before the site is *linked anywhere* (resume, LinkedIn, README), because Phase 1 puts a live sign-up form on the internet. Verify: rate limiting active on every Function that reaches Graph; default user permissions restricted in the External ID tenant; no admin roles on any demo account; budget alert live and RG-scoped (✅ done — cannot be fired at $0 spend, so existence is the check); secret scanning + push protection on the repo (✅ done); no endpoint that emails a third party is reachable (Module 2 is not in this phase — keep it that way until its blocker is resolved) |
 | **1** | Module 1 + basic CIAM sign-in | Visitor can sign up/sign in (email + Google) and inspect their own annotated token. **This alone is resume-worthy — publish it.** |
 | **2** | Module 7 + Module 2 | Lifecycle cleanup running **and verified by watching a real account expire**; three doors live with comparison table; **Module 2's invitation blocker resolved and the decision written to `docs/decisions/`** — this phase does not ship with an open email relay |
 | **3** | Module 3 | Auth arena incl. passkey. **Custom domain is a prerequisite, not a deliverable of this phase** — it must already be live from Phase 0, since a passkey binds to the domain it was registered against |
