@@ -657,6 +657,40 @@ reason."
 
 Each phase is independently shippable. The site is never "unfinished," just growing — put a roadmap on the homepage.
 
+### Queued, not scheduled — beyond Entra (Steve, 16 July)
+
+> **Status: an idea on the shelf.** Not a phase, not costed, not decided. Recorded so it
+> isn't lost, and marked so nobody builds it. This spec has previously had a pitch mistaken
+> for a specification; that is not happening twice.
+
+The site is **The Identity Playground**, not The Entra Playground. The name was chosen with
+room in it, and eventually that room might hold AWS.
+
+**The framing that decides whether this is good or bad.** Two platforms shown side by side is
+*breadth*, and breadth is how a portfolio dilutes: a shallow three-platform engineer loses to
+a deep one-platform engineer every time. But **the same human crossing a trust boundary** is
+*depth on a new axis* — Entra issues a token, a SAML assertion crosses to AWS, STS returns
+temporary credentials carrying different claims under an assumed role.
+
+That is this spec's own diff grammar (§3.5) applied to a boundary instead of a claim: *here is
+the same person on both sides, here is every difference, and I control all of it.* It is also
+real work in the way federating LinkedIn via custom OIDC is real work and toggling Google
+isn't — **the version worth building is the federation, not the second console.**
+
+**Why it is not now, and the reason is not doubt about the idea:** modules 2–7 do not exist,
+and Module 7's cleanup script has never been executed. Adding a platform before finishing one
+is the scope error that kills side projects.
+
+**What it would cost, honestly — none of this is verified:**
+- A **second billing surface.** The $10/mo budget is Azure-scoped to one resource group. AWS
+  would need its own budget alarm, and the resource-group kill switch would no longer erase
+  the whole project.
+- A **second blast radius.** Every hard rule in §4 applies twice — no secrets, assume every
+  demo account is compromised, lifecycle hygiene.
+- **Free-tier limits on Cognito / IAM Identity Center, and whether Entra's free tier permits
+  the SAML app this needs, are unverified.** Do not trust any recall of them; check before
+  costing this.
+
 ---
 
 ## 6. Claude Code starter prompt (Phase 0 → 1)
