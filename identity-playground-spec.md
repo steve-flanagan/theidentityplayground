@@ -314,6 +314,124 @@ Worth over-engineering: leaking visitor A's sign-in to visitor B is an ordinary 
 
 ---
 
+## 3.5 Product design
+
+Added 16 July 2026. The spec had module designs but no *product* design — nothing
+answered "what does a visitor experience, and why would they be impressed?" Section 8
+assumed the artifact was impressive and never said how it got there. This is that section.
+
+### The two audiences, and the resolution
+
+| | Recruiters | Hiring managers / IAM engineers |
+|---|---|---|
+| Technical? | **No.** Cannot evaluate IAM skill at all. | Deeply. They will probe. |
+| Failure mode | Politely pretending something was impressive | Concluding it's thin |
+| What they need | To come away impressed **without understanding a single claim** | Depth, at full density |
+
+**The resolution — this is the governing principle of the whole site:**
+
+> **Never replace the real artifact with a metaphor.** Keep the actual token, the actual
+> timeline, the actual policy JSON on screen at full technical density — and let the
+> interface *point at parts of it*. Highlight. Zoom. Callout. "This is where this is
+> happening."
+
+That is not dumbing down; it's wayfinding. The engineer sees the real thing. The recruiter
+sees the same real thing with something pointing at it. **Nobody gets a lesser version.**
+This resolves the two-audience problem without building two products.
+
+### Hard design constraints (Steve, 16 July)
+
+- **It must look technical.** The fear to design against: "a training module for people who
+  don't understand anything." Tonal anchor: **jwt.io** — dense, technical, clickable, no
+  story playing at you.
+- **Snappy. Nothing plays.** "At any point, if the user cannot click something or has to
+  wait for something to play out, then they're uninterested." No playback, no narration, no
+  reveal you sit through. Fully rendered on arrival; click is instant.
+- **Visual and text only.** No voice, no audio, ever.
+- **It must not look AI-generated.** The Phase 1 build — `slate-950` + `emerald-400` +
+  rounded cards + mono uppercase labels — is the default aesthetic every LLM emits and is
+  **disqualified**. So are gradient heroes, glassmorphism, particles, bento grids, and
+  neon-on-black. Public-facing copy should be written or heavily rewritten by Steve; the
+  tells are structural, not stylistic, and can't be tuned away.
+- **No gamification.** Rejected viscerally: anything that reads like corporate training
+  cosplay or a Flash game.
+- Must work on a phone. Recruiters open links on phones.
+
+### Two entry points, one product
+
+A choice on the landing page — **guided** or **sandbox** — over the *same* modules. Not two
+sites: two sites doubles the build and halves the polish on both. "Guided" cannot mean
+narrated playback (it would violate snappiness); it means a suggested reading order over the
+same artifact, with more pointing.
+
+### Creative direction
+
+See [docs/design/creative-directions.md](docs/design/creative-directions.md) for the three
+territories explored on 16 July.
+
+- **Port of Entry** (border/passport metaphor) — **rejected.** Reads as gamified training
+  cosplay. Fable's own "cute passport site" caveat was the disqualifying risk.
+- **Museum of Invisible Work** — **rejected.** Makes Steve look like he narrates the field
+  rather than operates it.
+- **The Strip Chart** — **direction adopted, costume and theater removed.** What survives is
+  the ontology: *a sign-in is a recording; time is the organising axis*. What dies is the
+  signature moment (watch the pen draw at 1:1 speed, then watch it stretch) — that's a wait.
+  **Decision: build without it. Add it back only if the thing feels like it's missing
+  something.**
+
+Concretely, de-costumed: a logic-analyzer trace of your sign-in, already fully drawn when you
+arrive. ~14 marks across 1.4 real seconds. Click any mark → instant highlight and zoom → what
+was sent, what came back, what config caused it. Closest things a technical visitor already
+knows: DevTools' network waterfall, or Wireshark.
+
+**Note the cost of removing the metaphor:** Strip Chart's aesthetic (chart paper, ivory, DIN,
+sprocket holes) was borrowed *from* the metaphor. Remove the metaphor and the costume goes with
+it. "No metaphor" is a harder visual brief than "pick a good one" — the visual language now has
+to come from somewhere else. Open question.
+
+**Keep regardless of direction: per-claim provenance** — showing which config stage put each
+claim in your token. That's content, not skin, and it's the strongest technical
+differentiator identified. It's what makes an IAM interviewer sit up.
+
+### Publishing strategy — correcting section 8
+
+Section 8 conflates two channels with completely different bars:
+
+| Channel | Audience | Cost of a miss | Verdict |
+|---|---|---|---|
+| **LinkedIn / Entra community** | Technical | Low — post again next phase | Ship per phase as section 8 says |
+| **The recruiter email** | Non-technical | **One shot.** You don't email a recruiter seven times. | **Hold until there's a genuine wow** |
+
+Steve's framing: *"people look at this once and then never come back."* Publishing Phase 1 is
+correct advice for LinkedIn and wrong for the email.
+
+**And a consequence worth facing: Module 1 may never be the recruiter moment at any polish
+level.** Reading a token is inherently technical. The moments that land on a non-technical
+visitor are the ones that *move* and are *about them* — Module 6's "your own sign-in just
+appeared in this dashboard," Module 5's live SCIM feed. If the email needs a wow, the wow is
+probably not Phase 1. Know that before spending a week polishing Phase 1 into something that
+still doesn't land.
+
+### Identity providers
+
+Social sign-in is not a nice-to-have: it's what makes Module 1 *interesting*. One sign-in
+method shows one token shape. Two show that tokens **differ by how you signed in** — `idp`
+appears for social, is absent for local (because the issuer *is* the IdP). That's the insight;
+it can't be demonstrated with a single method.
+
+| Provider | Free? | Verdict |
+|---|---|---|
+| **Google** | Yes | **Do it.** Universal, ~15 min. |
+| **LinkedIn** (custom OIDC) | Believed yes — needs a company page; **verify** | **The strategic one.** The only account every recruiter holds. And enabling Google is clicking a toggle; federating LinkedIn via custom OIDC is real identity work. The best option for the audience is also the one that best demonstrates skill. |
+| **Facebook** | Yes | Low value. Professional audiences don't use it for this, and Meta wants a privacy policy URL and possibly business verification. |
+| **Apple** | **No — $99/yr developer account** | **Out.** Violates the free-only constraint. |
+
+**Tension to design around:** passkeys only work for local email+password accounts (Module 3
+gotcha). If Google becomes the path of least resistance, everyone takes it and nobody reaches
+the passkey demo. Offer both, and surface the constraint rather than hiding it — the guided
+path should explain "pick this and you can demo X; pick that and you can't, for this platform
+reason."
+
 ## 4. Security & abuse controls (site-wide, not optional)
 
 1. **Nothing real anywhere.** No real data in either demo tenant. Assume every account gets compromised; design so it doesn't matter.
