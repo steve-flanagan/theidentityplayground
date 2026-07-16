@@ -48,6 +48,23 @@ Document the tenant-separation rationale in the README — it demonstrates corre
 
 Reuse the Cost Management budget-alert pattern from the pipeline project (tiered alerts at 50/67/100%).
 
+### Subscription, tenants, and the cross-tenant Graph hop
+
+**Azure resources all live in the existing pay-as-you-go subscription, inside one dedicated resource group** (e.g. `rg-identityplayground`). That RG is the isolation boundary that matters: one budget scope, one RBAC boundary, one `az group delete` to erase the project. A second subscription or tenant buys nothing here.
+
+**The "never expose your real tenant" rule is about identities, not hosting.** Users, guests, app registrations, and tokens that public visitors touch stay in the two demo tenants. Which subscription pays for a DNS zone or a static file host is a different axis entirely — a DNS zone contains no identity.
+
+**Dependency direction (easy to get backwards):** an external tenant links *to* an existing Azure subscription for billing — the portal asks you to pick a subscription and resource group when creating it. The subscription is the prerequisite; you do not create a tenant to obtain one. A 30-day trial tenant can be created without a subscription link, which is a fine way to start. Creating the tenant requires the **Tenant Creator** role scoped to the subscription or to an RG within it.
+
+**The cross-tenant Graph hop — the design's sharpest constraint.** A Managed Identity is a service principal in the tenant that owns the subscription (Steve's existing tenant). **It cannot be granted Graph application permissions in the External ID or demo workforce tenants.** Managed identity alone therefore cannot do the Graph work in modules 2, 5, 6, or 7. Two viable designs:
+
+| Approach | How it works | Trade-off |
+|---|---|---|
+| **App registration + client credentials** (baseline) | App registration in each demo tenant; secret/cert in Key Vault; Function's MSI reads Key Vault (same tenant — that hop works fine) | Proven, simple. But secrets exist, and secrets need rotation. |
+| **MSI + federated identity credentials** (preferred, verify first) | Multi-tenant app registration in each demo tenant, with a federated identity credential trusting the Function's MSI. MSI token is exchanged as a client assertion for a token in the demo tenant. | **No client secrets anywhere.** Strictly better security story and better portfolio material. Confirm the FIC flow works external-tenant→workforce-tenant before committing. |
+
+Try the federated approach at Phase 1; fall back to client credentials if it doesn't hold. Either way the decision goes in `docs/decisions/` — "how I did cross-tenant Graph without secrets" is exactly the writeup an IAM interviewer wants to read.
+
 ### Domain & DNS
 
 **Domain:** `theidentityplayground.com`, registered at GoDaddy (3yr, purchased July 2026).
@@ -81,7 +98,7 @@ theidentityplayground/     # Named to match the domain — keep repo, folder, an
 
 - **Front-end:** React SPA (Vite). MSAL.js (`@azure/msal-browser` / `@azure/msal-react`) for all auth. Tailwind for styling.
 - **Backend:** Azure Functions, Node.js (keeps one language across front/back; Claude Code handles this well).
-- **Graph access:** Backend uses a Managed Identity or app registration with client credentials — never expose Graph tokens to the browser. Application permissions kept to the minimum per module (document each permission and why — that's an IAM skill on display).
+- **Graph access:** Never expose Graph tokens to the browser. Application permissions kept to the minimum per module (document each permission and why — that's an IAM skill on display). **This is a cross-tenant problem — see "Subscription, tenants, and the cross-tenant Graph hop" below.** Earlier drafts said "Managed Identity *or* app registration with client credentials"; that `or` was wrong, and the correction is architectural.
 - **Automation/ops scripts:** PowerShell + Microsoft Graph PowerShell SDK (your home turf — these scripts are portfolio pieces themselves).
 - **SCIM mock:** Small Node.js (Express) app implementing SCIM 2.0 `/Users` endpoints, containerized, deployed to Azure Container Apps.
 
