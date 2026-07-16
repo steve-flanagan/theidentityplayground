@@ -394,7 +394,28 @@ theater dies" was optimistic. Strip the pen, paper, playback and stretch and wha
 timeline *component*, not an organising idea. Time is one axis. **Configuration is the other,
 and it's the one that carries the thesis.**
 
-### The design system: Figure and Key — ADOPTED 16 July
+### The design system: Figure and Key — CONTESTED, not authoritative
+
+> **Status, revised the same day this was written as an adoption.** Everything below is a
+> **pitch, not a specification.** Do not build against it. Do not treat any of it as settled.
+>
+> A build under this system was attempted on 16 July and reverted on sight. The artifact was
+> never committed and is unrecoverable — no stash, no dangling objects. **Nobody can
+> re-diagnose that page.**
+>
+> **What that build settles is narrow: the light ground below is rejected.** That judgement
+> was sensory and immediate, and it doesn't depend on the rest of the build being right.
+> The site is dark.
+>
+> **The seven laws are untested, not disproven.** The build meant to test them omitted the
+> timeline and the Powers of Ten zoom — the two ideas that were the point of the page — so it
+> tested a different and wrong brief, and its verdict transfers to nothing here.
+>
+> **The failure was procedural: a design system was approved as prose by people who had never
+> seen it rendered.** That's why the spine (previous section) survives and this doesn't — a
+> thesis can be judged by reading, a page cannot. Ideas from this section that are *content*
+> rather than *skin* — annotate-the-absence, brushing and linking, the base64 character-range
+> mapping, per-claim provenance — survive independently and are worth keeping.
 
 Full system in [docs/design/figure-and-key.md](docs/design/figure-and-key.md). The unblocking
 distinction: **reference is not metaphor.** "Don't replace the artifact with a metaphor" governs
@@ -422,9 +443,14 @@ have to wait, they're gone." One instinct, two symptoms.
 7. The system may move; the story may not. Live data may animate. Nothing narrative. Nothing on
    first paint.
 
-**Light ground** (`~#FAF9F7`, ink `~#16181C`). The argument isn't aesthetic: RFC 7519 is black on
+**Light ground** (`~#FAF9F7`, ink `~#16181C`) — **REJECTED on sight, 16 July. The site is dark.**
+The argument is preserved verbatim because it is a *good* argument and it lost anyway, which is
+the useful part: the argument isn't aesthetic: RFC 7519 is black on
 white, the OIDC Core spec is black on white, jwt.io defaults light. *Nothing says "I have read
 the spec" like looking like the spec.*
+**Re-read this entry whenever a persuasive design argument arrives without a rendered page
+attached.** Reasoning quality is not evidence about how something looks, and this paragraph is
+the proof.
 
 **Type = three epistemic registers.** Mono = the machine said this literally (ligatures **off** —
 a ligature in a JWT is a lie about the bytes). Sans = the interface is speaking. Serif = a human
@@ -440,6 +466,20 @@ artifact is never occluded.
 **Steve's stretch returns as a control, not a movie:** drag a span on the time axis, it rescales
 instantly. Which is exactly Powers of Ten — his own reference. An animation is decoration; a
 zoomable time axis over real timestamps is a tool.
+
+> **CORRECTED 16 July — this paragraph misreads the idea it credits.** "Powers of Ten" here is
+> **not** a rescaling control on one time axis. Steve's meaning is **recursive descent**: every
+> journey (sign-in, provisioning, MFA, CA) is its own horizontal timeline from start to a real
+> outcome, and **every step is clickable into that step's own timeline** — main event → sub-events
+> → the systems behind them → their attributes → down to the artifact. Like a recursive function.
+>
+> **Continuous zoom on an axis gives you a bigger ruler. Recursive descent gives you a different
+> world at each level.** The recursion holds only if every level is itself a timeline, and it
+> terminates at the real artifact — the actual token, claim, or policy JSON — which is the
+> governing principle arriving from the other direction.
+>
+> This paragraph is the thin reading that reached the build brief. Canonical version:
+> `notes/design.md` §1.
 
 **Annotate the absence.** The `amr` gap becomes the highest-credibility row on the site:
 
@@ -458,9 +498,43 @@ security-minded reader has within ten seconds of seeing a real JWT on a public p
 
 ### What adopting this costs
 
-**Phase 1's UI is a rebuild, not a polish.** The current page violates laws 1, 2, 3, and 4
-simultaneously — it is cards on slate-950 with an emerald accent and mono uppercase labels,
-which is the exact aesthetic the system disqualifies.
+**Phase 1's UI is a rebuild, not a polish** — and this conclusion outlives the design system
+being contested, because it never depended on it. The current page is cards on slate-950 with
+an emerald accent and mono uppercase labels, which is **disqualified by Steve's own hard
+constraint above** (the default LLM aesthetic) and not merely by the seven laws.
+
+### RESOLVED 16 July — the SISU journey shipped
+
+**This section supersedes the design-system debate above.** The rebuild happened, and what it
+was rebuilt into is no longer open. The shape, accepted after five rendered rounds:
+
+**Overview + detail.** The pattern every profiler and packet capture uses, because it survives
+being kept open all day.
+
+- **Overview** — always the whole 1,400 ms, never zooms; a brush marks the slice in view, so
+  the total scale is never off screen.
+- **Detail** — the current level on its own axis, labels in a dedicated column. Open a slice
+  with timed subsections and the axis rescales (0–1400 ms → 4–18 ms) and the bars animate into
+  place. **That axis change is the Powers of Ten move**, and it is the correct reading of it —
+  not the "drag to rescale" control this spec previously described.
+- **Below that** — composition, not time: token → claim groups → claim → what/why/gotcha →
+  stop. A claim has no duration, so it is a list, not a track.
+- **Absences are hatched, never blank.** Conditional Access and MFA on a flow that triggered
+  neither are drawn, with the reason. A transparent bar reads as missing data when the truth is
+  the opposite.
+- **Code blocks carry the real repo file**, embedded at build time via Vite `?raw` — the
+  snippet on screen is the code that runs and cannot drift from it.
+- Deep-linkable per step, Escape to back out, copyable values.
+
+**The product is a reference tool, not a spectacle.** Steve's framing and it settles arguments:
+an actual web tool someone keeps open on a second monitor while working, not a gimmick site.
+Dense over spacious, desktop-first. Nobody keeps a spectacle on a second monitor; they keep
+jwt.io open — which is the tonal anchor, and is deliberately unmagical.
+
+**Method note, which is the transferable part.** Five rounds, each judged on rendered output,
+each correction implemented literally. Every round that built the correction as stated worked;
+every round that improved on it first failed. The failure at the top of this section was never
+a shortage of design ideas — it was approving prose instead of looking at a page.
 
 What survives untouched: `lib/jwt.ts` (the decoder and its UTF-8/base64url handling),
 `lib/claims.ts` (the annotation content is good — it gains provenance fields), the MSAL wiring,

@@ -75,3 +75,6 @@ desktop.ini
 CLAUDE.md
 HANDOFF.md
 .claude/
+# /notes/ carries verbatim reactions and working history. Anchored with a
+# leading slash so it only matches the root dir, never a source subdirectory.
+/notes/
