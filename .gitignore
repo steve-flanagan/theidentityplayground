@@ -73,4 +73,5 @@ desktop.ini
 # author, not the audience. These files stay on disk, they just stay out of git.
 # ---------------------------------------------------------------------------
 CLAUDE.md
+HANDOFF.md
 .claude/
