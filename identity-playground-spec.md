@@ -156,6 +156,19 @@ Ordered by build sequence, not homepage order. Each lists: experience, what it p
 
 **Proves:** Deep understanding of tokens, claims, OIDC — the thing interviewers actually probe.
 
+**✅ Shipped and working (16 July 2026).** Verified against a real account in Firefox: MSAL sign-in → inspector reads the visitor's own ID token → 16 claims annotated across 5 categories. The `iss` gotcha rendered exactly as documented — the real token's issuer host is the tenant-GUID subdomain, not the configured authority host.
+
+> **⚠️ Finding that threatens Module 3: this tenant's ID tokens carry NO `amr`, `acr`, `auth_time`, or `idp`.**
+> The whole Authentication category of the claim dictionary is empty against a real token. `optionalClaims` on the app registration is unset, which explains `auth_time`, but there's a deeper issue: **`amr` and `acr` were v1.0 claims and appear to be absent from v2.0 tokens by design** (v2.0 aims at OIDC standard-compliance). This token is `ver: 2.0`.
+>
+> **Module 3's premise is "watch `amr` change from `pwd` → `mfa` → `fido` as you try each method."** If `amr` is unobtainable, that module needs redesigning rather than debugging — the fallback is to visualise the flow from SPA instrumentation (navigation + MSAL events, which the spec already calls for) and drop the claim-diffing angle.
+>
+> Verify before building Module 3: (a) can `auth_time` / `acrs` be added via App registration → Token configuration → Optional claims (documented as the supported CIAM path)? (b) is `amr` obtainable in a v2.0 ID token by any means? If not, say so in the UI — an honest "this platform doesn't expose it, here's what I used instead" is stronger than pretending.
+>
+> Note `idp` and `sid` behave correctly: `idp` is absent precisely because this was a local account (the issuer IS the IdP), and should appear once Google social login exists. The dictionary entries for those are right; they're just not exercised yet.
+
+**Design notes for a later polish pass** (Steve, 16 July): the Raw JWT view needs pretty-printed/syntax-highlighted JSON; the click-to-expand affordance needs to be more obvious — the annotations are the entire point of the module and are currently easy to miss.
+
 **Implementation:**
 - MSAL.js exposes the raw ID token; decode client-side (base64, no signature verification needed for display — but SAY that in the UI, it's a teachable moment).
 - Static claim-annotation dictionary (JSON file mapping claim names → explanations). Start with ~25 common claims (`aud`, `iss`, `tid`, `oid`, `sub`, `acr`, `amr`, `idp`, etc.).
