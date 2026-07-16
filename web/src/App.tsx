@@ -1,6 +1,9 @@
-// Phase 0 placeholder. The bar here is deliberately low: prove the toolchain
-// builds and deploys end to end. Auth (MSAL) arrives in Phase 1 — see spec
-// section 5. Nothing on this page talks to a tenant yet.
+import { useMemo } from 'react'
+import { TokenInspector } from './components/TokenInspector'
+import { buildSampleToken } from './lib/sampleToken'
+
+// Phase 1 in progress. The inspector is real; the token it's reading is a
+// sample until MSAL is wired (needs the app registration's client ID).
 
 // A union type rather than plain `string`: adding a status the styles don't
 // cover becomes a compile error instead of an undefined class name at runtime.
@@ -34,12 +37,15 @@ const STATUS_STYLES: Record<ModuleStatus, string> = {
 }
 
 function App() {
+  // Built once per mount so the validity window reads relative to now.
+  const sampleToken = useMemo(() => buildSampleToken(), [])
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-300">
       <div className="mx-auto max-w-3xl px-6 py-20">
         <header>
           <p className="font-mono text-xs uppercase tracking-widest text-emerald-400">
-            Phase 0 · scaffolding
+            Phase 1 · token inspector
           </p>
           <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
             The Identity Playground
@@ -55,6 +61,24 @@ function App() {
             the tenant config and source that produced it.
           </p>
         </header>
+
+        <section className="mt-16" aria-labelledby="inspector">
+          <div className="mb-6">
+            <h2 id="inspector" className="text-sm font-medium uppercase tracking-widest text-slate-500">
+              Token inspector
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">
+              Every claim annotated: what it is, why it's in your token, and which tenant
+              configuration produced it. Click any claim to expand it.
+            </p>
+            <p className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-200/70">
+              <span className="font-medium text-amber-300">This is a sample token.</span> Sign-in
+              isn't wired up yet — when it is, this panel will read the real token you were just
+              issued, and the claims below will be yours.
+            </p>
+          </div>
+          <TokenInspector token={sampleToken} label="Sample ID token" />
+        </section>
 
         <section className="mt-16" aria-labelledby="roadmap">
           <h2 id="roadmap" className="text-sm font-medium uppercase tracking-widest text-slate-500">
