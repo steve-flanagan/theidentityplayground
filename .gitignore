@@ -68,7 +68,9 @@ Thumbs.db
 desktop.ini
 
 # ---------------------------------------------------------------------------
-# Claude Code — local, machine-specific
+# Claude Code — local working config, deliberately NOT published.
+# This is a portfolio repo; the working notes and tooling config are for the
+# author, not the audience. These files stay on disk, they just stay out of git.
 # ---------------------------------------------------------------------------
-.claude/settings.local.json
-.claude/worktrees/
+CLAUDE.md
+.claude/
