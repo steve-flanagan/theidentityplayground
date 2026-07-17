@@ -30,6 +30,32 @@ const CATEGORY_ORDER: ClaimCategory[] = [
   'protocol',
 ]
 
+// Colour by MEANING, not by data type. A pure JSON-type pass would paint almost
+// everything string-orange, because almost every claim value is a string — which
+// is decoration, not information. The spec's one hard colour rule is that a
+// colour has to MEAN something; here it means the claim's role in the token:
+//
+//   who you are · how you proved it · who vouches · when it's valid · plumbing
+//
+// So the identity claims (email, name, upn) read as a group and the opaque
+// protocol claims (rh, uti, at_hash) recede, which is exactly the "these are the
+// interesting ones" distinction Steve asked for.
+const CATEGORY_NAME_COLOR: Record<ClaimCategory, string> = {
+  identity: 'text-sky-300', // who you are
+  auth: 'text-emerald-300', // how you proved it — the signal claims
+  issuer: 'text-violet-300', // who vouches for it
+  tenant: 'text-violet-300', // same trust boundary
+  timing: 'text-amber-300', // when it's valid
+  protocol: 'text-slate-500', // plumbing — deliberately dim
+}
+
+/** The value is the data, so the value carries the saturated colour (spec rule). */
+function valueColor(name: string, value: unknown): string {
+  if (TIME_CLAIMS.has(name)) return 'text-amber-200' // a moment in time
+  if (typeof value === 'number' || typeof value === 'boolean') return 'text-lime-300'
+  return 'text-orange-200' // a string — which is nearly everything in a JWT
+}
+
 export function TokenInspector({ token, label = 'ID token', live = false }: Props) {
   const [view, setView] = useState<'annotated' | 'raw'>('annotated')
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -174,7 +200,10 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
         <div className="divide-y divide-slate-800/60">
           {CATEGORY_ORDER.filter((c) => grouped.has(c)).map((category) => (
             <div key={category} className="p-4">
-              <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-slate-500">
+              <h3
+                className={`mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wider ${CATEGORY_NAME_COLOR[category]}`}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
                 {CLAIM_CATEGORY_LABELS[category]}
               </h3>
               <ul className="space-y-1">
@@ -243,6 +272,7 @@ function ClaimRow({
   const ann = getAnnotation(name)
   const isSignal = SIGNAL_CLAIMS.has(name)
   const timeStr = TIME_CLAIMS.has(name) ? formatTimeClaim(value) : null
+  const nameColor = ann ? CATEGORY_NAME_COLOR[ann.category] : 'text-slate-400'
 
   return (
     <li>
@@ -253,12 +283,13 @@ function ClaimRow({
         aria-expanded={isExpanded}
         className="flex w-full gap-3 rounded-md px-2 py-1.5 text-left transition hover:bg-slate-800/50"
       >
-        <span
-          className={`w-36 shrink-0 font-mono text-xs ${isSignal ? 'text-emerald-400' : 'text-slate-400'}`}
-        >
+        <span className={`flex w-36 shrink-0 items-baseline gap-1.5 font-mono text-xs ${nameColor}`}>
+          {/* A dot for the claims that reveal HOW you signed in — idp, amr. They
+              are the tell, and they earn the extra mark on top of the colour. */}
+          {isSignal && <span className="shrink-0 text-emerald-400" aria-hidden="true">●</span>}
           {name}
         </span>
-        <span className="min-w-0 flex-1 break-all font-mono text-xs text-slate-300">
+        <span className={`min-w-0 flex-1 break-all font-mono text-xs ${valueColor(name, value)}`}>
           {timeStr ?? formatClaimValue(value)}
         </span>
         <span className="shrink-0 text-xs text-slate-600" aria-hidden="true">
