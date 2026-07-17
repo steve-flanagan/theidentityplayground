@@ -56,10 +56,21 @@ accounts self-destruct while leaving a month of restorable PII behind is lying i
 one place it claims authority, so this purges by default via
 `Remove-MgDirectoryDeletedItem`. `-SkipPurge` opts out.
 
-## Verify before trusting
+## What's verified, and what isn't
 
-The `signInType` values above are the assumption this script's safety rests on.
-Confirm them against the tenant before the first unattended run:
+**Verified against Graph SDK 2.38.1** (16 July): every cmdlet, parameter and object
+property the script touches resolves — `Connect-MgGraph`, `Get-MgUser`,
+`Remove-MgUser`, `Get-MgDirectoryRole`, `Get-MgDirectoryRoleMember`,
+`Remove-MgDirectoryDeletedItem`, and the `.Identities[].SignInType` /
+`.CreatedDateTime` reads.
+
+**Verified by test**: the guard logic, exercised against synthetic users under
+`Set-StrictMode -Version Latest`. A 999-hour-old role-holding admin is skipped; a
+user with no `identities` is skipped; a guest whose `signInType` is
+`userPrincipalName` is skipped; only the aged sign-up-flow accounts are selected.
+
+**NOT verified — needs the tenant, and it is the assumption everything rests on:**
+the real `signInType` values. Confirm before the first unattended run:
 
 ```powershell
 Connect-MgGraph -TenantId 7e8da8a9-67bc-4d53-bfc7-fe3e13128382 -Scopes 'User.Read.All'
