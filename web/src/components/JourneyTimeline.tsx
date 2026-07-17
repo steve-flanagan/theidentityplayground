@@ -56,7 +56,52 @@ function place(span: Span, axis: Span) {
   }
 }
 
-/** Resolve a deep link like #pkce/nonce back into real nodes. */
+// ─────────────────────────────────────────────────────────────────────────────
+// THE URL FRAGMENT IS NOT OURS. IT IS MSAL'S.
+//
+// Entra returns the authorization code in the fragment:
+//   https://theidentityplayground.com/#code=…&client_info=…&state=…
+//
+// An earlier version of this component wrote the fragment from an effect on
+// mount, which stripped that response before MSAL could read it and silently
+// broke every sign-in in production. It wasn't even a race: React runs child
+// effects before parent effects, and this component is a child of MsalProvider,
+// so it lost every time.
+//
+// Two rules keep it fixed, and both are load-bearing:
+//
+//   1. NAMESPACE. Only a fragment starting with `step=` is ours. MSAL's starts
+//      with `code=` or `error=`. We never read or write anything else.
+//   2. NEVER WRITE ON MOUNT. The fragment is only written in response to a
+//      click — by which time MSAL has long since consumed and cleared its own.
+//
+// If you are about to touch location.hash here, re-read this first.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const HASH_PREFIX = 'step='
+
+/** Our ids out of the fragment — or nothing, if the fragment isn't ours. */
+function readStepHash(): string[] {
+  const raw = location.hash.replace(/^#/, '')
+  if (!raw.startsWith(HASH_PREFIX)) return []
+  return raw.slice(HASH_PREFIX.length).split('/').filter(Boolean)
+}
+
+/** Called from click handlers only. Never from an effect, never on mount. */
+function writeStepHash(path: ZoomNode[]): void {
+  // Refuse to touch an auth response even if somehow called during one.
+  const raw = location.hash.replace(/^#/, '')
+  if (raw && !raw.startsWith(HASH_PREFIX)) return
+
+  const ids = path.map((n) => n.id).join('/')
+  history.replaceState(
+    null,
+    '',
+    ids ? `#${HASH_PREFIX}${ids}` : location.pathname + location.search,
+  )
+}
+
+/** Resolve a deep link like #step=pkce/pkce:nonce back into real nodes. */
 function resolvePath(ids: string[], roots: ZoomNode[]): ZoomNode[] {
   const out: ZoomNode[] = []
   let level = roots
@@ -84,8 +129,18 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
    * read pass saw it, and the link silently resolved to nothing.
    */
   const [path, setPath] = useState<ZoomNode[]>(() =>
-    resolvePath(location.hash.replace(/^#/, '').split('/').filter(Boolean), journey.events),
+    resolvePath(readStepHash(), journey.events),
   )
+
+  /**
+   * The only way this component changes state. setPath is never called directly,
+   * so the fragment can only ever be written from a real click — see the note
+   * above readStepHash for why that matters more than it looks.
+   */
+  function navigate(next: ZoomNode[]) {
+    setPath(next)
+    writeStepHash(next)
+  }
 
   const selected = path[path.length - 1] ?? null
 
@@ -99,18 +154,13 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
   const detailNodes = zoomContainer ? timedChildren(zoomContainer) : journey.events
   const share = (spanMs(axis) / journey.duration) * 100
 
-  // Deep links: a colleague can be sent the exact step.
-  useEffect(() => {
-    const h = path.map((n) => n.id).join('/')
-    if (location.hash.replace(/^#/, '') !== h) {
-      history.replaceState(null, '', h ? `#${h}` : location.pathname + location.search)
-    }
-  }, [path])
-
   // Escape backs out one level. Cheap, and it's what a tool should do.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && path.length) setPath(path.slice(0, -1))
+      if (e.key === 'Escape' && path.length) {
+        setPath(path.slice(0, -1))
+        writeStepHash(path.slice(0, -1))
+      }
     }
     addEventListener('keydown', onKey)
     return () => removeEventListener('keydown', onKey)
@@ -119,7 +169,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
   /** Select a node at the current detail level. */
   function open(node: ZoomNode) {
     const prefix = zoomContainer ? path.slice(0, path.indexOf(zoomContainer) + 1) : []
-    setPath([...prefix, node])
+    navigate([...prefix, node])
   }
 
   return (
@@ -174,7 +224,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
             return (
               <button
                 key={event.id}
-                onClick={() => setPath([event])}
+                onClick={() => navigate([event])}
                 title={`${event.label} · ${spanMs(event.span)} ms`}
                 aria-label={event.label}
                 style={{ left, width }}
@@ -206,7 +256,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <span className="flex flex-wrap items-center gap-x-2">
             <button
-              onClick={() => setPath([])}
+              onClick={() => navigate([])}
               className={`font-mono text-xs transition-colors ${
                 !zoomContainer ? 'text-emerald-300' : 'text-slate-500 hover:text-slate-200'
               }`}
@@ -222,7 +272,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                   {zoomContainer.label}
                 </span>
                 <button
-                  onClick={() => setPath(path.slice(0, path.indexOf(zoomContainer)))}
+                  onClick={() => navigate(path.slice(0, path.indexOf(zoomContainer)))}
                   className="ml-1 font-mono text-[10px] uppercase tracking-wider text-slate-500 hover:text-emerald-300"
                 >
                   ↑ back <span className="text-slate-700">(esc)</span>
@@ -315,7 +365,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
           <NodePanel
             node={selected}
             hideChildren={timedChildren(selected).length > 0}
-            onDescend={(child) => setPath([...path, child])}
+            onDescend={(child) => navigate([...path, child])}
           />
         </div>
       )}
