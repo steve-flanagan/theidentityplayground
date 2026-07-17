@@ -197,9 +197,14 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
           </div>
         </div>
       ) : (
-        <div className="divide-y divide-slate-800/60">
+        // Category cards in a grid, not one tall column. The claims flow across
+        // and fit on the page instead of scrolling forever; each category stays
+        // a coherent block, colour-headed by its role. items-start so expanding a
+        // claim grows only its own card, never its neighbours. One column on a
+        // phone, which is the "one over the other" fallback.
+        <div className="grid items-start gap-px bg-slate-800/60 sm:grid-cols-2 xl:grid-cols-3">
           {CATEGORY_ORDER.filter((c) => grouped.has(c)).map((category) => (
-            <div key={category} className="p-4">
+            <div key={category} className="bg-slate-900/40 p-4">
               <h3
                 className={`mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wider ${CATEGORY_NAME_COLOR[category]}`}
               >
@@ -221,7 +226,7 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
           ))}
 
           {unannotated.length > 0 && (
-            <div className="p-4">
+            <div className="bg-slate-900/40 p-4">
               <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
                 Not yet annotated
               </h3>
@@ -233,7 +238,7 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
                 {unannotated.map((key) => (
                   <li key={key} className="flex gap-3 py-1 font-mono text-xs">
                     <span className="w-36 shrink-0 text-slate-500">{key}</span>
-                    <span className="min-w-0 break-all text-slate-400">
+                    <span className="min-w-0 break-all text-orange-200">
                       {formatClaimValue(payload[key])}
                     </span>
                   </li>
