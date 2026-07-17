@@ -280,37 +280,41 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                 // unusable. The floor buys visibility and a hit target; the row
                 // below carries the exact number, so nothing is being overstated.
                 style={{ left, width, minWidth: '4px' }}
+                // Full colour by default. The bars were at opacity-60, which
+                // muted the fill AND sank the dark label into it. The bar exists
+                // to carry its name, so the name gets the contrast.
                 className={`absolute inset-y-0 overflow-hidden border-r border-slate-950 ${
                   event.absent ? 'hatch' : ACTOR_BAR[event.actor]
                 } ${
                   isSel
-                    ? 'z-10 opacity-100 ring-2 ring-inset ring-white'
+                    ? 'z-10 ring-2 ring-inset ring-white'
                     : isHot
-                      ? 'z-10 opacity-100 ring-2 ring-inset ring-white/70'
-                      : 'opacity-60'
+                      ? 'z-10 ring-2 ring-inset ring-white/60'
+                      : 'opacity-90'
                 }`}
               >
-                {/* The name, on the bar. Only where it fits — a clipped label is
-                    worse than none, which the first build proved. The row below
-                    always carries the full text, so nothing is lost when it's
-                    too narrow; you just get a mark that invites a click. */}
-                <span className="pointer-events-none flex h-full items-center justify-center px-1">
-                  <span className="truncate font-mono text-[11px] font-medium text-slate-950">
-                    {width.endsWith('%') && parseFloat(width) > 9 ? event.label : ''}
+                {/* The name, on the bar. Short form: "/authorize" fits where
+                    "GET /oauth2/v2.0/authorize" never could, and the row below
+                    always carries the long one. Only shown where it genuinely
+                    fits — a clipped label is worse than none, which the first
+                    build proved. Below the threshold you get a mark that invites
+                    a click instead. */}
+                <span className="pointer-events-none flex h-full items-center justify-center px-1.5">
+                  <span className="truncate font-mono text-xs font-semibold text-slate-950">
+                    {width.endsWith('%') && parseFloat(width) > 5
+                      ? (event.short ?? event.label)
+                      : ''}
                   </span>
                 </span>
               </button>
             )
           })}
 
-          {/* The brush: which slice the detail below is showing. */}
-          {zoomContainer && (
-            <span
-              aria-hidden="true"
-              style={place(axis, { start: 0, end: journey.duration })}
-              className="zoom-bar pointer-events-none absolute inset-y-0 z-20 min-w-[2px] bg-white/90"
-            />
-          )}
+          {/* No brush overlay here any more. It was bg-white/90 at z-20, painted
+              across the very bar you'd selected — which whited out the segment
+              and drowned its label. The selected bar already carries a ring, so
+              the brush was duplicating the marker AND destroying the thing the
+              bar exists to show. The name is the point; nothing gets to cover it. */}
         </div>
 
         <div className="mt-1 flex justify-between font-mono text-[10px] tabular-nums text-slate-600">

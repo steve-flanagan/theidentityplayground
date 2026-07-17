@@ -81,6 +81,14 @@ export type JourneyEvent = ZoomNode & {
   actor: Actor
   span: Span
   /**
+   * What goes ON the bar. The full "POST /common/GetCredentialType" needs a wide
+   * segment to earn its space, and a bar that can't show its name is just a
+   * stripe — "the main thing is what they contain, and that is best represented
+   * by the name". A short name fits in far more bars. The row always has the
+   * long one, so nothing is lost.
+   */
+  short?: string
+  /**
    * Idle ms before this request fired — a human typing. Measured, but NOT on the
    * axis: it sits between requests, never inside one, so the machine clock can
    * exclude it without any special pleading.
@@ -210,6 +218,8 @@ const CAPTURES: Record<FlowId, Capture> = {
 type Measured = {
   id: string
   label: string
+  /** Short form for the bar. See JourneyEvent.short. */
+  short?: string
   actor: Actor
   /** Full request time, ms — measured. Filled from the capture, never by hand. */
   total: number
@@ -306,6 +316,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
   '/{tid}/v2.0/.well-known/openid-configuration': {
     match: '/{tid}/v2.0/.well-known/openid-configuration',
     id: 'discovery',
+    short: 'discovery',
     label: 'GET /.well-known/openid-configuration',
     actor: 'network',
     summary: 'MSAL asks the tenant what it is before trusting anything.',
@@ -319,6 +330,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
   '/{tid}/oauth2/v2.0/authorize': {
     match: '/{tid}/oauth2/v2.0/authorize',
     id: 'authorize',
+    short: '/authorize',
     label: 'GET /oauth2/v2.0/authorize',
     actor: 'network',
     summary: 'One request. Four things happen inside it.',
@@ -337,6 +349,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
   '/common/GetCredentialType': {
     match: '/common/GetCredentialType',
     id: 'credtype',
+    short: 'GetCredentialType',
     label: 'POST /common/GetCredentialType',
     actor: 'entra',
     humanDoing: 'typing an email address',
@@ -351,6 +364,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
   '/{tid}/login': {
     match: '/{tid}/login',
     id: 'login',
+    short: '/login',
     label: 'POST /login',
     actor: 'entra',
     humanDoing: 'typing a password',
@@ -365,6 +379,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
   '/kmsi': {
     match: '/kmsi',
     id: 'kmsi',
+    short: '/kmsi',
     label: 'POST /kmsi',
     actor: 'entra',
     humanDoing: 'deciding whether to stay signed in',
@@ -379,6 +394,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
   '/common/validateuserattributes': {
     match: '/common/validateuserattributes',
     id: 'validate',
+    short: 'validateuserattributes',
     label: 'POST /common/validateuserattributes',
     actor: 'entra',
     humanDoing: 'filling in attributes',
@@ -393,6 +409,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
   '/common/createuser': {
     match: '/common/createuser',
     id: 'createuser',
+    short: 'createuser',
     label: 'POST /common/createuser',
     actor: 'entra',
     summary: 'Sign-up only. The most expensive thing in either flow.',
@@ -406,6 +423,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
   '/{tid}/Consent/Set': {
     match: '/{tid}/Consent/Set',
     id: 'consent',
+    short: '/Consent/Set',
     label: 'POST /Consent/Set → 302',
     actor: 'entra',
     humanDoing: 'reading the consent screen',
@@ -420,6 +438,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
   'SPA /': {
     match: 'SPA /',
     id: 'spa',
+    short: 'SPA reload',
     label: 'GET / — the SPA reloads',
     actor: 'browser',
     summary: 'Back on our origin, carrying the code in the fragment.',
@@ -433,6 +452,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
   '/{tid}/oauth2/v2.0/token': {
     match: '/{tid}/oauth2/v2.0/token',
     id: 'token-request',
+    short: '/token',
     label: 'POST /oauth2/v2.0/token',
     actor: 'network',
     summary: 'The code and the verifier, exchanged for the token.',
@@ -554,6 +574,7 @@ function toEvents(capture: Capture, token: string, tokenLabel: string): JourneyE
     return {
       id: m.id,
       label: m.label,
+      short: m.short,
       actor: m.actor,
       span,
       summary: m.summary,
