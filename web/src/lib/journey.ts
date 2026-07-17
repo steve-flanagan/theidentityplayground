@@ -527,10 +527,40 @@ function generic(r: CapturedRequest): Annotation {
 function toEvents(capture: Capture, token: string, tokenLabel: string): JourneyEvent[] {
   let clock = 0
 
+  // A path can repeat: MSAL fetches the discovery document once at startup and
+  // again after the SPA reloads. Annotations are keyed by path, so both requests
+  // used to come out with id 'discovery' — duplicate React keys, and React's
+  // documented response to that is to duplicate and/or omit children. It showed
+  // up as phantom rows in every detail view. Ids are per-occurrence now.
+  const seen = new Map<string, number>()
+
   return capture.requests.map((r) => {
     const a = ANNOTATIONS[r.path] ?? generic(r)
+
+    const nth = (seen.get(a.id) ?? 0) + 1
+    seen.set(a.id, nth)
+    const id = nth === 1 ? a.id : `${a.id}-${nth}`
+
+    // A repeat that costs nothing is a cache hit, and saying so is better than
+    // showing the same row twice with no explanation.
+    const cached = nth > 1 && r.total === 0
+
     const m: Measured = {
       ...a,
+      id,
+      label: cached ? `${a.label} — cached` : a.label,
+      short: cached ? `${a.short ?? a.label} (cached)` : a.short,
+      summary: cached
+        ? 'Same document, second ask. Served from cache in 0 ms.'
+        : a.summary,
+      detail: cached
+        ? {
+            what: 'MSAL re-reads the discovery document after the redirect, because the page was torn down and rebuilt.',
+            why: 'The SPA reloaded — everything in memory went with it.',
+            gotcha:
+              'Zero milliseconds. The browser had it cached, so the second ask costs nothing. This is the same lesson as the connection reuse on /token: the first time is expensive, and after that identity is mostly free.',
+          }
+        : a.detail,
       total: r.total,
       timings: r.timings,
       // Only call it a human if it's long enough to be one. Sub-second gaps are

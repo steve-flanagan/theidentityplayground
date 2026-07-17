@@ -3,6 +3,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { JourneyTimeline } from './JourneyTimeline'
 import { buildSampleToken } from '../lib/sampleToken'
 import signinCapture from '../lib/captures/signin.json'
+import { buildJourney, type ZoomNode } from '../lib/journey'
 
 // These exist because of a real outage, not for coverage.
 //
@@ -108,6 +109,29 @@ describe('the timeline reports what was actually measured', () => {
     mount()
     expect(screen.getByText(`${signinCapture.requestCount} requests`)).toBeDefined()
     expect(screen.queryByText('14 events')).toBeNull()
+  })
+
+  it('gives every node a unique id, at every depth', () => {
+    // .well-known is fetched twice — once at startup, once after the SPA
+    // reloads. Annotations are keyed by path, so both events came out as
+    // 'discovery': duplicate React keys, whose documented behaviour is to
+    // duplicate and/or omit children. It rendered phantom rows in every detail
+    // view, and React logged the error on every paint while the DOM assertions
+    // all passed. Ids are the invariant; this is the guard.
+    for (const flow of ['signin', 'signup'] as const) {
+      const journey = buildJourney(flow, token, 'Sample ID token')
+      const ids: string[] = []
+      const walk = (nodes: ZoomNode[]) => {
+        for (const n of nodes) {
+          ids.push(n.id)
+          if (n.children) walk(n.children)
+        }
+      }
+      walk(journey.events)
+
+      const dupes = ids.filter((id, i) => ids.indexOf(id) !== i)
+      expect(dupes, `duplicate ids in ${flow}: ${[...new Set(dupes)].join(', ')}`).toEqual([])
+    }
   })
 
   it('never puts human thinking time on the machine axis', () => {

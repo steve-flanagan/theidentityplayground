@@ -607,23 +607,30 @@ function NodePanel({
 function CodeSection({ node }: { node: ZoomNode }) {
   const code = node.code!
   return (
-    <details className="mt-4 rounded border border-slate-800 bg-slate-950/60">
-      <summary className="cursor-pointer px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-slate-500 hover:text-emerald-300">
-        How this is done here — {code.file}
+    // This is the strongest thing on the page — the actual file that ran, one
+    // click from the request it produced. It was styled like a footnote.
+    <details className="mt-5 rounded-lg border border-emerald-500/25 bg-slate-950/70">
+      <summary className="flex cursor-pointer items-center gap-2 px-3 py-2.5 text-sm text-emerald-300 hover:bg-emerald-500/5">
+        <span className="font-medium">How this is actually done</span>
+        <span className="font-mono text-xs text-slate-500">{code.file}</span>
+        <span className="ml-auto font-mono text-xs text-slate-600">source ↓</span>
       </summary>
-      <div className="border-t border-slate-800 px-3 py-3">
-        <p className="mb-3 text-xs leading-relaxed text-slate-400">{code.note}</p>
-        <div className="mb-2 flex justify-end">
+      <div className="border-t border-emerald-500/20 px-3 py-3">
+        <p className="mb-3 text-sm leading-relaxed text-slate-300">{code.note}</p>
+        <div className="mb-2 flex items-center justify-between">
+          <span className="font-mono text-xs text-slate-600">
+            the file that runs — embedded at build time, so it can't drift
+          </span>
           <CopyButton value={code.source} />
         </div>
-        <pre className="max-h-96 overflow-auto rounded border border-slate-800 bg-slate-950 p-3 font-mono text-[11px] leading-relaxed">
+        <pre className="max-h-[32rem] overflow-auto rounded border border-slate-800 bg-slate-950 p-4 font-mono text-xs leading-relaxed">
           <Highlighted source={code.source} file={code.file} />
         </pre>
         <a
           href={codeUrl(code)}
           target="_blank"
           rel="noreferrer"
-          className="mt-2 inline-block font-mono text-[10px] uppercase tracking-wider text-slate-500 hover:text-emerald-300"
+          className="mt-3 inline-block font-mono text-xs text-slate-400 hover:text-emerald-300"
         >
           View on GitHub ↗
         </a>
