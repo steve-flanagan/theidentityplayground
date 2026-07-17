@@ -16,6 +16,11 @@ appsettings.Development.json
 secrets.json
 **/secrets/
 azureauth.json
+# A HAR of a sign-in is a credential dump: it carries the authorization code, the
+# ID token, session cookies, and possibly the credential POST body. Captures stay
+# out of the repo, permanently. Derive timings from them with
+# scripts/har-to-timings.mjs and commit only that.
+*.har
 
 # ---------------------------------------------------------------------------
 # Node / Vite / React  (web/, api/, scim-mock/)

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { JourneyTimeline } from './JourneyTimeline'
 import { buildSampleToken } from '../lib/sampleToken'
+import signinCapture from '../lib/captures/signin.json'
 
 // These exist because of a real outage, not for coverage.
 //
@@ -55,7 +56,7 @@ describe('the URL fragment belongs to MSAL, not to us', () => {
     mount()
 
     // Falls back to the top of the journey rather than resolving nonsense.
-    expect(screen.getByText('14 events')).toBeDefined()
+    expect(screen.getByText(/steps · full scale/)).toBeDefined()
   })
 
   it('writes nothing to a clean URL on mount', () => {
@@ -68,13 +69,13 @@ describe('the URL fragment belongs to MSAL, not to us', () => {
 
 describe('our own deep links', () => {
   it('restores a step path from a namespaced fragment', () => {
-    setFragment('#step=pkce/pkce:nonce')
+    // /authorize is the one request that pays DNS + TCP + TLS, so its phases are
+    // the most interesting thing to be able to link someone straight to.
+    setFragment('#step=authorize/authorize:ssl')
 
     mount()
 
-    // Zoomed into the PKCE slice, with the nonce leaf selected.
-    expect(screen.getByText('nonce', { selector: 'h4' })).toBeDefined()
-    expect(screen.getByText(/1% of the sign-in/)).toBeDefined()
+    expect(screen.getByText('TLS handshake', { selector: 'h4' })).toBeDefined()
   })
 
   it('ignores a namespaced fragment naming steps that do not exist', () => {
@@ -82,6 +83,27 @@ describe('our own deep links', () => {
 
     mount()
 
-    expect(screen.getByText('14 events')).toBeDefined()
+    expect(screen.getByText(/steps · full scale/)).toBeDefined()
+  })
+})
+
+// The numbers on the page must come from the capture and nowhere else. If these
+// ever disagree, someone has retyped a measurement by hand — which is precisely
+// how a "real" figure quietly becomes a wrong one.
+describe('the timeline reports what was actually measured', () => {
+  it('shows the sign-in machine time from the derived capture', () => {
+    mount()
+    expect(screen.getByText(signinCapture.machineMs.toLocaleString())).toBeDefined()
+  })
+
+  it('plots one bar per captured request, and no more', () => {
+    mount()
+    expect(screen.getByText(`${signinCapture.requestCount} steps · full scale`)).toBeDefined()
+  })
+
+  it('never puts human thinking time on the machine axis', () => {
+    // The gaps are enormous — 12.5s typing an email against 1.9s of machine.
+    // If they ever leaked onto the axis, machine time would balloon toward wall.
+    expect(signinCapture.machineMs).toBeLessThan(signinCapture.wallMs / 5)
   })
 })

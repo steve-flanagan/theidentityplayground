@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ACTOR_LABELS,
-  buildSisuJourney,
+  buildJourney,
+  FLOW_DIFF,
   codeUrl,
   spanMs,
   type Actor,
+  type FlowId,
   type Journey,
   type Span,
   type ZoomNode,
@@ -116,9 +118,16 @@ function resolvePath(ids: string[], roots: ZoomNode[]): ZoomNode[] {
 }
 
 export function JourneyTimeline({ token, tokenLabel }: Props) {
+  /**
+   * Which real capture we're showing. Both were measured against the live tenant
+   * on 16 July; switching between them IS the demo — same app, same person, and
+   * exactly four requests different.
+   */
+  const [flow, setFlow] = useState<FlowId>('signin')
+
   const journey: Journey = useMemo(
-    () => buildSisuJourney(token, tokenLabel),
-    [token, tokenLabel],
+    () => buildJourney(flow, token, tokenLabel),
+    [flow, token, tokenLabel],
   )
 
   /**
@@ -187,7 +196,25 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-slate-800 px-5 py-3">
         <div className="flex flex-wrap items-baseline gap-x-3">
-          <h3 className="font-mono text-sm text-slate-200">{journey.label}</h3>
+          {/* The switch IS the demo: same app, same person, four requests apart. */}
+          <span className="flex overflow-hidden rounded border border-slate-700">
+            {(['signin', 'signup'] as FlowId[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => {
+                  setFlow(f)
+                  navigate([])
+                }}
+                className={`px-2.5 py-1 font-mono text-xs transition-colors ${
+                  flow === f
+                    ? 'bg-emerald-500/20 text-emerald-200'
+                    : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
+                }`}
+              >
+                {f === 'signin' ? 'Sign-in' : 'Sign-up'}
+              </button>
+            ))}
+          </span>
           <p className="text-xs text-slate-500">{journey.summary}</p>
         </div>
         <div className="flex items-baseline gap-4">
@@ -195,7 +222,11 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
             <span className="text-2xl tabular-nums text-slate-100">
               {journey.duration.toLocaleString()}
             </span>{' '}
-            <span className="text-xs">ms total</span>
+            <span className="text-xs">ms machine</span>
+            {/* The number nobody expects: the machine is not the slow part. */}
+            <span className="ml-2 text-[10px] tabular-nums text-slate-600">
+              of {(journey.wallClock / 1000).toFixed(1)}s wall · the rest is you typing
+            </span>
           </p>
           <span
             className={`rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider ring-1 ring-inset ${
@@ -340,9 +371,30 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
             const { left, width } = place(node.span!, axis)
             const isSel = selected?.id === node.id
             const openable = timedChildren(node).length > 0 || Boolean(node.children?.length)
+            const ev = node as { humanGapBefore?: number; humanDoing?: string }
+            const onlyHere =
+              (FLOW_DIFF.signupOnly as readonly string[]).includes(node.id) ||
+              (FLOW_DIFF.signinOnly as readonly string[]).includes(node.id)
 
             return (
               <li key={node.id}>
+                {/* A human, between two requests. Measured, and deliberately not
+                    on the axis — the machine clock doesn't advance for it. */}
+                {ev.humanGapBefore != null && (
+                  <div className="grid grid-cols-[13rem_1fr_3rem] items-center gap-3 px-1 py-0.5">
+                    <span className="text-right font-mono text-[10px] tabular-nums text-slate-600">
+                      {(ev.humanGapBefore / 1000).toFixed(1)}s
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <span className="h-px flex-1 bg-slate-800" />
+                      <span className="font-mono text-[10px] uppercase tracking-wider text-slate-600">
+                        you, {ev.humanDoing}
+                      </span>
+                      <span className="h-px flex-1 bg-slate-800" />
+                    </span>
+                    <span />
+                  </div>
+                )}
                 <button
                   onClick={() => open(node)}
                   onMouseEnter={() => setHoveredId(node.id)}
@@ -358,6 +410,16 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                   }`}
                 >
                   <span className="flex items-baseline gap-1.5 truncate">
+                    {/* One of the four that differ between the flows. Switch
+                        above and this row appears or vanishes — that's the diff. */}
+                    {onlyHere && (
+                      <span
+                        title="Only happens in this flow"
+                        className="shrink-0 font-mono text-[10px] text-amber-400"
+                      >
+                        ◆
+                      </span>
+                    )}
                     <span
                       className={`truncate text-xs ${
                         isSel ? 'font-medium text-emerald-200' : 'text-slate-300'
