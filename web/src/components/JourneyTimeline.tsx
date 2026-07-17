@@ -9,6 +9,7 @@ import {
   type Span,
   type ZoomNode,
 } from '../lib/journey'
+import { highlight, TOKEN_CLASS } from '../lib/highlight'
 
 // Overview + detail. The pattern every profiler, packet capture and network
 // waterfall uses, because it's the one that survives being kept open all day.
@@ -133,6 +134,15 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
   )
 
   /**
+   * Brushing and linking (Becker/Cleveland, late 1980s — canonical, not
+   * invented). The bar and the rows are one dataset in two renderings, and
+   * without this you're left eyeballing a stripe against a table and guessing
+   * which is which. Touch either and both light up. It's the cheapest fix in
+   * here and it's the one that answers "what am I even looking at".
+   */
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
+
+  /**
    * The only way this component changes state. setPath is never called directly,
    * so the fragment can only ever be written from a real click — see the note
    * above readStepHash for why that matters more than it looks.
@@ -221,16 +231,30 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
           {journey.events.map((event) => {
             const { left, width } = place(event.span, { start: 0, end: journey.duration })
             const isSel = selected?.id === event.id || zoomContainer?.id === event.id
+            const isHot = hoveredId === event.id
             return (
               <button
                 key={event.id}
                 onClick={() => navigate([event])}
+                onMouseEnter={() => setHoveredId(event.id)}
+                onMouseLeave={() => setHoveredId(null)}
+                onFocus={() => setHoveredId(event.id)}
+                onBlur={() => setHoveredId(null)}
                 title={`${event.label} · ${spanMs(event.span)} ms`}
                 aria-label={event.label}
-                style={{ left, width }}
+                // A 4ms event is 0.3% of the track — three pixels. Honest, and
+                // unusable. The floor buys visibility and a hit target; the row
+                // below carries the exact number, so nothing is being overstated.
+                style={{ left, width, minWidth: '4px' }}
                 className={`absolute inset-y-0 border-r border-slate-950 ${
                   event.absent ? 'hatch' : ACTOR_BAR[event.actor]
-                } ${isSel ? 'z-10 opacity-100 ring-2 ring-inset ring-white' : 'opacity-60 hover:opacity-95'}`}
+                } ${
+                  isSel
+                    ? 'z-10 opacity-100 ring-2 ring-inset ring-white'
+                    : isHot
+                      ? 'z-10 opacity-100 ring-2 ring-inset ring-white/70'
+                      : 'opacity-60'
+                }`}
               />
             )
           })}
@@ -321,8 +345,16 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
               <li key={node.id}>
                 <button
                   onClick={() => open(node)}
+                  onMouseEnter={() => setHoveredId(node.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                  onFocus={() => setHoveredId(node.id)}
+                  onBlur={() => setHoveredId(null)}
                   className={`grid w-full grid-cols-[13rem_1fr_3rem] items-center gap-3 border-b border-slate-800/60 px-1 py-1 text-left transition-colors ${
-                    isSel ? 'bg-emerald-500/10' : 'hover:bg-slate-800/60'
+                    isSel
+                      ? 'bg-emerald-500/10'
+                      : hoveredId === node.id
+                        ? 'bg-slate-800'
+                        : ''
                   }`}
                 >
                   <span className="flex items-baseline gap-1.5 truncate">
@@ -338,10 +370,16 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
 
                   <span className="relative block h-4">
                     <span
-                      style={{ left, width }}
+                      style={{ left, width, minWidth: '4px' }}
                       className={`zoom-bar absolute top-1 h-2 rounded-sm ${
                         node.absent ? 'hatch' : ACTOR_BAR[actorOf(node, zoomContainer ? actorOf(zoomContainer) : 'entra')]
-                      } ${isSel ? 'shadow-[0_0_0_2px] shadow-emerald-400/60' : ''}`}
+                      } ${
+                        isSel
+                          ? 'shadow-[0_0_0_2px] shadow-emerald-400/60'
+                          : hoveredId === node.id
+                            ? 'shadow-[0_0_0_2px] shadow-white/70'
+                            : ''
+                      }`}
                     />
                   </span>
 
@@ -491,8 +529,8 @@ function CodeSection({ node }: { node: ZoomNode }) {
         <div className="mb-2 flex justify-end">
           <CopyButton value={code.source} />
         </div>
-        <pre className="max-h-96 overflow-auto rounded border border-slate-800 bg-slate-950 p-3 font-mono text-[11px] leading-relaxed text-slate-300">
-          {code.source}
+        <pre className="max-h-96 overflow-auto rounded border border-slate-800 bg-slate-950 p-3 font-mono text-[11px] leading-relaxed">
+          <Highlighted source={code.source} file={code.file} />
         </pre>
         <a
           href={codeUrl(code)}
@@ -504,6 +542,20 @@ function CodeSection({ node }: { node: ZoomNode }) {
         </a>
       </div>
     </details>
+  )
+}
+
+/** Tokens → spans. React escapes, so no dangerouslySetInnerHTML on a security site. */
+function Highlighted({ source, file }: { source: string; file: string }) {
+  const tokens = useMemo(() => highlight(source, file), [source, file])
+  return (
+    <>
+      {tokens.map((t, i) => (
+        <span key={i} className={TOKEN_CLASS[t.kind]}>
+          {t.text}
+        </span>
+      ))}
+    </>
   )
 }
 
