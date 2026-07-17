@@ -128,7 +128,7 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
               {label}
             </h2>
             <span
-              className={`rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ring-1 ring-inset ${
+              className={`rounded-full px-2 py-0.5 font-mono text-xs uppercase tracking-wider ring-1 ring-inset ${
                 live
                   ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30'
                   : 'bg-slate-500/10 text-slate-400 ring-slate-500/30'
@@ -137,7 +137,7 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
               {live ? 'yours · live' : 'sample'}
             </span>
           </div>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-sm text-slate-500">
             {Object.keys(payload).length} claims · signed with {String(header.alg ?? 'unknown')}
           </p>
         </div>
@@ -152,7 +152,7 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
               role="tab"
               aria-selected={view === v}
               onClick={() => setView(v)}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+              className={`rounded-md px-3 py-1 text-sm font-medium transition ${
                 view === v ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -164,7 +164,7 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
 
       {/* The teachable moment the spec asks for — stated up front, not buried. */}
       <div className="border-b border-slate-800 bg-sky-500/5 px-4 py-3">
-        <p className="text-xs leading-relaxed text-sky-200/80">
+        <p className="text-sm leading-relaxed text-sky-200/80">
           <span className="font-semibold text-sky-300">Decoded, not verified.</span> A JWT is
           base64url — anyone can read one, and anyone can forge one. This panel proves nothing about
           authenticity. Trust comes from checking the signature against the issuer's published keys,
@@ -178,19 +178,19 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
           <RawSegment title="Header" json={header} />
           <RawSegment title="Payload" json={payload} />
           <div>
-            <h3 className="mb-1 text-xs font-medium uppercase tracking-wider text-slate-500">
+            <h3 className="mb-1 text-sm font-medium uppercase tracking-wider text-slate-500">
               Signature
             </h3>
-            <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 font-mono text-xs text-slate-500">
+            <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 font-mono text-sm text-slate-500">
               {signature}
             </pre>
-            <p className="mt-1 text-xs text-slate-600">Displayed. Never checked here. See above.</p>
+            <p className="mt-1 text-sm text-slate-600">Displayed. Never checked here. See above.</p>
           </div>
           <div>
-            <h3 className="mb-1 text-xs font-medium uppercase tracking-wider text-slate-500">
+            <h3 className="mb-1 text-sm font-medium uppercase tracking-wider text-slate-500">
               Full token
             </h3>
-            <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 font-mono text-[10px] leading-relaxed break-all whitespace-pre-wrap text-slate-600">
+            <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap text-slate-600">
               {raw}
             </pre>
           </div>
@@ -204,7 +204,7 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
           {CATEGORY_ORDER.filter((c) => grouped.has(c)).map((category) => (
             <div key={category} className="p-4">
               <h3
-                className={`mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wider ${CATEGORY_NAME_COLOR[category]}`}
+                className={`mb-3 flex items-center gap-2 text-sm font-medium uppercase tracking-wider ${CATEGORY_NAME_COLOR[category]}`}
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
                 {CLAIM_CATEGORY_LABELS[category]}
@@ -225,17 +225,17 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
 
           {unannotated.length > 0 && (
             <div className="p-4">
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
+              <h3 className="mb-2 text-sm font-medium uppercase tracking-wider text-slate-500">
                 Not yet annotated
               </h3>
-              <p className="mb-3 text-xs text-slate-600">
+              <p className="mb-3 text-sm text-slate-600">
                 Present in your token but missing from the dictionary. Listed rather than hidden —
                 an inspector that quietly drops what it doesn't recognise is worse than useless.
               </p>
               <ul className="space-y-1">
                 {unannotated.map((key) => (
-                  <li key={key} className="flex gap-3 py-1 font-mono text-xs">
-                    <span className="w-36 shrink-0 text-slate-500">{key}</span>
+                  <li key={key} className="flex gap-3 py-1 font-mono text-sm">
+                    <span className="w-44 shrink-0 text-slate-500">{key}</span>
                     <span className="min-w-0 break-all text-slate-100">
                       {formatClaimValue(payload[key])}
                     </span>
@@ -253,8 +253,8 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
 function RawSegment({ title, json }: { title: string; json: Record<string, unknown> }) {
   return (
     <div>
-      <h3 className="mb-1 text-xs font-medium uppercase tracking-wider text-slate-500">{title}</h3>
-      <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 font-mono text-xs text-slate-300">
+      <h3 className="mb-1 text-sm font-medium uppercase tracking-wider text-slate-500">{title}</h3>
+      <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 font-mono text-sm text-slate-300">
         {JSON.stringify(json, null, 2)}
       </pre>
     </div>
@@ -286,23 +286,23 @@ function ClaimRow({
         aria-expanded={isExpanded}
         className="flex w-full gap-3 rounded-md px-2 py-1.5 text-left transition hover:bg-slate-800/50"
       >
-        <span className={`flex w-36 shrink-0 items-baseline gap-1.5 font-mono text-xs ${nameColor}`}>
+        <span className={`flex w-44 shrink-0 items-baseline gap-1.5 font-mono text-sm ${nameColor}`}>
           {/* A dot for the claims that reveal HOW you signed in — idp, amr. They
               are the tell, and they earn the extra mark on top of the colour. */}
           {isSignal && <span className="shrink-0 text-emerald-400" aria-hidden="true">●</span>}
           {name}
         </span>
-        <span className={`min-w-0 flex-1 break-all font-mono text-xs ${VALUE_COLOR}`}>
+        <span className={`min-w-0 flex-1 break-all font-mono text-sm ${VALUE_COLOR}`}>
           {timeStr ?? formatClaimValue(value)}
         </span>
-        <span className="shrink-0 text-xs text-slate-600" aria-hidden="true">
+        <span className="shrink-0 text-sm text-slate-600" aria-hidden="true">
           {isExpanded ? '−' : '+'}
         </span>
       </button>
 
       {isExpanded && ann && (
         <div className="mt-1 mb-2 ml-2 space-y-2 border-l-2 border-slate-700 py-1 pl-4">
-          <p className="text-sm font-medium text-slate-200">{ann.title}</p>
+          <p className="text-base font-medium text-slate-200">{ann.title}</p>
           <p className="text-sm leading-relaxed text-slate-400">{ann.what}</p>
           <p className="text-sm leading-relaxed text-slate-500">
             <span className="text-slate-400">Why it's here: </span>

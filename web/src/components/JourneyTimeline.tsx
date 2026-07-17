@@ -205,7 +205,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                   setFlow(f)
                   navigate([])
                 }}
-                className={`px-2.5 py-1 font-mono text-xs transition-colors ${
+                className={`px-2.5 py-1 font-mono text-sm transition-colors ${
                   flow === f
                     ? 'bg-emerald-500/20 text-emerald-200'
                     : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
@@ -215,21 +215,21 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
               </button>
             ))}
           </span>
-          <p className="text-xs text-slate-500">{journey.summary}</p>
+          <p className="text-sm text-slate-500">{journey.summary}</p>
         </div>
         <div className="flex items-baseline gap-4">
           <p className="font-mono text-slate-500">
-            <span className="text-2xl tabular-nums text-slate-100">
+            <span className="text-3xl tabular-nums text-slate-100">
               {journey.duration.toLocaleString()}
             </span>{' '}
-            <span className="text-xs">ms machine</span>
+            <span className="text-sm">ms machine</span>
             {/* The number nobody expects: the machine is not the slow part. */}
-            <span className="ml-2 text-[10px] tabular-nums text-slate-600">
+            <span className="ml-2 text-xs tabular-nums text-slate-600">
               of {(journey.wallClock / 1000).toFixed(1)}s wall · the rest is you typing
             </span>
           </p>
           <span
-            className={`rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider ring-1 ring-inset ${
+            className={`rounded-full px-2.5 py-1 font-mono text-xs uppercase tracking-wider ring-1 ring-inset ${
               journey.outcome.ok
                 ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30'
                 : 'bg-red-500/10 text-red-300 ring-red-500/30'
@@ -243,14 +243,14 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
       {/* ── OVERVIEW. Always the whole thing. Never zooms. ─────────────── */}
       <div className="border-b border-slate-800 px-5 py-3">
         <div className="mb-1 flex items-baseline justify-between">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-slate-600">
+          <span className="font-mono text-xs uppercase tracking-wider text-slate-600">
             The whole sign-in
           </span>
           <span className="flex flex-wrap items-center gap-x-3">
             {(Object.keys(ACTOR_LABELS) as Actor[]).map((actor) => (
               <span key={actor} className="flex items-center gap-1">
                 <span className={`h-2 w-2 rounded-sm ${ACTOR_BAR[actor]}`} />
-                <span className="font-mono text-[10px] uppercase tracking-wider text-slate-600">
+                <span className="font-mono text-xs uppercase tracking-wider text-slate-600">
                   {ACTOR_LABELS[actor]}
                 </span>
               </span>
@@ -300,7 +300,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                     build proved. Below the threshold you get a mark that invites
                     a click instead. */}
                 <span className="pointer-events-none flex h-full items-center justify-center px-1.5">
-                  <span className="truncate font-mono text-xs font-semibold text-slate-950">
+                  <span className="truncate font-mono text-sm font-semibold text-slate-950">
                     {width.endsWith('%') && parseFloat(width) > 5
                       ? (event.short ?? event.label)
                       : ''}
@@ -317,7 +317,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
               bar exists to show. The name is the point; nothing gets to cover it. */}
         </div>
 
-        <div className="mt-1 flex justify-between font-mono text-[10px] tabular-nums text-slate-600">
+        <div className="mt-1 flex justify-between font-mono text-xs tabular-nums text-slate-600">
           <span>0</span>
           <span>{journey.duration.toLocaleString()} ms</span>
         </div>
@@ -343,19 +343,19 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                 <span className="text-slate-700" aria-hidden="true">
                   ›
                 </span>
-                <span className="font-mono text-xs text-emerald-300">
+                <span className="font-mono text-sm text-emerald-300">
                   {zoomContainer.label}
                 </span>
                 <button
                   onClick={() => navigate(path.slice(0, path.indexOf(zoomContainer)))}
-                  className="ml-1 rounded border border-slate-700 px-1.5 py-0.5 font-mono text-xs text-slate-300 hover:border-emerald-500/50 hover:text-emerald-300"
+                  className="ml-1 rounded border border-slate-700 px-1.5 py-0.5 font-mono text-sm text-slate-300 hover:border-emerald-500/50 hover:text-emerald-300"
                 >
                   ↑ back <span className="text-slate-600">esc</span>
                 </button>
               </>
             )}
           </span>
-          <span className="font-mono text-xs tabular-nums text-slate-400">
+          <span className="font-mono text-sm tabular-nums text-slate-400">
             {zoomContainer ? (
               <>
                 showing {spanMs(axis)} ms ·{' '}
@@ -374,14 +374,14 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
             {TICK_FRACTIONS.map((t) => (
               <span
                 key={t}
-                className="absolute top-0 font-mono text-[10px] tabular-nums text-slate-600"
+                className="absolute top-0 font-mono text-xs tabular-nums text-slate-600"
                 style={{ left: `${t * 100}%`, transform: 'translateX(-50%)' }}
               >
                 {Math.round(axis.start + t * spanMs(axis))}
               </span>
             ))}
           </div>
-          <span className="text-right font-mono text-[10px] uppercase tracking-wider text-slate-600">
+          <span className="text-right font-mono text-xs uppercase tracking-wider text-slate-600">
             ms
           </span>
         </div>
@@ -402,12 +402,12 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                     on the axis — the machine clock doesn't advance for it. */}
                 {ev.humanGapBefore != null && (
                   <div className="grid grid-cols-[13rem_1fr_3rem] items-center gap-3 px-1 py-0.5">
-                    <span className="text-right font-mono text-[10px] tabular-nums text-slate-600">
+                    <span className="text-right font-mono text-xs tabular-nums text-slate-600">
                       {(ev.humanGapBefore / 1000).toFixed(1)}s
                     </span>
                     <span className="flex items-center gap-2">
                       <span className="h-px flex-1 bg-slate-800" />
-                      <span className="font-mono text-[10px] uppercase tracking-wider text-slate-600">
+                      <span className="font-mono text-xs uppercase tracking-wider text-slate-600">
                         you, {ev.humanDoing}
                       </span>
                       <span className="h-px flex-1 bg-slate-800" />
@@ -437,19 +437,19 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                     {onlyHere && (
                       <span
                         title="Only happens in this flow"
-                        className="shrink-0 font-mono text-[10px] text-amber-400"
+                        className="shrink-0 font-mono text-xs text-amber-400"
                       >
                         ◆
                       </span>
                     )}
                     <span
-                      className={`truncate text-xs ${
+                      className={`truncate text-sm ${
                         isSel ? 'font-medium text-emerald-200' : 'text-slate-300'
                       }`}
                     >
                       {node.label}
                     </span>
-                    {openable && <span className="shrink-0 text-[10px] text-emerald-400">→</span>}
+                    {openable && <span className="shrink-0 text-xs text-emerald-400">→</span>}
                   </span>
 
                   <span className="relative block h-4">
@@ -468,7 +468,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                   </span>
 
                   <span
-                    className={`text-right font-mono text-[10px] tabular-nums ${
+                    className={`text-right font-mono text-xs tabular-nums ${
                       isSel ? 'text-emerald-300' : 'text-slate-600'
                     }`}
                   >
@@ -504,7 +504,7 @@ function CopyButton({ value }: { value: string }) {
         setDone(true)
         setTimeout(() => setDone(false), 1200)
       }}
-      className="font-mono text-[10px] uppercase tracking-wider text-slate-500 hover:text-emerald-300"
+      className="font-mono text-xs uppercase tracking-wider text-slate-500 hover:text-emerald-300"
     >
       {done ? 'copied' : 'copy'}
     </button>
@@ -524,18 +524,18 @@ function NodePanel({
 
   return (
     <div>
-      <h4 className="font-medium text-slate-100">{node.label}</h4>
+      <h4 className="text-lg font-medium text-slate-100">{node.label}</h4>
       {node.summary && <p className="mt-1 text-sm text-slate-500">{node.summary}</p>}
 
       {node.literal && (
         <div className="mt-3 rounded border border-slate-800 bg-slate-950">
           <div className="flex items-center justify-between border-b border-slate-800 px-3 py-1">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-slate-600">
+            <span className="font-mono text-xs uppercase tracking-wider text-slate-600">
               Value
             </span>
             <CopyButton value={node.literal} />
           </div>
-          <pre className="overflow-x-auto px-3 py-2 font-mono text-xs text-emerald-300">
+          <pre className="overflow-x-auto px-3 py-2 font-mono text-sm text-emerald-300">
             {node.literal}
           </pre>
         </div>
@@ -556,7 +556,7 @@ function NodePanel({
           complete one. An empty node says why it's empty. */}
       {node.absent && (
         <div className="mt-3 rounded border border-dashed border-slate-700 bg-slate-950/50 px-3 py-2">
-          <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+          <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
             Nothing here — and that's the finding
           </p>
           <p className="mt-1 text-sm leading-relaxed text-slate-400">{node.absent}</p>
@@ -573,14 +573,14 @@ function NodePanel({
                 onClick={() => onDescend(child)}
                 className="flex w-full items-baseline gap-3 rounded border border-slate-800 bg-slate-900 px-3 py-2 text-left transition-colors hover:border-emerald-500/40 hover:bg-slate-800/50"
               >
-                <span className="font-mono text-xs text-slate-200">{child.label}</span>
-                {child.summary && <span className="text-xs text-slate-500">{child.summary}</span>}
+                <span className="font-mono text-sm text-slate-200">{child.label}</span>
+                {child.summary && <span className="text-sm text-slate-500">{child.summary}</span>}
                 {child.absent ? (
-                  <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-amber-300/70">
+                  <span className="ml-auto font-mono text-xs uppercase tracking-wider text-amber-300/70">
                     absent
                   </span>
                 ) : (
-                  <span className="ml-auto text-[10px] text-emerald-400">→</span>
+                  <span className="ml-auto text-xs text-emerald-400">→</span>
                 )}
               </button>
             </li>
@@ -590,7 +590,7 @@ function NodePanel({
 
       {/* It stops when it stops. */}
       {!node.children?.length && !node.absent && (
-        <p className="mt-4 font-mono text-[10px] uppercase tracking-wider text-slate-700">
+        <p className="mt-4 font-mono text-xs uppercase tracking-wider text-slate-700">
           ── end of this branch
         </p>
       )}
@@ -612,25 +612,25 @@ function CodeSection({ node }: { node: ZoomNode }) {
     <details className="mt-5 rounded-lg border border-emerald-500/25 bg-slate-950/70">
       <summary className="flex cursor-pointer items-center gap-2 px-3 py-2.5 text-sm text-emerald-300 hover:bg-emerald-500/5">
         <span className="font-medium">How this is actually done</span>
-        <span className="font-mono text-xs text-slate-500">{code.file}</span>
-        <span className="ml-auto font-mono text-xs text-slate-600">source ↓</span>
+        <span className="font-mono text-sm text-slate-500">{code.file}</span>
+        <span className="ml-auto font-mono text-sm text-slate-600">source ↓</span>
       </summary>
       <div className="border-t border-emerald-500/20 px-3 py-3">
         <p className="mb-3 text-sm leading-relaxed text-slate-300">{code.note}</p>
         <div className="mb-2 flex items-center justify-between">
-          <span className="font-mono text-xs text-slate-600">
+          <span className="font-mono text-sm text-slate-600">
             the file that runs — embedded at build time, so it can't drift
           </span>
           <CopyButton value={code.source} />
         </div>
-        <pre className="max-h-[32rem] overflow-auto rounded border border-slate-800 bg-slate-950 p-4 font-mono text-xs leading-relaxed">
+        <pre className="max-h-[32rem] overflow-auto rounded border border-slate-800 bg-slate-950 p-4 font-mono text-sm leading-relaxed">
           <Highlighted source={code.source} file={code.file} />
         </pre>
         <a
           href={codeUrl(code)}
           target="_blank"
           rel="noreferrer"
-          className="mt-3 inline-block font-mono text-xs text-slate-400 hover:text-emerald-300"
+          className="mt-3 inline-block font-mono text-sm text-slate-400 hover:text-emerald-300"
         >
           View on GitHub ↗
         </a>
@@ -657,7 +657,7 @@ function Row({ term, text, accent }: { term: string; text: string; accent?: bool
   return (
     <div className="flex gap-3">
       <dt
-        className={`w-12 shrink-0 font-mono text-xs uppercase tracking-wider ${
+        className={`w-12 shrink-0 font-mono text-sm uppercase tracking-wider ${
           accent ? 'text-amber-400/80' : 'text-slate-500'
         }`}
       >
