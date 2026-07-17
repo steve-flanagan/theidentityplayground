@@ -49,12 +49,11 @@ const CATEGORY_NAME_COLOR: Record<ClaimCategory, string> = {
   protocol: 'text-slate-500', // plumbing — deliberately dim
 }
 
-/** The value is the data, so the value carries the saturated colour (spec rule). */
-function valueColor(name: string, value: unknown): string {
-  if (TIME_CLAIMS.has(name)) return 'text-amber-200' // a moment in time
-  if (typeof value === 'number' || typeof value === 'boolean') return 'text-lime-300'
-  return 'text-orange-200' // a string — which is nearly everything in a JWT
-}
+// Values stay white. The colour lives on the NAME (the claim's role); the value
+// is the literal data and reads cleanest plain. An earlier pass tinted values by
+// JSON type — Steve's call was to leave them white and let the name carry the
+// meaning, which keeps the coloured groups legible instead of two-tone-busy.
+const VALUE_COLOR = 'text-slate-100'
 
 export function TokenInspector({ token, label = 'ID token', live = false }: Props) {
   const [view, setView] = useState<'annotated' | 'raw'>('annotated')
@@ -197,14 +196,13 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
           </div>
         </div>
       ) : (
-        // Category cards in a grid, not one tall column. The claims flow across
-        // and fit on the page instead of scrolling forever; each category stays
-        // a coherent block, colour-headed by its role. items-start so expanding a
-        // claim grows only its own card, never its neighbours. One column on a
-        // phone, which is the "one over the other" fallback.
-        <div className="grid items-start gap-px bg-slate-800/60 sm:grid-cols-2 xl:grid-cols-3">
+        // A vertical stack, colour-headed by category. It lives in a narrow
+        // sticky column beside the timeline and scrolls inside it — the values
+        // are long GUIDs that don't lay out flat, so the honest shape is a
+        // scrollable reference column, not a squeezed grid.
+        <div className="divide-y divide-slate-800/60">
           {CATEGORY_ORDER.filter((c) => grouped.has(c)).map((category) => (
-            <div key={category} className="bg-slate-900/40 p-4">
+            <div key={category} className="p-4">
               <h3
                 className={`mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wider ${CATEGORY_NAME_COLOR[category]}`}
               >
@@ -226,7 +224,7 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
           ))}
 
           {unannotated.length > 0 && (
-            <div className="bg-slate-900/40 p-4">
+            <div className="p-4">
               <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
                 Not yet annotated
               </h3>
@@ -238,7 +236,7 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
                 {unannotated.map((key) => (
                   <li key={key} className="flex gap-3 py-1 font-mono text-xs">
                     <span className="w-36 shrink-0 text-slate-500">{key}</span>
-                    <span className="min-w-0 break-all text-orange-200">
+                    <span className="min-w-0 break-all text-slate-100">
                       {formatClaimValue(payload[key])}
                     </span>
                   </li>
@@ -294,7 +292,7 @@ function ClaimRow({
           {isSignal && <span className="shrink-0 text-emerald-400" aria-hidden="true">●</span>}
           {name}
         </span>
-        <span className={`min-w-0 flex-1 break-all font-mono text-xs ${valueColor(name, value)}`}>
+        <span className={`min-w-0 flex-1 break-all font-mono text-xs ${VALUE_COLOR}`}>
           {timeStr ?? formatClaimValue(value)}
         </span>
         <span className="shrink-0 text-xs text-slate-600" aria-hidden="true">

@@ -51,9 +51,12 @@ function App() {
   const realIdToken = accounts[0]?.idToken ?? null
 
   return (
+    // Left-aligned off a left indent, not centred in a floating column. A wide
+    // max so a big monitor is actually used; px-8 is the indent. No mx-auto —
+    // the content sits against the left and fills the width it's given.
     <main className="min-h-screen bg-slate-950 text-slate-300">
-      <div className="mx-auto max-w-3xl px-6 pb-8 pt-20">
-        <header>
+      <div className="max-w-[112rem] px-8 pt-16 pb-20">
+        <header className="max-w-3xl">
           <p className="font-mono text-xs uppercase tracking-widest text-emerald-400">
             Phase 1 · token inspector
           </p>
@@ -71,66 +74,69 @@ function App() {
             the tenant config and source that produced it.
           </p>
         </header>
-      </div>
-      {/* Claims full-width on top — the payoff — then the timeline below. Both
-          span the page: the claims want the width to lay out as a horizontal grid
-          of category cards instead of a tall scrolling column, and the timeline
-          wants it for the axis. On a phone both collapse to a single column, the
-          cards stacking one over the other. */}
-      <div className="mx-auto max-w-7xl px-6 pb-12">
-        <section aria-labelledby="inspector" className="mb-14">
-          <div className="mb-4">
-            <h2 id="inspector" className="text-sm font-medium uppercase tracking-widest text-slate-500">
-              {realIdToken ? 'Your claims' : 'The claims you’d get'}
-            </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
-              {realIdToken
-                ? 'The real token you were just issued, every claim annotated — what it is, why it’s in your token, and which tenant configuration produced it.'
-                : 'A sample, until you sign in. Then this reads your own real token — same claims, your values, and the differences are worth reading.'}
+
+        {/* Timeline left, claims right — the token you got and how you got it,
+            side by side. The claims are a tall column of long values (GUIDs), so
+            rather than fight them flat they scroll inside a sticky reference panel
+            on the right, which is the second-monitor shape. Timeline gets the wide
+            column for the axis. Claims are first in the DOM, placed right by the
+            grid, so a phone shows the payoff first and then stacks the timeline —
+            mobile just needs to work. */}
+        <div className="mt-12 grid gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_27rem]">
+          <section
+            aria-labelledby="inspector"
+            className="lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto lg:overflow-x-hidden"
+          >
+            <div className="mb-4">
+              <h2 id="inspector" className="text-sm font-medium uppercase tracking-widest text-slate-500">
+                {realIdToken ? 'Your claims' : 'The claims you’d get'}
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">
+                {realIdToken
+                  ? 'The real token you were just issued, every claim annotated — what it is, why it’s in your token, and which tenant configuration produced it.'
+                  : 'A sample, until you sign in. Then this reads your own real token — same claims, your values, and the differences are worth reading.'}
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <SignInPanel />
+            </div>
+
+            <TokenInspector
+              token={realIdToken ?? sampleToken}
+              label={realIdToken ? 'Your ID token' : 'Sample ID token'}
+              live={Boolean(realIdToken)}
+            />
+          </section>
+
+          <section aria-labelledby="journey" className="min-w-0 lg:col-start-1 lg:row-start-1">
+            <div className="mb-5">
+              <h2 id="journey" className="text-sm font-medium uppercase tracking-widest text-slate-500">
+                How those claims got there
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
+                Every request in a real sign-in, measured. The whole flow stays on the overview bar;
+                below it each step sits on its own axis, and opening one rescales to just that slice.
+                Switch between sign-in and sign-up and watch exactly four requests appear or vanish —
+                that's the entire difference between the two.
+              </p>
+            </div>
+
+            <p className="mb-4 max-w-3xl rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-200/70">
+              <span className="font-medium text-emerald-300">Measured, not estimated.</span> Every
+              millisecond comes from a real capture of a real flow against this tenant — server time
+              per request, and the phases inside it. Your typing isn't on the axis: it happens between
+              requests, not inside them.
             </p>
-          </div>
 
-          <div className="mb-4 max-w-xl">
-            <SignInPanel />
-          </div>
+            <JourneyTimeline
+              token={realIdToken ?? sampleToken}
+              tokenLabel={realIdToken ? 'Your ID token' : 'Sample ID token'}
+            />
+          </section>
+        </div>
 
-          <TokenInspector
-            token={realIdToken ?? sampleToken}
-            label={realIdToken ? 'Your ID token' : 'Sample ID token'}
-            live={Boolean(realIdToken)}
-          />
-        </section>
-
-        <section aria-labelledby="journey">
-          <div className="mb-5">
-            <h2 id="journey" className="text-sm font-medium uppercase tracking-widest text-slate-500">
-              How those claims got there
-            </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
-              Every request in a real sign-in, measured. The whole flow stays on the overview bar;
-              below it each step sits on its own axis, and opening one rescales to just that slice.
-              Switch between sign-in and sign-up and watch exactly four requests appear or vanish —
-              that's the entire difference between the two.
-            </p>
-          </div>
-
-          <p className="mb-4 max-w-3xl rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-200/70">
-            <span className="font-medium text-emerald-300">Measured, not estimated.</span> Every
-            millisecond comes from a real capture of a real flow against this tenant — server time
-            per request, and the phases inside it. Your typing isn't on the axis: it happens between
-            requests, not inside them.
-          </p>
-
-          <JourneyTimeline
-            token={realIdToken ?? sampleToken}
-            tokenLabel={realIdToken ? 'Your ID token' : 'Sample ID token'}
-          />
-        </section>
-      </div>
-
-      <div className="mx-auto max-w-3xl px-6 pb-20">
-
-        <section className="mt-16" aria-labelledby="roadmap">
+        <section className="mt-16 max-w-3xl" aria-labelledby="roadmap">
           <h2 id="roadmap" className="text-sm font-medium uppercase tracking-widest text-slate-500">
             Roadmap
           </h2>
@@ -159,7 +165,7 @@ function App() {
           </ul>
         </section>
 
-        <footer className="mt-16 border-t border-slate-800 pt-6">
+        <footer className="mt-16 max-w-3xl border-t border-slate-800 pt-6">
           <p className="text-sm text-slate-600">
             Demo tenants only — no real accounts, no real data. Every account created here
             self-destructs.
