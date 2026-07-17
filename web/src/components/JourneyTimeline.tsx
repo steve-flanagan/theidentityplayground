@@ -258,7 +258,10 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
           </span>
         </div>
 
-        <div className="relative h-9 overflow-hidden rounded border border-slate-700 bg-slate-950">
+        {/* Taller than it needs to be, on purpose: a bar with no writing on it is
+            a stripe, and a stripe is not readable at a glance. At h-11 the wide
+            segments can carry their own name. */}
+        <div className="relative h-11 overflow-hidden rounded border border-slate-700 bg-slate-950">
           {journey.events.map((event) => {
             const { left, width } = place(event.span, { start: 0, end: journey.duration })
             const isSel = selected?.id === event.id || zoomContainer?.id === event.id
@@ -277,7 +280,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                 // unusable. The floor buys visibility and a hit target; the row
                 // below carries the exact number, so nothing is being overstated.
                 style={{ left, width, minWidth: '4px' }}
-                className={`absolute inset-y-0 border-r border-slate-950 ${
+                className={`absolute inset-y-0 overflow-hidden border-r border-slate-950 ${
                   event.absent ? 'hatch' : ACTOR_BAR[event.actor]
                 } ${
                   isSel
@@ -286,7 +289,17 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                       ? 'z-10 opacity-100 ring-2 ring-inset ring-white/70'
                       : 'opacity-60'
                 }`}
-              />
+              >
+                {/* The name, on the bar. Only where it fits — a clipped label is
+                    worse than none, which the first build proved. The row below
+                    always carries the full text, so nothing is lost when it's
+                    too narrow; you just get a mark that invites a click. */}
+                <span className="pointer-events-none flex h-full items-center justify-center px-1">
+                  <span className="truncate font-mono text-[11px] font-medium text-slate-950">
+                    {width.endsWith('%') && parseFloat(width) > 9 ? event.label : ''}
+                  </span>
+                </span>
+              </button>
             )
           })}
 
@@ -312,11 +325,14 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
           <span className="flex flex-wrap items-center gap-x-2">
             <button
               onClick={() => navigate([])}
-              className={`font-mono text-xs transition-colors ${
+              className={`font-mono text-sm transition-colors ${
                 !zoomContainer ? 'text-emerald-300' : 'text-slate-500 hover:text-slate-200'
               }`}
             >
-              14 events
+              {/* Was hardcoded "14 events" — a typed number, and wrong: the
+                  sign-in capture has 8 requests, not 14. Every count on this
+                  page comes from the capture or it doesn't get shown. */}
+              {journey.events.length} requests
             </button>
             {zoomContainer && (
               <>
@@ -328,18 +344,18 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                 </span>
                 <button
                   onClick={() => navigate(path.slice(0, path.indexOf(zoomContainer)))}
-                  className="ml-1 font-mono text-[10px] uppercase tracking-wider text-slate-500 hover:text-emerald-300"
+                  className="ml-1 rounded border border-slate-700 px-1.5 py-0.5 font-mono text-xs text-slate-300 hover:border-emerald-500/50 hover:text-emerald-300"
                 >
-                  ↑ back <span className="text-slate-700">(esc)</span>
+                  ↑ back <span className="text-slate-600">esc</span>
                 </button>
               </>
             )}
           </span>
-          <span className="font-mono text-[10px] tabular-nums text-slate-500">
+          <span className="font-mono text-xs tabular-nums text-slate-400">
             {zoomContainer ? (
               <>
                 showing {spanMs(axis)} ms ·{' '}
-                {share < 1 ? share.toFixed(1) : Math.round(share)}% of the sign-in
+                {share < 1 ? share.toFixed(1) : Math.round(share)}% of the {journey.label.toLowerCase()}
               </>
             ) : (
               <>{detailNodes.length} steps · full scale</>
@@ -401,12 +417,14 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                   onMouseLeave={() => setHoveredId(null)}
                   onFocus={() => setHoveredId(node.id)}
                   onBlur={() => setHoveredId(null)}
-                  className={`grid w-full grid-cols-[13rem_1fr_3rem] items-center gap-3 border-b border-slate-800/60 px-1 py-1 text-left transition-colors ${
+                  // A tint was too quiet to answer "did I just click that?".
+                  // A solid left edge plus a filled row is unambiguous at a glance.
+                  className={`grid w-full grid-cols-[13rem_1fr_3rem] items-center gap-3 border-b border-l-2 border-slate-800/60 py-1.5 pr-1 pl-1.5 text-left transition-colors ${
                     isSel
-                      ? 'bg-emerald-500/10'
+                      ? 'border-l-emerald-400 bg-emerald-500/15'
                       : hoveredId === node.id
-                        ? 'bg-slate-800'
-                        : ''
+                        ? 'border-l-slate-500 bg-slate-800'
+                        : 'border-l-transparent'
                   }`}
                 >
                   <span className="flex items-baseline gap-1.5 truncate">
@@ -433,7 +451,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                   <span className="relative block h-4">
                     <span
                       style={{ left, width, minWidth: '4px' }}
-                      className={`zoom-bar absolute top-1 h-2 rounded-sm ${
+                      className={`zoom-bar absolute top-0.5 h-3 rounded-sm ${
                         node.absent ? 'hatch' : ACTOR_BAR[actorOf(node, zoomContainer ? actorOf(zoomContainer) : 'entra')]
                       } ${
                         isSel
@@ -523,7 +541,10 @@ function NodePanel({
         <dl className="mt-3 space-y-2 text-sm">
           <Row term="What" text={node.detail.what} />
           {node.detail.why && <Row term="Why" text={node.detail.why} />}
-          {node.detail.gotcha && <Row term="Gotcha" text={node.detail.gotcha} accent />}
+          {/* TIP, not GOTCHA — Steve's, and the initials are the site's. The
+              content is mostly traps, so "tip" undersells it slightly; the pun
+              is worth more than the half-shade of accuracy. */}
+          {node.detail.gotcha && <Row term="Tip" text={node.detail.gotcha} accent />}
         </dl>
       )}
 
@@ -624,10 +645,14 @@ function Highlighted({ source, file }: { source: string; file: string }) {
 function Row({ term, text, accent }: { term: string; text: string; accent?: boolean }) {
   return (
     <div className="flex gap-3">
-      <dt className="w-14 shrink-0 font-mono text-[10px] uppercase tracking-wider text-slate-600">
+      <dt
+        className={`w-12 shrink-0 font-mono text-xs uppercase tracking-wider ${
+          accent ? 'text-amber-400/80' : 'text-slate-500'
+        }`}
+      >
         {term}
       </dt>
-      <dd className={`leading-relaxed ${accent ? 'text-amber-200/70' : 'text-slate-400'}`}>
+      <dd className={`leading-relaxed ${accent ? 'text-amber-200/80' : 'text-slate-300'}`}>
         {text}
       </dd>
     </div>

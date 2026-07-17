@@ -72,44 +72,18 @@ function App() {
           </p>
         </header>
       </div>
-
-      {/* The timeline is the page, not a widget in a column — so it breaks out
-          of the max-w-3xl prose measure and gets the full width to zoom in. */}
-      <section className="mx-auto max-w-7xl px-6 py-8" aria-labelledby="journey">
-        <div className="mb-5">
-          <h2 id="journey" className="text-sm font-medium uppercase tracking-widest text-slate-500">
-            SISU journey — prototype
-          </h2>
-          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
-            The whole sign-in stays on the overview bar. Below it, every step on its own axis —
-            click one with subsections and the detail rescales to just that slice, while the
-            brush above shows where you are in the 1.4 seconds. Every step deep-links, so you
-            can send someone the exact one.
-          </p>
-        </div>
-
-        <p className="mb-4 max-w-3xl rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-200/70">
-          <span className="font-medium text-amber-300">Sample timings.</span> The event sequence
-          is the real flow and the token is really decoded — but the milliseconds are plausible,
-          not measured. Real MSAL timing replaces them when this is wired: same shape, real
-          numbers.
-        </p>
-
-        <JourneyTimeline
-          token={realIdToken ?? sampleToken}
-          tokenLabel={realIdToken ? 'Your ID token' : 'Sample ID token'}
-        />
-      </section>
-
-      <div className="mx-auto max-w-3xl px-6 pb-20">
-        <section className="mt-8" aria-labelledby="inspector">
+      {/* The claims come first. Signing in and seeing what you were actually
+          handed is the payoff; the timeline below is how it got there. Burying
+          this under the timeline put the reward after the explanation. */}
+      <div className="mx-auto max-w-3xl px-6">
+        <section aria-labelledby="inspector">
           <div className="mb-6">
             <h2 id="inspector" className="text-sm font-medium uppercase tracking-widest text-slate-500">
-              Token inspector
+              Your claims
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-400">
-              Every claim annotated: what it is, why it's in your token, and which tenant
-              configuration produced it. Click any claim to expand it.
+              Sign in and this reads the real token you were just issued. Every claim annotated:
+              what it is, why it's in your token, and which tenant configuration produced it.
             </p>
           </div>
 
@@ -130,6 +104,39 @@ function App() {
             label={realIdToken ? 'Your ID token' : 'Sample ID token'}
           />
         </section>
+      </div>
+
+      {/* The timeline is the page, not a widget in a column — so it breaks out
+          of the max-w-3xl prose measure and gets the full width to zoom in. */}
+      <section className="mx-auto max-w-7xl px-6 py-8" aria-labelledby="journey">
+        <div className="mb-5">
+          <h2 id="journey" className="text-sm font-medium uppercase tracking-widest text-slate-500">
+            How those claims got there
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
+            Every request in a real sign-in, measured. The whole flow stays on the overview bar;
+            below it each step sits on its own axis, and opening one rescales to just that slice.
+            Switch between sign-in and sign-up and watch exactly four requests appear or vanish —
+            that's the entire difference between the two.
+          </p>
+        </div>
+
+        {/* The old banner here said "sample timings — plausible, not measured".
+            It isn't true any more, and leaving it up would be its own lie. */}
+        <p className="mb-4 max-w-3xl rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-200/70">
+          <span className="font-medium text-emerald-300">Measured, not estimated.</span> Every
+          millisecond comes from a real capture of a real flow against this tenant — server time
+          per request, and the phases inside it. Your typing isn't on the axis: it happens between
+          requests, not inside them.
+        </p>
+
+        <JourneyTimeline
+          token={realIdToken ?? sampleToken}
+          tokenLabel={realIdToken ? 'Your ID token' : 'Sample ID token'}
+        />
+      </section>
+
+      <div className="mx-auto max-w-3xl px-6 pb-20">
 
         <section className="mt-16" aria-labelledby="roadmap">
           <h2 id="roadmap" className="text-sm font-medium uppercase tracking-widest text-slate-500">

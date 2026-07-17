@@ -101,6 +101,15 @@ describe('the timeline reports what was actually measured', () => {
     expect(screen.getByText(`${signinCapture.requestCount} steps · full scale`)).toBeDefined()
   })
 
+  it('counts requests in the breadcrumb from the capture, not from memory', () => {
+    // This shipped reading "14 events" — a number typed by hand, and wrong: the
+    // sign-in capture holds 8 requests. The commit that introduced it claimed
+    // "no number is retyped". One was. Hence this.
+    mount()
+    expect(screen.getByText(`${signinCapture.requestCount} requests`)).toBeDefined()
+    expect(screen.queryByText('14 events')).toBeNull()
+  })
+
   it('never puts human thinking time on the machine axis', () => {
     // The gaps are enormous — 12.5s typing an email against 1.9s of machine.
     // If they ever leaked onto the axis, machine time would balloon toward wall.
