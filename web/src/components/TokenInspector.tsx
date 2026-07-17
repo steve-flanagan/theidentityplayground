@@ -13,6 +13,12 @@ type Props = {
   token: string
   /** Shown in the header, e.g. "ID token". */
   label?: string
+  /**
+   * True once this is the visitor's own freshly-issued token rather than the
+   * sample. It's the whole payoff of signing in, and it used to look identical
+   * to the sample — same weight, same colour. Now the header says which it is.
+   */
+  live?: boolean
 }
 
 const CATEGORY_ORDER: ClaimCategory[] = [
@@ -24,7 +30,7 @@ const CATEGORY_ORDER: ClaimCategory[] = [
   'protocol',
 ]
 
-export function TokenInspector({ token, label = 'ID token' }: Props) {
+export function TokenInspector({ token, label = 'ID token', live = false }: Props) {
   const [view, setView] = useState<'annotated' | 'raw'>('annotated')
   const [expanded, setExpanded] = useState<string | null>(null)
 
@@ -72,11 +78,41 @@ export function TokenInspector({ token, label = 'ID token' }: Props) {
   }
 
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900/40">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 p-4">
+    <section
+      className={`rounded-xl border bg-slate-900/40 ${
+        live ? 'border-emerald-500/40' : 'border-slate-800'
+      }`}
+    >
+      <header
+        className={`flex flex-wrap items-center justify-between gap-3 border-b p-4 ${
+          live ? 'border-emerald-500/25 bg-emerald-500/5' : 'border-slate-800'
+        }`}
+      >
         <div>
-          <h2 className="font-medium text-slate-200">{label}</h2>
-          <p className="text-xs text-slate-500">
+          <div className="flex items-center gap-2">
+            {/* The signed-in tell. A steady emerald dot, not a blinking one —
+                technical, not theatrical. It's the difference between "here's a
+                sample" and "here's the token you were just handed". */}
+            {live && (
+              <span
+                className="h-2 w-2 shrink-0 rounded-full bg-emerald-400"
+                aria-hidden="true"
+              />
+            )}
+            <h2 className={`text-lg font-semibold ${live ? 'text-emerald-200' : 'text-slate-200'}`}>
+              {label}
+            </h2>
+            <span
+              className={`rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ring-1 ring-inset ${
+                live
+                  ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30'
+                  : 'bg-slate-500/10 text-slate-400 ring-slate-500/30'
+              }`}
+            >
+              {live ? 'yours · live' : 'sample'}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
             {Object.keys(payload).length} claims · signed with {String(header.alg ?? 'unknown')}
           </p>
         </div>
