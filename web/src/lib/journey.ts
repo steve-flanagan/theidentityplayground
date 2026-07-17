@@ -194,6 +194,8 @@ import signupCapture from './captures/signup.json'
 
 type CapturedRequest = {
   path: string
+  /** Who actually served it. `SPA /` is our own origin, not Entra. */
+  host: string
   method: string
   status: number
   total: number
@@ -343,7 +345,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
       what: 'The browser leaves for the tenant-name subdomain carrying client_id, redirect_uri, scope, state, nonce and the PKCE challenge.',
       why: 'The authority MSAL is configured with.',
       gotcha:
-        'This is the only request that pays DNS, TCP and TLS — it is the first trip to this host. Everything after reuses the connection and pays none of it. Open the phases and the setup cost is right there.',
+        '166 ms of this is spent before Entra reads a byte: DNS, TCP, TLS. Open the phases and it is right there. This is one of only two requests in the flow that pays that — the discovery call ahead of it is the other. Everything afterwards reuses a connection and is pure server time.',
     },
   },
   '/common/GetCredentialType': {
@@ -498,11 +500,12 @@ const PHASE_COPY: Record<string, { label: string; what: string; gotcha?: string 
     label: 'TLS handshake',
     what: 'Negotiating the encrypted channel.',
     gotcha:
-      'This is the cost of reaching a NEW host. /authorize pays DNS + TCP + TLS to reach ciamlogin.com; /token, on the same host later, pays none of it. Connection reuse is why the second half of the flow looks so cheap.',
+      'Setting up a connection is what costs here. In this capture only two requests pay it — the discovery call (57 ms) and /authorize (166 ms). Every request after them reuses a connection and pays nothing: GetCredentialType, /login, /kmsi and /token are all pure server time. It is why the second half of the flow looks so cheap.',
   },
   send: { label: 'Request sent', what: 'Writing the bytes.' },
+  // Overridden per host below — "Entra thinking" is a lie on our own origin.
   wait: {
-    label: 'Waiting — Entra thinking',
+    label: 'Waiting',
     what: 'Time to first byte. Everything the server did, in one number.',
     gotcha:
       'This is the black box. The steps inside it are known; their individual timings are not published by Entra, and no browser or packet capture can decompose a single TTFB. That is why the steps below carry no times.',
@@ -593,13 +596,44 @@ function toEvents(capture: Capture, token: string, tokenLabel: string): JourneyE
       pc = phaseSpan.end
       phases.push({
         id: `${m.id}:${key}`,
-        label: copy.label,
+        // "Entra thinking" is a lie on our own origin: the SPA reload is Azure
+        // Static Web Apps handing back HTML, and Entra is nowhere near it.
+        label:
+          key === 'wait'
+            ? r.host.includes('ciamlogin')
+              ? 'Waiting — Entra thinking'
+              : 'Waiting — our host responding'
+            : copy.label,
         span: phaseSpan,
         summary: `${ms} ms`,
         detail: { what: copy.what, gotcha: copy.gotcha },
         children: key === 'wait' && insideWait.length ? insideWait : undefined,
       })
     }
+
+    /**
+     * A LEVEL THAT REPEATS ITS PARENT'S NUMBER IS NOT A LEVEL.
+     *
+     * Six of the eight requests here are pure `wait` — no DNS, no connect, no
+     * TLS, because the connection is already open. Zooming into one of those
+     * produced a single row saying "waiting: 146 ms" under a request labelled
+     * 146 ms. Same number, one click deeper, nothing learned. Steve: "seems like
+     * a lot of useless info and just entra waiting and TCP handshakes."
+     *
+     * So the phase level only exists where the phases actually say something —
+     * more than one of them. Below that the request keeps whatever it contains
+     * (the token, the CA/MFA steps) as its direct children, which also removes a
+     * pointless hop on the way to the best content on the page.
+     *
+     * Only /authorize and the discovery call earn it, and that IS the finding:
+     * they're the two that pay for a connection.
+     */
+    const phasesSaySomething = phases.length > 1
+    const children = phasesSaySomething
+      ? phases
+      : insideWait.length
+        ? insideWait
+        : undefined
 
     return {
       id: m.id,
@@ -614,7 +648,7 @@ function toEvents(capture: Capture, token: string, tokenLabel: string): JourneyE
       code: m.code,
       humanGapBefore: m.humanGapBefore,
       humanDoing: m.humanDoing,
-      children: phases.length ? phases : undefined,
+      children,
     }
   })
 }

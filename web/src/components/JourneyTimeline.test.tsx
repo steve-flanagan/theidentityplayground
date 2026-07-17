@@ -134,6 +134,34 @@ describe('the timeline reports what was actually measured', () => {
     }
   })
 
+  it('never offers a zoom level that just repeats its parent', () => {
+    // A request that is 100% `wait` used to open into one row reading "waiting:
+    // 146 ms" under a request labelled 146 ms. Same number, one click deeper,
+    // nothing learned — "a lot of useless info and just entra waiting". Six of
+    // the eight requests were like that. A level has to earn its existence.
+    for (const flow of ['signin', 'signup'] as const) {
+      for (const event of buildJourney(flow, token, 'Sample ID token').events) {
+        const timed = (event.children ?? []).filter((c) => c.span)
+        expect(
+          timed.length,
+          `${flow}/${event.id} opens into a single timed child that restates it`,
+        ).not.toBe(1)
+      }
+    }
+  })
+
+  it('does not claim Entra served our own origin', () => {
+    // The SPA reload is Azure Static Web Apps handing back HTML. Labelling that
+    // "Entra thinking" is a small lie in the one place the site claims authority.
+    mount()
+    expect(screen.queryAllByText(/Entra thinking/)).toBeDefined()
+    const spa = buildJourney('signin', token, 'Sample ID token').events.find(
+      (e) => e.id === 'spa',
+    )
+    const waits = (spa?.children ?? []).filter((c) => c.label.startsWith('Waiting'))
+    for (const w of waits) expect(w.label).not.toContain('Entra')
+  })
+
   it('never puts human thinking time on the machine axis', () => {
     // The gaps are enormous — 12.5s typing an email against 1.9s of machine.
     // If they ever leaked onto the axis, machine time would balloon toward wall.
