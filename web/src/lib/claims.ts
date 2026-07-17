@@ -80,9 +80,13 @@ export const CLAIMS: Record<string, ClaimAnnotation> = {
   preferred_username: {
     title: 'Preferred username',
     category: 'identity',
-    what: 'The identifier the user signs in with.',
+    // This entry used to read "the identifier the user signs in with", which is
+    // false for every federated user in this tenant — and false in exactly the
+    // way the claim is interesting. Checked against real tokens from both paths.
+    what: 'A human-readable label for the account. What actually lands here depends entirely on how the account was created.',
     why: 'Emitted with the profile scope.',
-    gotcha: 'Mutable and reassignable. It is not an identifier — it is a label.',
+    gotcha:
+      'Sign in with a local account and this is the email address you typed. Sign in with Google and it is a value Entra generated — <oid>@theidentityplayground.onmicrosoft.com — which that user has never seen, did not choose, and cannot sign in with. Both tokens carry the claim; only one of them carries a username. It reads like an identifier while being neither their identity nor, half the time, their username. Mutable, reassignable, and never safe to key on: use oid.',
   },
   email: {
     title: 'Email',
