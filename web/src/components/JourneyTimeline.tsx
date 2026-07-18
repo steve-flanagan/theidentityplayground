@@ -257,12 +257,14 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
             )
           ) : (
             <>
+              {/* Short on purpose. This used to be a paragraph explaining what the
+                  app cannot observe, which read as the site being confused about
+                  something basic rather than being careful. State the measurement,
+                  name the limit in one clause, stop. */}
               <span className="font-medium">
-                Your sign-in took {(lastFlow.elapsedMs / 1000).toFixed(1)}s, and a prompt was
-                involved.
+                Your sign-in took {(lastFlow.elapsedMs / 1000).toFixed(1)}s.
               </span>{' '}
-              That could be a sign-in, a sign-up or a consent screen, and this app can't tell
-              which from the browser — so it won't guess. Pick the one you did.
+              A prompt was involved, so it wasn't SSO — pick which one you did.
             </>
           )}
         </div>

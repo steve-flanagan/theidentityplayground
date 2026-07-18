@@ -125,23 +125,19 @@ function App() {
             <p className="mb-4 max-w-3xl rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-200/70">
               <span className="font-medium text-emerald-300">Measured, not estimated.</span> Every
               millisecond comes from a real capture of a real flow against this tenant — server time
-              per request, and the phases inside it.{' '}
-              {/* Until someone signs in, every flow here is a recorded reference —
-                  real captures, but not theirs. Saying so up front is the difference
-                  between a demo and a page that looks like it is describing a
-                  sign-in that never happened. */}
-              {realIdToken ? (
-                <>
-                  The flow you performed is badged below; the others are recorded reference
-                  captures.
-                </>
-              ) : (
-                <>
-                  These are <span className="text-emerald-300">recorded sample flows</span> until
-                  you sign in — do that and the one you actually performed gets called out.
-                </>
-              )}
+              per request, and the phases inside it.
             </p>
+
+            {/* Kept OUT of the "measured" box on purpose. That box is a standing
+                claim about the data's provenance; this is a temporary state note
+                that stops applying the moment someone signs in. Folding a
+                transient into a permanent statement made both read as hedging. */}
+            {!realIdToken && (
+              <p className="mb-4 max-w-3xl rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-200/70">
+                <span className="font-medium text-amber-300">Recorded sample flows.</span> Sign in
+                and the one you actually performed gets called out.
+              </p>
+            )}
 
             <JourneyTimeline
               token={realIdToken ?? sampleToken}
