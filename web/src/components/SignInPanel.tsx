@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMsal, useIsAuthenticated } from '@azure/msal-react'
 import { InteractionStatus, BrowserAuthError } from '@azure/msal-browser'
-import { buildAuthRequest, isInteractionRequired } from '../auth/ssoRequest'
+import { buildAuthRequest, isInteractionRequired, silentRedirectUri } from '../auth/ssoRequest'
 import { markFlowStart } from '../lib/lastFlow'
 
 /**
@@ -57,7 +57,12 @@ export function SignInPanel() {
     setError(null)
     setNote(null)
     try {
-      await instance.ssoSilent(buildAuthRequest('silent'))
+      // Land the hidden iframe on the empty page, not the app — see
+      // silentRedirectUri. This is the fix for the `timed_out` failure.
+      await instance.ssoSilent({
+        ...buildAuthRequest('silent'),
+        redirectUri: silentRedirectUri(),
+      })
       setNote('Silent sign-in succeeded — that token came from your existing session, with no prompt.')
     } catch (e) {
       if (isInteractionRequired(e)) {

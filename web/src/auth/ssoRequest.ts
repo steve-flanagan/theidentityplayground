@@ -29,6 +29,25 @@ export type SsoMode =
   /** Never show UI: succeed off the session or fail with login_required. */
   | 'silent'
 
+/**
+ * Where a silent (prompt=none) iframe should land.
+ *
+ * Not the app. A capture showed the whole 1.8 MB SPA booting inside the hidden
+ * iframe and MSAL's parent timing out waiting to read the hash — reported as
+ * `timed_out`, which looks like a cookie or network fault and is neither: Entra
+ * had answered in 197 ms. `public/blank.html` is a few hundred bytes of nothing,
+ * which is exactly what an iframe that exists only to carry a fragment should be.
+ *
+ * Must be registered as a redirect URI on the app registration for every origin
+ * this runs on — production is registered; localhost needs adding separately or
+ * silent auth fails there with a redirect_uri mismatch.
+ */
+export const SILENT_REDIRECT_PATH = '/blank.html'
+
+export function silentRedirectUri(): string {
+  return `${window.location.origin}${SILENT_REDIRECT_PATH}`
+}
+
 export function buildAuthRequest(mode: SsoMode): RedirectRequest {
   switch (mode) {
     case 'force-credentials':

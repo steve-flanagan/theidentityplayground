@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Silent authentication</title>
+    <meta name="robots" content="noindex" />
+  </head>
+  <body>
+    <!--
+      The landing page for MSAL's silent (prompt=none) iframe. Deliberately empty.
+
+      WHY THIS FILE EXISTS, from a real capture:
+
+      A silent request redirects the hidden iframe to the app's redirect_uri. When
+      that was the app itself, the entire SPA — 1.8 MB of bundle — booted inside
+      the iframe, initialised a second MSAL instance, and MSAL's parent frame gave
+      up waiting to read the hash. It surfaced as `timed_out`, which looks like a
+      network or cookie problem and is neither: Entra had already answered in
+      197 ms. We wasted the rest on ourselves.
+
+      Pointing silent requests here instead means the iframe loads a few hundred
+      bytes and nothing else. The parent reads the fragment off it immediately.
+
+      Nothing may be added to this file. No script, no bundle, no analytics — the
+      whole point is that it costs nothing to load. It must also stay registered
+      as a redirect URI on the app registration, or silent auth fails with a
+      redirect_uri mismatch.
+    -->
+  </body>
+</html>
