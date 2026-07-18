@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { PublicClientApplication } from '@azure/msal-browser'
 import { app2MsalConfig } from '../auth/app2MsalConfig'
+import { clearForeignInteractionLock } from '../auth/interactionLock'
 import { App2 } from './App2'
 import { completeApp2Timing, readApp2Elapsed } from './crossAppSso'
 
@@ -37,6 +38,12 @@ import { completeApp2Timing, readApp2Elapsed } from './crossAppSso'
  * structural: by the time a component exists, the fragment is already spent.
  */
 export async function mountApp2(rootElement: HTMLElement): Promise<void> {
+  // Symmetric with main.tsx. The interaction lock is one key for the whole
+  // origin, so the main app can strand this page exactly as easily as the
+  // reverse. Clears a DIFFERENT client ID only, and before initialize(), since
+  // afterwards is too late. See auth/interactionLock.ts.
+  clearForeignInteractionLock(app2MsalConfig.auth.clientId)
+
   const instance = new PublicClientApplication(app2MsalConfig)
   await instance.initialize()
 

@@ -5,6 +5,7 @@ import { MsalProvider } from '@azure/msal-react'
 import './index.css'
 import App from './App.tsx'
 import { msalConfig } from './auth/msalConfig.ts'
+import { clearForeignInteractionLock } from './auth/interactionLock.ts'
 import { isApp2Path } from './app2/route.ts'
 
 // getElementById returns HTMLElement | null, and createRoot won't accept null.
@@ -38,6 +39,13 @@ if (isApp2Path(window.location.pathname)) {
   const { mountApp2 } = await import('./app2/mountApp2.tsx')
   await mountApp2(rootElement)
 } else {
+  // MSAL keys its interaction lock per ORIGIN, not per client, so an abandoned
+  // /app2 redirect leaves a lock that blocks sign-in and sign-out here. Because
+  // exactly one instance boots per page load, this app booting proves app2's
+  // instance is gone and its lock is stale. Only ever clears a DIFFERENT client
+  // ID, and must run before initialize(). Full argument in auth/interactionLock.ts.
+  clearForeignInteractionLock(msalConfig.auth.clientId)
+
   const msalInstance = new PublicClientApplication(msalConfig)
 
   // MSAL v3+ requires initialize() before any other call, and it's async because

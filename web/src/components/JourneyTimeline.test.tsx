@@ -4,7 +4,16 @@ import { JourneyTimeline } from './JourneyTimeline'
 import { buildSampleToken } from '../lib/sampleToken'
 import signinCapture from '../lib/captures/signin.json'
 import signoutCapture from '../lib/captures/signout.json'
-import { buildJourney, FLOW_ONLY, type FlowId, type ZoomNode } from '../lib/journey'
+import {
+  ACTOR_LABELS,
+  buildJourney,
+  FLOW_META,
+  FLOW_ONLY,
+  type Actor,
+  type FlowId,
+  type ZoomNode,
+} from '../lib/journey'
+import { clearLastFlow, markFlowStart, type FlowMatch } from '../lib/lastFlow'
 
 const FLOWS: FlowId[] = ['signup', 'signin', 'sso-on', 'sso-off', 'sso-probe', 'signout']
 
@@ -40,7 +49,12 @@ function mountFlow(label: string) {
 
 const journeyFor = (flow: FlowId) => buildJourney(flow, token, 'Sample ID token')
 
-beforeEach(() => setFragment(''))
+// The fragment AND the flow marker. Both live outside React, so a test that
+// seeds either one would otherwise decide what the next test opens on.
+beforeEach(() => {
+  setFragment('')
+  clearLastFlow()
+})
 afterEach(cleanup)
 
 describe('the URL fragment belongs to MSAL, not to us', () => {
@@ -97,6 +111,102 @@ describe('our own deep links', () => {
     mount()
 
     expect(screen.getByText(/steps · full scale/)).toBeDefined()
+  })
+})
+
+// ── Getting back out ────────────────────────────────────────────────────────
+// Escape has always backed out one level. Nothing on screen said so, and the
+// control that did exist hung off the ZOOM CONTAINER rather than off the path.
+// Selecting a leaf deliberately does not move the camera — there is nothing
+// inside it to get closer to — so a leaf produces no zoom container, so on the
+// nodes that end a branch there was no way back that a visitor could find.
+// Steve, looking at one of them: "why are there still no back button in the
+// bottom values? The one's that hit end of branch."
+
+describe('getting back out', () => {
+  /** The control, whatever it ends up being called. There is only ever one. */
+  const backControls = () => screen.queryAllByRole('button', { name: /back/i })
+  const backControl = () => backControls()[0]
+
+  /**
+   * Two levels down a branch that ends. POST /login is a single-phase request,
+   * so it keeps the CA and MFA steps as its direct children, and neither of
+   * those carries a span. Nothing in this path is a zoom container, which is
+   * precisely the state the old control could not render in.
+   */
+  const LEAF = '#step=login/inside:ca'
+
+  it('offers no way back from the top level, where there is nowhere to go', () => {
+    mount()
+
+    expect(backControls()).toHaveLength(0)
+  })
+
+  it('renders on a leaf, which is where it used to be missing', () => {
+    setFragment(LEAF)
+
+    mount()
+
+    // The precondition, asserted rather than assumed. "full scale" is what the
+    // header reads when nothing has zoomed, so this is the proof that there is
+    // no zoom container here. If it ever reads "showing N ms" instead, this
+    // test has quietly stopped covering the case it was written for.
+    expect(screen.getByText(/steps · full scale/)).toBeDefined()
+    expect(screen.getByText('Conditional Access evaluated', { selector: 'h4' })).toBeDefined()
+
+    expect(backControls()).toHaveLength(1)
+  })
+
+  it('does exactly what Escape does, so the two cannot drift apart', () => {
+    // They were written separately and did different things. Escape dropped the
+    // last node; the button jumped clear of the whole zoom container. From two
+    // levels deep inside one request they landed in different places, and the
+    // one the visitor could see was the one that overshot.
+    const from = (act: () => void) => {
+      setFragment(LEAF)
+      const { container } = mount()
+      act()
+      const landed = { html: container.innerHTML, hash: location.hash }
+      cleanup()
+      return landed
+    }
+
+    const viaControl = from(() => fireEvent.click(backControl()))
+    const viaEscape = from(() => fireEvent.keyDown(window, { key: 'Escape' }))
+
+    expect(viaControl).toEqual(viaEscape)
+    // And they both actually moved, or the line above compares two no-ops.
+    expect(viaControl.hash).toBe('#step=login')
+  })
+
+  it('climbs one level per press, and stops offering once it is out', () => {
+    setFragment(LEAF)
+    mount()
+
+    fireEvent.click(backControl())
+    expect(location.hash).toBe('#step=login')
+    // Still one level in, so still offered.
+    expect(backControls()).toHaveLength(1)
+
+    fireEvent.click(backControl())
+    expect(location.hash).toBe('')
+    expect(backControls()).toHaveLength(0)
+  })
+
+  it('steps out of a zoomed branch one level at a time, not clear of it', () => {
+    // The other half of the same divergence, on the node Steve was actually
+    // looking at. Here a zoom container DOES exist (/authorize earns a phase
+    // level), and the old control jumped straight past it to the top. One
+    // click now lands on the phase that leaf hangs off.
+    setFragment('#step=authorize/authorize:wait/inside:tenant')
+    mount()
+
+    expect(screen.getByText('Tenant + app registration resolved', { selector: 'h4' })).toBeDefined()
+
+    fireEvent.click(backControl())
+
+    expect(location.hash).toBe('#step=authorize/authorize:wait')
+    expect(screen.getByText('Waiting: Entra thinking', { selector: 'h4' })).toBeDefined()
   })
 })
 
@@ -197,6 +307,46 @@ describe('the timeline reports what was actually measured', () => {
         expect(ids.has(marked), `${flow} marks "${marked}" but has no such request`).toBe(true)
       }
     }
+  })
+
+  it('states the sign-up/sign-in diff as the number the captures actually hold', () => {
+    // Three things say what the difference between the two flows is: the
+    // captures, the ◆ markers, and a sentence with a number spelled out in it.
+    // Nothing tied them to each other, so the sentence would go on saying
+    // "four" through any re-capture that made it five, and a wrong number in
+    // the one place this page claims authority is the whole failure mode.
+    const idsIn = (flow: FlowId) => new Set(journeyFor(flow).events.map((e) => e.id))
+    const signup = idsIn('signup')
+    const signin = idsIn('signin')
+
+    // "Differ" here means present in one flow and absent in the other. A shared
+    // request with a different duration is not a difference between the flows,
+    // and every shared request has one, so counting those would make the number
+    // meaningless.
+    const signupOnly = [...signup].filter((id) => !signin.has(id))
+    const signinOnly = [...signin].filter((id) => !signup.has(id))
+
+    // The markers are that set exactly, not merely a subset of it. The guard
+    // above this one passes happily while an entire request goes unmarked.
+    expect([...FLOW_ONLY.signup].sort()).toEqual([...signupOnly].sort())
+    expect([...FLOW_ONLY.signin].sort()).toEqual([...signinOnly].sort())
+
+    const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']
+    const diff = signupOnly.length + signinOnly.length
+
+    // The total, on the request that is one of them.
+    const kmsi = journeyFor('signin').events.find((e) => e.id === 'kmsi')
+    expect(kmsi?.detail?.gotcha).toContain(`the ${WORDS[diff]} requests that differ`)
+
+    // The sign-up tab carries its own side of the same number.
+    expect(FLOW_META.signup.summary).toMatch(
+      new RegExp(`\\b${WORDS[signupOnly.length]} requests\\b`, 'i'),
+    )
+
+    // And it names /kmsi as the one sign-up does not make. Sign-up is not
+    // sign-in plus three: it is sign-in plus three, minus this. If a re-capture
+    // ever puts a /kmsi in a sign-up, that sentence is wrong and this fails.
+    expect(signinOnly).toContain('kmsi')
   })
 
   it('proves the SSO pair differs by more than noise', () => {
@@ -352,5 +502,380 @@ describe('the local sign-out, which is the point of the flow', () => {
     // own note, and losing it to a refactor would be worse than never writing it.
     const signinSpa = journeyFor('signin').events.find((e) => e.id === 'spa')
     expect(signinSpa?.detail?.gotcha).toMatch(/FRAGMENT/)
+  })
+})
+
+// ── Signing out of this app only ────────────────────────────────────────────
+// clearCache() makes no request and never navigates. Nothing unmounts, so the
+// component is still here and is simply told which flow to show.
+//
+// It used to go through lastFlow like everything else, and that was the defect:
+// lastFlow stamps a start time for a REDIRECT to come back and finish, and with
+// no redirect nothing ever came back to read it. The stamp sat in storage until
+// some later page load turned the idle minutes since the click into the flow's
+// duration. There is no round trip here, so there is nothing to measure, so
+// nothing is said about timing.
+
+describe('a local sign-out selects the sign-out flow in the page', () => {
+  const timeline = (localSignOutCount: number) => (
+    <JourneyTimeline
+      token={token}
+      tokenLabel="Sample ID token"
+      localSignOutCount={localSignOutCount}
+    />
+  )
+
+  it('moves the timeline onto the sign-out flow', () => {
+    const { rerender } = render(timeline(0))
+    expect(screen.getByText(/The whole sign-in/i)).toBeDefined()
+
+    rerender(timeline(1))
+
+    expect(screen.getByText(/The whole sign-out/i)).toBeDefined()
+    expect(screen.queryByText(/The whole sign-in/i)).toBeNull()
+  })
+
+  it('says nothing about how long it took, because nothing was measured', () => {
+    const { rerender } = render(timeline(0))
+    rerender(timeline(1))
+
+    // The banner is the whole reason this path avoids lastFlow. An elapsed time
+    // here would be idle time since the click, presented as a measurement.
+    //
+    // Both matchers are deliberately loose: they guard the ABSENCE of any
+    // elapsed-time claim, not one phrasing of it, so a copy pass cannot quietly
+    // turn either into a match against a string nothing renders any more.
+    expect(screen.queryByText(/this one is yours/i)).toBeNull()
+    expect(screen.queryByText(/it took/i)).toBeNull()
+  })
+
+  it('does not fire on mount, whatever the count arrives as', () => {
+    // The comparison is against the prop's own first value. A remount carrying a
+    // count from earlier in the session must not re-select anything.
+    render(timeline(4))
+
+    expect(screen.getByText(/The whole sign-in/i)).toBeDefined()
+  })
+
+  it('moves again on the next sign-out, after the visitor has clicked away', () => {
+    const { rerender } = render(timeline(0))
+    rerender(timeline(1))
+    fireEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
+    expect(screen.getByText(/The whole sign-up/i)).toBeDefined()
+
+    rerender(timeline(2))
+
+    // A flag would already be raised by now and this would sit still. The count
+    // is what makes the second sign-out move the timeline like the first.
+    expect(screen.getByText(/The whole sign-out/i)).toBeDefined()
+  })
+
+  it('takes down the badge for the sign-in it just undid', () => {
+    // The panel wipes the marker out of storage, but this component read the
+    // answer into state on mount, so the banner and the "yours" tab would
+    // otherwise stay on screen claiming a session that has been dropped.
+    markFlowStart('default')
+    // Seed against performance.timeOrigin, not Date.now(). The round trip is
+    // measured from the click to when the returned document began loading, so
+    // a Date.now()-relative stamp reads as negative once the test process has
+    // been up longer than the interval being faked.
+    sessionStorage.setItem('tip.flow.start', String(performance.timeOrigin - 1_000))
+
+    const { rerender } = render(timeline(0))
+    expect(screen.getByText(/This one is yours/)).toBeDefined()
+    expect(screen.getByText('yours')).toBeDefined()
+
+    rerender(timeline(1))
+
+    expect(screen.queryByText(/This one is yours/)).toBeNull()
+    expect(screen.queryByText('yours')).toBeNull()
+  })
+})
+
+// ── The sign-up / sign-in answer, which arrives after mount ─────────────────
+// Every other flow is settled before this component renders. This one costs a
+// call to Entra, so it reaches a component that has already opened on
+// something. Same delivery as the local sign-out above: a prop, compared during
+// render.
+
+describe('a late answer moves the timeline onto the flow it names', () => {
+  const timeline = (resolvedFlow: FlowMatch) => (
+    <JourneyTimeline token={token} tokenLabel="Sample ID token" resolvedFlow={resolvedFlow} />
+  )
+
+  const signedUp: FlowMatch = {
+    kind: 'matched',
+    flow: 'signup',
+    elapsedMs: 20_000,
+    because: 'the account did not exist when this flow started, so this flow created it',
+  }
+
+  it('opens on sign-in, then switches when the answer lands', () => {
+    const { rerender } = render(timeline(null))
+    expect(screen.getByText(/The whole sign-in/i)).toBeDefined()
+
+    rerender(timeline(signedUp))
+
+    expect(screen.getByText(/The whole sign-up/i)).toBeDefined()
+    expect(screen.queryByText(/The whole sign-in/i)).toBeNull()
+  })
+
+  it('badges the flow it just named, so nothing else looks like theirs', () => {
+    const { rerender } = render(timeline(null))
+    expect(screen.queryByText('yours')).toBeNull()
+
+    rerender(timeline(signedUp))
+
+    expect(screen.getByText('yours')).toBeDefined()
+    expect(screen.getByText(/This one is yours/)).toBeDefined()
+  })
+
+  it('warns the moment they click onto a flow they did not perform', () => {
+    // The second half of the fix. That banner only renders when a flow IS
+    // identified, so before this an ambiguous visitor could click through every
+    // tab and never be told any of it was a recording.
+    const { rerender } = render(timeline(null))
+    rerender(timeline(signedUp))
+
+    fireEvent.click(screen.getByRole('button', { name: 'SSO' }))
+
+    expect(screen.getByText(/This one is not yours/)).toBeDefined()
+    expect(screen.getByText(/recorded reference flow/)).toBeDefined()
+  })
+
+  it('does nothing at all while the answer is null', () => {
+    // Null is the common case: no consent, no network, a tenant that will not
+    // say. It has to be indistinguishable from the page as it is today.
+    const { rerender } = render(timeline(null))
+    rerender(timeline(null))
+
+    expect(screen.getByText(/The whole sign-in/i)).toBeDefined()
+    expect(screen.queryByText('yours')).toBeNull()
+  })
+
+  it('does not fire on mount, and does not need to', () => {
+    // Same guard as the sign-out count: the comparison starts at the prop's own
+    // first value, so arriving already-answered switches nothing. That costs
+    // nothing, because settleLastFlow has written the answer into storage by
+    // then and the test below is the path a remount actually takes.
+    render(timeline(signedUp))
+    expect(screen.getByText(/The whole sign-in/i)).toBeDefined()
+  })
+
+  it('opens straight onto a settled answer already in storage', () => {
+    // A refresh, or a remount. The frozen result is what carries the answer
+    // across, which is the whole reason settleLastFlow writes it back.
+    sessionStorage.setItem('tip.flow.result', JSON.stringify(signedUp))
+
+    render(timeline(null))
+
+    expect(screen.getByText(/The whole sign-up/i)).toBeDefined()
+    expect(screen.getByText('yours')).toBeDefined()
+  })
+
+  it('drops a zoom that belonged to the flow it left', () => {
+    // The path holds nodes from the journey being abandoned. Carrying them into
+    // a different flow would zoom the axis onto a step that is not in it.
+    setFragment('#step=authorize/authorize:ssl')
+    const { rerender } = render(timeline(null))
+    expect(screen.getByText('TLS handshake', { selector: 'h4' })).toBeDefined()
+
+    rerender(timeline(signedUp))
+
+    expect(screen.queryByText('TLS handshake', { selector: 'h4' })).toBeNull()
+  })
+
+  it('leaves MSAL’s fragment alone, exactly like every other path in here', () => {
+    // This runs during render, and the one absolute rule of this component is
+    // that nothing during render touches location.hash. It is what broke every
+    // sign-in on the live site once already.
+    const authResponse = '#code=FAKE_CODE_abc123&state=st1'
+    setFragment(authResponse)
+
+    const { rerender } = render(timeline(null))
+    rerender(timeline(signedUp))
+
+    expect(location.hash).toBe(authResponse)
+  })
+
+  it('yields to a sign-out, which is something the visitor actually just did', () => {
+    const withBoth = (resolvedFlow: FlowMatch, localSignOutCount: number) => (
+      <JourneyTimeline
+        token={token}
+        tokenLabel="Sample ID token"
+        resolvedFlow={resolvedFlow}
+        localSignOutCount={localSignOutCount}
+      />
+    )
+    const { rerender } = render(withBoth(null, 0))
+    rerender(withBoth(signedUp, 1))
+
+    // An answer about the session they have just left must not outrank leaving it.
+    expect(screen.getByText(/The whole sign-out/i)).toBeDefined()
+    expect(screen.queryByText('yours')).toBeNull()
+  })
+})
+
+// ── The actor colours, which are settled ────────────────────────────────────
+// Two rounds of bar treatments went into the page behind a throwaway toggle.
+// This is what came back out: the solid saturated fill, with this assignment of
+// hue to actor. The toggle is gone; these tests are what is left of it, and they
+// exist because of the specific way this can regress.
+//
+// THE ASSIGNMENT MOVED. The map read browser BLUE / network GREY / entra GREEN
+// for most of this component's life, and what was approved is those same three
+// fills rotated one step. Nothing else in this file would notice a rotation
+// back: every count, every label and every measurement would still be right, and
+// the page would be wrong in the one way a reader sees immediately.
+
+describe('the actor colours, which are settled', () => {
+  const EXPECTED: Record<Actor, string> = {
+    browser: 'bg-slate-400',
+    network: 'bg-emerald-400',
+    entra: 'bg-sky-400',
+  }
+
+  /** The overview bars, in journey order — the buttons carrying an aria-label. */
+  const overviewBars = () =>
+    screen.getAllByRole('button').filter((b) => b.getAttribute('aria-label'))
+
+  it('paints every overview bar in its own actor colour, in every flow', () => {
+    const covered = new Set<Actor>()
+
+    for (const flow of FLOWS) {
+      cleanup()
+      const events = journeyFor(flow).events
+      mountFlow(FLOW_META[flow].label)
+
+      const bars = overviewBars()
+      expect(bars, `${flow} plots the wrong number of bars`).toHaveLength(events.length)
+
+      events.forEach((event, i) => {
+        // An absent node is hatched and carries no actor colour at all. That
+        // rule outranks this one and keeps its own test above.
+        if (event.absent) return
+        expect(
+          bars[i].className,
+          `${flow}/${event.id} is a ${event.actor} request and is not ${EXPECTED[event.actor]}`,
+        ).toContain(EXPECTED[event.actor])
+        covered.add(event.actor)
+      })
+    }
+
+    // Proves the loop exercised all three rather than passing because one of
+    // them never appeared in any flow.
+    expect([...covered].sort()).toEqual(['browser', 'entra', 'network'])
+  })
+
+  it('keys the legend to the same three colours the bars use', () => {
+    // A key that disagrees with the thing it keys is worse than no key. The
+    // swatches are the only 12px squares on the page, which is what makes them
+    // findable without reaching for their text.
+    const { container } = mount()
+    const swatches = container.querySelectorAll('span.h-3.w-3.rounded-sm')
+    const actors = Object.keys(ACTOR_LABELS) as Actor[]
+
+    expect(swatches).toHaveLength(actors.length)
+    actors.forEach((actor, i) => {
+      expect(swatches[i].className, `the ${actor} swatch`).toContain(EXPECTED[actor])
+      expect(swatches[i].nextElementSibling?.textContent).toBe(ACTOR_LABELS[actor])
+    })
+  })
+
+  it('keeps the legend out of the ink the page uses for chrome', () => {
+    // The report was not "the legend is small". A first-time reader did not see
+    // it at all. It was 12px type in slate-600 beside an 8px square, the same
+    // ink as the rules and tick numbers around it, so the whole line scanned as
+    // decoration. If it is ever dimmed back this is the test that says why not.
+    const { container } = mount()
+    const label = container.querySelector('span.h-3.w-3.rounded-sm')?.nextElementSibling
+
+    expect(label?.textContent).toBe(ACTOR_LABELS.browser)
+    expect(label?.className).not.toContain('text-slate-600')
+    expect(label?.className).not.toContain('text-xs')
+  })
+})
+
+// ── The slice-label typeface. Settled, and this is what holds it there. ─────
+// Six variants went into the page behind a toggle — mono, sans, a second mono,
+// bigger, lighter, wider — and `sans` was picked. The toggle and its module are
+// gone. What is left is one inline font-family at one call site, which is
+// exactly the sort of thing a later tidy-up swaps for `font-sans` without
+// noticing that Tailwind's version of that stack carries four emoji families
+// the picked one does not.
+
+describe('the slice-label typeface', () => {
+  // Byte-for-byte the stack that was on screen when it was chosen.
+  const SANS =
+    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', Arial, sans-serif"
+
+  /**
+   * jsdom rewrites quoting on the way in, so a font stack does not read back as
+   * it was written. Putting the expectation through the same parser compares
+   * like with like instead of against a hand-normalised string.
+   */
+  const asFontFamily = (value: string) => {
+    const el = document.createElement('span')
+    el.style.setProperty('font-family', value)
+    return el.style.getPropertyValue('font-family')
+  }
+
+  const overviewBars = () =>
+    screen.getAllByRole('button').filter((b) => b.getAttribute('aria-label'))
+
+  const firstLabel = () =>
+    overviewBars()[0].querySelector<HTMLElement>('span.truncate')!
+
+  it('sets every slice label in the sans stack, on all three actors', () => {
+    const events = journeyFor('signin').events
+    const covered = new Set<Actor>()
+    mount()
+
+    overviewBars().forEach((bar, i) => {
+      const label = bar.querySelector<HTMLElement>('span.truncate')
+      expect(label, `bar ${i} has no label span`).not.toBeNull()
+      expect(
+        label!.style.getPropertyValue('font-family'),
+        `the ${events[i].actor} bar's label is not in the sans stack`,
+      ).toBe(asFontFamily(SANS))
+      covered.add(events[i].actor)
+    })
+
+    expect([...covered].sort()).toEqual(['browser', 'entra', 'network'])
+  })
+
+  it('moved the typeface and nothing else', () => {
+    // One lever. Size, weight and tracking never left the baseline, so they are
+    // plain utility classes and nothing inline may quietly reintroduce them.
+    mount()
+    const label = firstLabel()
+
+    expect(label.className).toContain('text-sm')
+    expect(label.className).toContain('font-semibold')
+    expect(label.className).not.toContain('font-mono')
+    expect(label.style.fontSize).toBe('')
+    expect(label.style.fontWeight).toBe('')
+    expect(label.style.letterSpacing).toBe('')
+  })
+
+  it('loads no webfont, which was the hard constraint on the round', () => {
+    // No Google Fonts, no CDN, no self-hosted file, no new network request. A
+    // stack ending in a named family rather than a generic one would also be a
+    // silent dependency on one machine's font list.
+    mount()
+    const family = firstLabel().style.fontFamily
+
+    expect(family).not.toMatch(/url\(|@font-face|https?:/i)
+    expect(family).toMatch(/sans-serif$/)
+  })
+
+  it('leaves the bar colours alone, because that part is settled', () => {
+    // Type only. An inline background would silently beat the ACTOR_BAR class
+    // and break the one thing that is finished.
+    mount()
+
+    for (const bar of overviewBars()) {
+      expect(bar.style.backgroundColor).toBe('')
+    }
   })
 })

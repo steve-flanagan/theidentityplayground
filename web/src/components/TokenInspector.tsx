@@ -77,7 +77,7 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
         <p className="mt-1 text-sm text-slate-400">{decoded.error}</p>
         <p className="mt-2 text-sm text-slate-500">
           That's not necessarily a bug. Access tokens for Microsoft-owned APIs like Graph are
-          deliberately opaque — they aren't yours to read, and their format can change without
+          deliberately opaque. They aren't yours to read, and their format can change without
           notice. Only decode ID tokens and access tokens issued for an API you registered.
         </p>
       </div>
@@ -166,10 +166,10 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
       <div className="border-b border-slate-800 bg-sky-500/5 px-4 py-3">
         <p className="text-sm leading-relaxed text-sky-200/80">
           <span className="font-semibold text-sky-300">Decoded, not verified.</span> A JWT is
-          base64url — anyone can read one, and anyone can forge one. This panel proves nothing about
+          base64url. Anyone can read one, and anyone can forge one. This panel proves nothing about
           authenticity. Trust comes from checking the signature against the issuer's published keys,
           which belongs on a server, not in a browser the attacker controls. MSAL already validated
-          this token before handing it over; we're just showing you what you were given.
+          this token before handing it over.
         </p>
       </div>
 
@@ -229,8 +229,7 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
                 Not yet annotated
               </h3>
               <p className="mb-3 text-sm text-slate-600">
-                Present in your token but missing from the dictionary. Listed rather than hidden —
-                an inspector that quietly drops what it doesn't recognise is worse than useless.
+                Present in your token but missing from the dictionary. Listed rather than hidden.
               </p>
               <ul className="space-y-1">
                 {unannotated.map((key) => (

@@ -6,6 +6,7 @@ import {
   crossAppSsoRequest,
 } from '../auth/app2MsalConfig'
 import { classifyAcquisition, markApp2Start } from './crossAppSso'
+import { acquireHeldToken } from './heldToken'
 import { decodeJwt, formatClaimValue, formatTimeClaim } from '../lib/jwt'
 
 /**
@@ -46,6 +47,16 @@ type Props = {
 /** Claims worth showing here. The full annotated read is the main app's job. */
 const CLAIMS_ON_SHOW = ['aud', 'iss', 'oid', 'sub', 'preferred_username', 'name', 'iat', 'exp']
 
+/**
+ * The token on screen, and where this tab got it.
+ *
+ * `redirect` is the one the props carried in, and it is the only source the
+ * round-trip measurement describes. A token that arrived from the cache or a
+ * renewal never made that trip, so the timing panel is not shown for it rather
+ * than being pointed at a trip it did not take.
+ */
+type Held = { idToken: string; source: 'redirect' | 'cache' | 'renewed' }
+
 function formatElapsed(ms: number): string {
   return ms < 10_000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`
 }
@@ -63,40 +74,82 @@ function ClientIdRow({ label, id, note, mine }: { label: string; id: string; not
 
 export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccountName }: Props) {
   const [busy, setBusy] = useState(false)
+  const [redirecting, setRedirecting] = useState(false)
   const [error, setError] = useState<string | null>(redirectError)
 
-  const acquisition = idToken ? classifyAcquisition(idToken, elapsedMs) : null
+  // Held in state now, because the button can replace it without a page load.
+  // Seeded from the prop so the redirect path behaves exactly as it did.
+  const [held, setHeld] = useState<Held | null>(
+    idToken ? { idToken, source: 'redirect' } : null,
+  )
+
+  const acquisition = held
+    ? classifyAcquisition(held.idToken, held.source === 'redirect' ? elapsedMs : null)
+    : null
+
+  /** Set only when this tab produced the token without leaving the page. */
+  const silentSource = held && held.source !== 'redirect' ? held.source : null
 
   // Decoding is for display only and never validates anything — see lib/jwt.
   // MSAL already validated the token it handed us; this is a viewer.
   const payload = (() => {
-    if (!idToken) return null
+    if (!held) return null
     try {
-      return decodeJwt(idToken).payload
+      return decodeJwt(held.idToken).payload
     } catch {
       return null
     }
   })()
 
   /**
-   * The whole demo, in four lines.
+   * The whole demo, in four lines. UNCHANGED, and still the thing that works.
    *
    * A top-level redirect with no `prompt` parameter. Not `ssoSilent` — that
    * runs in a hidden iframe, and a real capture proved a third-party iframe
    * never receives the Entra session cookie in a browser with tracking
    * protection on. First-party navigation is the reason this works at all.
+   *
+   * It is now the fallback rather than the first move. Everything above it in
+   * `getToken` either produces a token or calls this.
    */
-  async function getToken() {
-    setError(null)
-    setBusy(true)
+  async function startRedirect() {
+    setRedirecting(true)
     // Stamped immediately before we leave the page; read on the way back.
     markApp2Start()
     try {
       await instance.loginRedirect(crossAppSsoRequest)
     } catch (e) {
       setBusy(false)
+      setRedirecting(false)
       setError(e instanceof Error ? e.message : 'Could not start the authorization request.')
     }
+  }
+
+  /**
+   * Cache, then renewal, then redirect.
+   *
+   * The page used to redirect on every press, which sent someone holding a
+   * perfectly good token back to Entra to be asked for a password. The cheap
+   * answers are tried first now; `acquireHeldToken` never throws, and its
+   * redirect outcomes all land on the call above.
+   */
+  async function getToken() {
+    setError(null)
+    setBusy(true)
+
+    const outcome = await acquireHeldToken(instance)
+
+    if (outcome.kind === 'cache' || outcome.kind === 'renewed') {
+      setHeld({ idToken: outcome.idToken, source: outcome.kind })
+      setBusy(false)
+      return
+    }
+
+    // A real failure keeps its message. It is written before the redirect
+    // starts, so it is on screen if the redirect itself cannot leave.
+    if (outcome.reason === 'unexpected') setError(outcome.message)
+
+    await startRedirect()
   }
 
   const onLocalhost =
@@ -113,7 +166,7 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
             A second application, the same session
           </h1>
           <p className="mt-6 text-lg leading-relaxed text-slate-400">
-            This page is a different app registration in the same Entra tenant — its own client
+            This page is a different app registration in the same Entra tenant: its own client
             ID, its own redirect URI, its own token cache. It has never seen your credentials and
             it never will. If you are signed in on the main app, it can still get a token for you,
             and you will not be asked for anything.
@@ -143,7 +196,7 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
           </div>
           <p className="mt-3 text-sm leading-relaxed text-slate-500">
             Same tenant, same user, two registrations. MSAL caches accounts per origin but tokens
-            per client ID, so this app genuinely starts with nothing — it cannot borrow the other
+            per client ID, so this app genuinely starts with nothing. It cannot borrow the other
             app's token, it has to be issued its own.
           </p>
         </section>
@@ -161,7 +214,7 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
                 <p className="mt-2 text-sm leading-relaxed text-slate-400">
                   {sharedAccountName ? (
                     <>
-                      MSAL's cache in this tab already holds an account —{' '}
+                      MSAL's cache in this tab already holds an account:{' '}
                       <span className="font-mono text-slate-300">{sharedAccountName}</span>. That is
                       a local cache entry shared across client IDs on this origin, not a session and
                       not a token for this app. Nothing has been issued to{' '}
@@ -170,7 +223,7 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
                   ) : (
                     <>
                       Nothing has been issued to this client ID in this tab. If you have a live
-                      Entra session — from the main app, or from anywhere else in this tenant — the
+                      Entra session (from the main app, or from anywhere else in this tenant), the
                       button below will get a token off it without asking you for anything.
                     </>
                   )}
@@ -178,7 +231,10 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
               </>
             )}
 
-            {acquisition?.kind === 'sso' && (
+            {/* The next three read the round-trip measurement, so they are for
+                the token that actually made that trip. A cached or renewed one
+                gets its own block below rather than borrowing this number. */}
+            {held?.source === 'redirect' && acquisition?.kind === 'sso' && (
               <>
                 <p className="text-lg font-medium text-emerald-300">
                   Token issued. No prompt appeared.
@@ -188,17 +244,17 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
                   <span className="font-mono text-emerald-300">
                     {formatElapsed(acquisition.elapsedMs)}
                   </span>
-                  , measured in this browser. Nobody entered a password in that window — there was
+                  , measured in this browser. Nobody entered a password in that window. There was
                   not time to. Entra already had a session for you, and this request did not ask it
                   to ignore one, so it issued a token to a second application you had never visited.
                 </p>
               </>
             )}
 
-            {acquisition?.kind === 'interactive' && (
+            {held?.source === 'redirect' && acquisition?.kind === 'interactive' && (
               <>
                 <p className="text-lg font-medium text-amber-300">
-                  Token issued — but this page will not call it SSO.
+                  Token issued, but this page will not call it SSO.
                 </p>
                 <p className="mt-2 text-sm leading-relaxed text-slate-300">
                   Round trip:{' '}
@@ -210,13 +266,13 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
                   reuse and it made one.
                 </p>
                 <p className="mt-2 text-sm leading-relaxed text-slate-300">
-                  There is a session now. Press the button again — the second attempt is the
+                  There is a session now. Press the button again. The second attempt is the
                   demonstration.
                 </p>
               </>
             )}
 
-            {acquisition?.kind === 'untimed' && (
+            {held?.source === 'redirect' && acquisition?.kind === 'untimed' && (
               <>
                 <p className="text-lg font-medium text-slate-200">Token issued. Timing unknown.</p>
                 <p className="mt-2 text-sm leading-relaxed text-slate-400">
@@ -228,6 +284,28 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
               </>
             )}
 
+            {/* Produced without leaving the page. The audience check still runs
+                first: a token addressed elsewhere is refused below whatever
+                served it. */}
+            {silentSource === 'cache' && acquisition?.kind !== 'foreign-audience' && (
+              <>
+                <p className="text-lg font-medium text-emerald-300">Token read from the cache.</p>
+                <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                  No request left the browser. This app already held a valid token for its own
+                  client ID.
+                </p>
+              </>
+            )}
+
+            {silentSource === 'renewed' && acquisition?.kind !== 'foreign-audience' && (
+              <>
+                <p className="text-lg font-medium text-emerald-300">Token renewed silently.</p>
+                <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                  MSAL fetched a new one. No redirect, no prompt.
+                </p>
+              </>
+            )}
+
             {acquisition?.kind === 'foreign-audience' && (
               <>
                 <p className="text-lg font-medium text-red-300">Refusing to show this token.</p>
@@ -235,8 +313,7 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
                   It carries{' '}
                   <span className="font-mono">aud={acquisition.audience ?? 'unreadable'}</span>,
                   which is not this application's client ID. Whatever it is, it is not this app's
-                  token, and presenting it as one would be the exact fabrication this page exists to
-                  rule out.
+                  token.
                 </p>
               </>
             )}
@@ -247,15 +324,26 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
                 disabled={busy}
                 className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-emerald-400 disabled:opacity-50"
               >
-                {busy
+                {redirecting
                   ? 'Redirecting…'
-                  : acquisition
-                    ? 'Get another token'
-                    : 'Get a token from the shared session'}
+                  : busy
+                    ? 'Checking…'
+                    : held
+                      ? 'Show the token this app holds'
+                      : 'Get a token from the shared session'}
               </button>
               <span className="text-xs leading-relaxed text-slate-500">
-                Sends a top-level redirect to Entra with no{' '}
-                <span className="font-mono text-slate-400">prompt</span> parameter.
+                {held ? (
+                  <>
+                    Reads this app's cache first. Sends a top-level redirect to Entra only when
+                    there is nothing to renew.
+                  </>
+                ) : (
+                  <>
+                    Sends a top-level redirect to Entra with no{' '}
+                    <span className="font-mono text-slate-400">prompt</span> parameter.
+                  </>
+                )}
               </span>
             </div>
 
@@ -276,7 +364,7 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
                 <span className="font-mono">https://theidentityplayground.com/app2</span>. If Entra
                 answers with AADSTS50011, then{' '}
                 <span className="font-mono">{window.location.origin}/app2</span> is not on that
-                registration yet — add it there and this works.
+                registration yet. Add it there and this works.
               </p>
             )}
           </div>
@@ -319,20 +407,28 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
                 The raw ID token
               </summary>
               <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                Decoded above for display only — nothing here verifies the signature, and a browser
+                Decoded above for display only. Nothing here verifies the signature, and a browser
                 is the wrong place to try.
               </p>
               <pre className="mt-2 max-h-48 overflow-auto break-all whitespace-pre-wrap font-mono text-xs text-slate-500">
-                {idToken}
+                {held?.idToken}
               </pre>
             </details>
           </section>
         )}
 
-        {/* ── Why it works. Short, because the page above is the argument. ─── */}
+        {/* ── Why it works. Short, because the page above is the argument. ───
+            This section renders in EVERY state, including before any token
+            exists and in the branches that refuse to claim SSO, so its heading
+            must not name an outcome. It read "Why there was no prompt", which
+            the interactive branch directly contradicts: that branch says the
+            round trip was long enough for someone to have typed, and a prompt
+            very likely did appear. The outcome claim belongs upstairs in the
+            state panel, where it is measured; this heading describes the
+            mechanism, which is true whatever happened this time. */}
         <section aria-labelledby="how" className="mt-10 max-w-3xl">
           <h2 id="how" className="text-sm font-medium uppercase tracking-widest text-slate-500">
-            Why there was no prompt
+            Why Entra can skip the prompt
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-slate-400">
             The authorization request this page sends carries no{' '}
@@ -345,7 +441,7 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
             this tenant showed the same user, seconds apart: the top-level request came back with a
             code, and a{' '}
             <span className="font-mono text-slate-300">prompt=none</span> iframe came back{' '}
-            <span className="font-mono text-slate-300">login_required</span> — Firefox partitions
+            <span className="font-mono text-slate-300">login_required</span>. Firefox partitions
             the session cookie away from a third-party frame, so Entra never sees it. Silent SSO by
             iframe is over; first-party redirects still work.
           </p>
@@ -353,7 +449,7 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
 
         <footer className="mt-16 max-w-3xl border-t border-slate-800 pt-6">
           <p className="text-sm text-slate-600">
-            Demo tenants only — no real accounts, no real data. Every account created here
+            Demo tenants only. No real accounts, no real data. Every account created here
             self-destructs.
           </p>
         </footer>

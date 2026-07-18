@@ -1,9 +1,15 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMsal } from '@azure/msal-react'
 import { TokenInspector } from './components/TokenInspector'
 import { JourneyTimeline } from './components/JourneyTimeline'
 import { SignInPanel } from './components/SignInPanel'
 import { buildSampleToken } from './lib/sampleToken'
+import {
+  accountCreatedAtMs,
+  readLastFlow,
+  settleLastFlow,
+  type FlowMatch,
+} from './lib/lastFlow'
 
 // Phase 1. Sign in and the inspector reads your real ID token; otherwise it
 // falls back to a clearly-labelled sample so the page still demonstrates
@@ -23,9 +29,9 @@ type Module = {
 // Homepage roadmap, per spec section 5: "The site is never 'unfinished,' just
 // growing." Update `status` as phases land.
 const MODULES: Module[] = [
-  { phase: 1, name: 'Token Inspector', blurb: 'Sign in, then read your own ID token — every claim annotated.', status: 'building' },
+  { phase: 1, name: 'Token Inspector', blurb: 'Sign in, then read your own ID token. Every claim annotated.', status: 'building' },
   { phase: 2, name: 'Three Doors, One App', blurb: 'Customer, business guest, or employee. Compare what each token says.', status: 'planned' },
-  { phase: 3, name: 'Auth Methods Arena', blurb: 'Password, email OTP, social, passkey — watch each flow execute.', status: 'planned' },
+  { phase: 3, name: 'Auth Methods Arena', blurb: 'Password, email OTP, social, passkey. Watch each flow execute.', status: 'planned' },
   { phase: 4, name: "The Admin's View", blurb: 'A live sign-in log. Yours shows up in it.', status: 'planned' },
   { phase: 5, name: 'Conditional Access, Live', blurb: 'Trip a real CA policy and read the policy that caught you.', status: 'planned' },
   { phase: 6, name: 'Live SCIM Provisioning', blurb: 'Hire a demo employee, watch them provision into a SaaS app in real time.', status: 'planned' },
@@ -48,14 +54,67 @@ function App() {
 
   // MSAL caches the raw ID token on the account it hands back. No extra call
   // needed — it's the token the visitor was just issued.
-  const realIdToken = accounts[0]?.idToken ?? null
+  const account = accounts[0] ?? null
+  const realIdToken = account?.idToken ?? null
+
+  /**
+   * Sign-up or sign-in, from the account creation time the token carries.
+   *
+   * ── THE ORDERING PROBLEM, AND WHY THE ANSWER ARRIVES AS A PROP ────────────
+   *
+   * The timeline reads which flow happened once, in a useState initialiser, on
+   * mount. That runs during its render, before any effect anywhere. So even
+   * though this costs nothing but a base64 decode, it still lands after the
+   * component has decided what it is showing, and it has to reach a component
+   * that has already made up its mind.
+   *
+   * Same shape as localSignOutCount below: hold it here, pass it down, let the
+   * timeline notice it changed. No store, no context, no event.
+   */
+  const [resolvedFlow, setResolvedFlow] = useState<FlowMatch>(null)
+
+  useEffect(() => {
+    // The REAL token, never `realIdToken ?? sampleToken` — which is what the JSX
+    // below hands the inspector and the timeline for display. The sample's
+    // createddatetime is invented, dated months before its own iat, so feeding
+    // it to resolveAmbiguous would badge a sign-in that nobody performed, off a
+    // number nobody measured. Pinned by App.test.tsx.
+    if (!realIdToken) return
+    // Only the pair we cannot tell apart. The deterministic branches already
+    // know what they are and must not be second-guessed.
+    if (readLastFlow()?.kind !== 'ambiguous') return
+
+    const settled = settleLastFlow(accountCreatedAtMs(realIdToken), realIdToken)
+    // Still ambiguous means the claim was absent or unreadable. Leave the page
+    // exactly as it is rather than re-rendering it to say the same thing.
+    if (settled?.kind === 'matched') setResolvedFlow(settled)
+  }, [realIdToken])
+
+  /**
+   * Signing out of this app only makes no request and never navigates, so the
+   * sessionStorage marker that carries every other flow across its redirect has
+   * nothing to carry and nothing to come back and read. The panel raises it
+   * here instead and the timeline moves onto the sign-out flow in place.
+   *
+   * A counter, not a flag: the visitor can click away to another flow and sign
+   * out again, and the second click has to move the timeline as surely as the
+   * first. A flag would already be true and nothing would happen. It is never
+   * displayed and it is not a duration.
+   */
+  const [localSignOutCount, setLocalSignOutCount] = useState(0)
 
   return (
-    // Left-aligned off a left indent, not centred in a floating column. A wide
-    // max so a big monitor is actually used; px-8 is the indent. No mx-auto —
-    // the content sits against the left and fills the width it's given.
+    // No max-width. There was one — 112rem, 1792px — and on a full-screen
+    // window wider than that it stopped the page dead in the middle of the
+    // monitor and left the rest empty. px-8 is the indent and stays 32px at
+    // every width; the fix is the cap coming off, not the gutters growing.
+    //
+    // Nothing runs away as a result. The reading columns cap themselves at
+    // max-w-3xl (header, roadmap, footer, the section blurbs), and the claims
+    // panel is a fixed 27rem in the grid below. The only thing that grows is
+    // the timeline's 1fr column, which is the one that wants the room.
     <main className="min-h-screen bg-slate-950 text-slate-300">
-      <div className="max-w-[112rem] px-8 pt-16 pb-20">
+      <div className="px-8 pt-16 pb-20">
         <header className="max-w-3xl">
           <p className="font-mono text-xs uppercase tracking-widest text-emerald-400">
             Phase 1 · token inspector
@@ -65,8 +124,8 @@ function App() {
           </h1>
           <p className="mt-6 text-lg leading-relaxed text-slate-400">
             Identity work is invisible in production. This site makes it visible: sign in
-            for real, then read exactly what happened underneath — the tokens, the
-            policies, the provisioning calls.
+            for real, then read exactly what happened underneath. The tokens, the policies,
+            the provisioning calls.
           </p>
           <p className="mt-4 text-lg leading-relaxed text-slate-400">
             Built on Microsoft Entra by{' '}
@@ -81,7 +140,14 @@ function App() {
             on the right, which is the second-monitor shape. Timeline gets the wide
             column for the axis. Claims are first in the DOM, placed right by the
             grid, so a phone shows the payoff first and then stacks the timeline —
-            mobile just needs to work. */}
+            mobile just needs to work.
+
+            The column widths are what makes a wide monitor pay off, now that
+            nothing caps the page: claims are a fixed 27rem, so every pixel a
+            wider window adds goes to the timeline's 1fr. Being the second grid
+            column also puts the claims panel against the right edge rather than
+            floating somewhere near the middle. Both of those collapse below lg,
+            where the grid is a single stacked column. */}
         <div className="mt-12 grid gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_27rem]">
           <section
             aria-labelledby="inspector"
@@ -93,13 +159,13 @@ function App() {
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-slate-400">
                 {realIdToken
-                  ? 'The real token you were just issued, every claim annotated — what it is, why it’s in your token, and which tenant configuration produced it.'
-                  : 'A sample, until you sign in. Then this reads your own real token — same claims, your values, and the differences are worth reading.'}
+                  ? 'The real token you were just issued, every claim annotated: what it is, why it’s in your token, and which tenant configuration produced it.'
+                  : 'A sample, until you sign in. Then this reads your own real token: same claims, your values.'}
               </p>
             </div>
 
             <div className="mb-4">
-              <SignInPanel />
+              <SignInPanel onLocalSignOut={() => setLocalSignOutCount((n) => n + 1)} />
             </div>
 
             <TokenInspector
@@ -115,16 +181,15 @@ function App() {
                 How those claims got there
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
-                Every request in a real sign-in, measured. The whole flow stays on the overview bar;
-                below it each step sits on its own axis, and opening one rescales to just that slice.
-                Switch between sign-in and sign-up and watch exactly four requests appear or vanish —
-                that's the entire difference between the two.
+                Every request in a real sign-in, measured. The entire flow stays on the overview bar;
+                below it each step sits on its own axis. Click slices for details and code examples
+                where applicable.
               </p>
             </div>
 
             <p className="mb-4 max-w-3xl rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-200/70">
               <span className="font-medium text-emerald-300">Measured, not estimated.</span> Every
-              millisecond comes from a real capture of a real flow against this tenant — server time
+              millisecond comes from a real capture of a real flow against this tenant. Server time
               per request, and the phases inside it.
             </p>
 
@@ -142,6 +207,8 @@ function App() {
             <JourneyTimeline
               token={realIdToken ?? sampleToken}
               tokenLabel={realIdToken ? 'Your ID token' : 'Sample ID token'}
+              localSignOutCount={localSignOutCount}
+              resolvedFlow={resolvedFlow}
             />
           </section>
         </div>
@@ -177,7 +244,7 @@ function App() {
 
         <footer className="mt-16 max-w-3xl border-t border-slate-800 pt-6">
           <p className="text-sm text-slate-600">
-            Demo tenants only — no real accounts, no real data. Every account created here
+            Demo tenants only. No real accounts, no real data. Every account created here
             self-destructs.
           </p>
         </footer>

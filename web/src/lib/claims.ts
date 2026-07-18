@@ -40,7 +40,7 @@ export const CLAIMS: Record<string, ClaimAnnotation> = {
     title: 'Issuer',
     category: 'issuer',
     what: 'The authority that minted this token. Every validator must check it.',
-    why: 'Set by the tenant that issued the token — here, the External ID tenant.',
+    why: 'Set by the tenant that issued the token, the External ID tenant.',
     gotcha:
       "In this tenant the issuer host is NOT the host you called. Endpoints live on the tenant-name subdomain (theidentityplayground.ciamlogin.com) but iss uses the tenant-GUID subdomain. Validate against what's in the discovery document, never against the authority string you configured.",
   },
@@ -57,7 +57,7 @@ export const CLAIMS: Record<string, ClaimAnnotation> = {
   sub: {
     title: 'Subject',
     category: 'identity',
-    what: 'The stable identifier for the user — but scoped to this app, not global.',
+    what: 'The stable identifier for the user, but scoped to this app, not global.',
     why: 'Generated per user, per app registration.',
     gotcha:
       "sub is pairwise: the SAME user gets a DIFFERENT sub in a different app. Use oid to correlate a user across your own apps in one tenant. Using sub as a cross-app primary key is a bug that only surfaces once you build a second app.",
@@ -68,7 +68,7 @@ export const CLAIMS: Record<string, ClaimAnnotation> = {
     what: 'The immutable directory object ID for this user.',
     why: 'Assigned by Entra when the account was created.',
     gotcha:
-      'Stable across apps and across renames — unlike email or UPN, which users can change. This is the correlation key Module 6 uses to find "your" sign-in.',
+      'Stable across apps and across renames, unlike email or UPN, which users can change. This is the correlation key Module 6 uses to find "your" sign-in.',
   },
   name: {
     title: 'Display name',
@@ -86,7 +86,7 @@ export const CLAIMS: Record<string, ClaimAnnotation> = {
     what: 'A human-readable label for the account. What actually lands here depends entirely on how the account was created.',
     why: 'Emitted with the profile scope.',
     gotcha:
-      'Sign in with a local account and this is the email address you typed. Sign in with Google and it is a value Entra generated — <oid>@theidentityplayground.onmicrosoft.com — which that user has never seen, did not choose, and cannot sign in with. Both tokens carry the claim; only one of them carries a username. It reads like an identifier while being neither their identity nor, half the time, their username. Mutable, reassignable, and never safe to key on: use oid.',
+      'Sign in with a local account and this is the email address you typed. Sign in with Google and it is a value Entra generated (<oid>@theidentityplayground.onmicrosoft.com), which that user has never seen, did not choose, and cannot sign in with. Both tokens carry the claim; only one of them carries a username. It reads like an identifier while being neither their identity nor, half the time, their username. Mutable, reassignable, and never safe to key on: use oid.',
   },
   email: {
     title: 'Email',
@@ -94,7 +94,17 @@ export const CLAIMS: Record<string, ClaimAnnotation> = {
     what: "The user's email address.",
     why: 'Emitted because the email scope was requested.',
     gotcha:
-      'Presence does not mean verified. Whether it was proven depends on how the account was created — a self-service signup that never confirmed the address still yields this claim.',
+      'Presence does not mean verified. Whether it was proven depends on how the account was created. A self-service signup that never confirmed the address still yields this claim.',
+  },
+  // Lowercase and unprefixed, which is how it arrives. Not in TIME_CLAIMS: those
+  // are Unix-seconds claims and this one is a timestamp string.
+  createddatetime: {
+    title: 'Account created',
+    category: 'identity',
+    what: "When this account's directory object was created.",
+    why: 'A claims mapping policy on this app registration emits it. A stock Entra ID token does not carry it.',
+    gotcha:
+      'It dates the account, not the sign-in. The same value rides in every token this account is ever issued.',
   },
 
   // ---- Tenant ------------------------------------------------------------
@@ -111,7 +121,7 @@ export const CLAIMS: Record<string, ClaimAnnotation> = {
   amr: {
     title: 'Authentication methods',
     category: 'auth',
-    what: 'HOW the user proved who they are, as an array — e.g. pwd, mfa, otp, fido.',
+    what: 'HOW the user proved who they are, as an array, e.g. pwd, mfa, otp, fido.',
     why: 'Reflects what actually happened at sign-in, not what policy asked for.',
     gotcha:
       'This is the claim to watch across Module 3. Sign in with a password and it says pwd; complete MFA and mfa appears; use a passkey and you get fido. It is the audit trail of the sign-in you just did.',
@@ -127,9 +137,9 @@ export const CLAIMS: Record<string, ClaimAnnotation> = {
     title: 'Identity provider',
     category: 'auth',
     what: 'Which IdP actually authenticated the user.',
-    why: 'Present when the account came from somewhere else — Google, Facebook, another tenant.',
+    why: 'Present when the account came from somewhere else: Google, Facebook, another tenant.',
     gotcha:
-      'Absent for local accounts, because the issuer IS the IdP. Its presence is the tell that this identity is federated — Module 2 makes this visible by comparing doors.',
+      'Absent for local accounts, because the issuer IS the IdP. Its presence is the tell that this identity is federated. Module 2 makes this visible by comparing doors.',
   },
   auth_time: {
     title: 'Authentication time',
@@ -137,7 +147,7 @@ export const CLAIMS: Record<string, ClaimAnnotation> = {
     what: 'When the user actually authenticated.',
     why: 'Recorded at sign-in.',
     gotcha:
-      'Distinct from iat. A token can be re-issued silently from an existing session, so iat moves while auth_time stays put. If you need "did they authenticate recently", this is the claim — not iat.',
+      'Distinct from iat. A token can be re-issued silently from an existing session, so iat moves while auth_time stays put. If you need "did they authenticate recently", this is the claim, not iat.',
   },
 
   // ---- Timing ------------------------------------------------------------
@@ -159,7 +169,7 @@ export const CLAIMS: Record<string, ClaimAnnotation> = {
     what: 'The token is invalid after this time. Typically about an hour for an ID token.',
     why: 'Stamped by the issuer per tenant lifetime policy.',
     gotcha:
-      'Validators must allow a little clock skew. Also: expiry is not revocation — a token stays valid until exp even if the account is disabled a minute later. That gap is why short lifetimes matter.',
+      'Validators must allow a little clock skew. Also: expiry is not revocation. A token stays valid until exp even if the account is disabled a minute later. That gap is why short lifetimes matter.',
   },
 
   // ---- Protocol ----------------------------------------------------------
@@ -169,12 +179,12 @@ export const CLAIMS: Record<string, ClaimAnnotation> = {
     what: 'A random value the client generated and the issuer echoed back.',
     why: 'MSAL generated it on the authorize request.',
     gotcha:
-      'This is the replay defence: the client checks the echoed nonce matches the one it sent. A token replayed from elsewhere carries the wrong nonce. MSAL validates this for you — which is exactly why you should not hand-roll this flow.',
+      'This is the replay defence: the client checks the echoed nonce matches the one it sent. A token replayed from elsewhere carries the wrong nonce. MSAL validates this for you, which is exactly why you should not hand-roll this flow.',
   },
   ver: {
     title: 'Token version',
     category: 'protocol',
-    what: 'The token format version — 2.0 here.',
+    what: 'The token format version, 2.0 here.',
     why: 'Determined by the app registration and the endpoint used.',
     gotcha:
       'v1.0 and v2.0 tokens differ in which claims exist and what they mean. Claim-shape bugs often trace back to code written against the other version.',

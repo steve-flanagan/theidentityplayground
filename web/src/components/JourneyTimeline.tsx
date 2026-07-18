@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import {
   ACTOR_LABELS,
   buildJourney,
@@ -13,7 +13,7 @@ import {
   type ZoomNode,
 } from '../lib/journey'
 import { highlight, TOKEN_CLASS } from '../lib/highlight'
-import { readLastFlow } from '../lib/lastFlow'
+import { readLastFlow, type FlowMatch } from '../lib/lastFlow'
 
 // Overview + detail. The pattern every profiler, packet capture and network
 // waterfall uses, because it's the one that survives being kept open all day.
@@ -36,13 +36,69 @@ import { readLastFlow } from '../lib/lastFlow'
 type Props = {
   token: string
   tokenLabel: string
+  /**
+   * Bumped by App every time the visitor signs out of this app only. See the
+   * block where it is consumed for why that path bypasses lastFlow entirely.
+   *
+   * Optional and untouched by default, so mounting this component standalone
+   * (App2, the tests) behaves exactly as it did before.
+   */
+  localSignOutCount?: number
+  /**
+   * Sign-up or sign-in, once the answer is known. There is no network call
+   * behind it: the account's creation time rides in on the ID token the app is
+   * already holding, as the `createddatetime` claim a claims mapping policy
+   * puts there. See ACCOUNT_CREATED_CLAIM and accountCreatedAtMs in
+   * lib/lastFlow. Producing the answer costs a base64 decode.
+   *
+   * It still arrives after mount, and that is an ordering fact rather than a
+   * waiting one: this component picks its flow in a useState initialiser, which
+   * runs during render, and the effect in App that decodes the token runs after
+   * every render. See the block where it is consumed.
+   *
+   * Null when there is no token, when the claim is absent or cannot be read
+   * confidently, or when the flow was never ambiguous in the first place. Null
+   * is the common case and it changes nothing.
+   */
+  resolvedFlow?: FlowMatch
 }
 
-/** Bar colour = who did the work. Carries information, or it isn't allowed. */
+/**
+ * Bar colour = who did the work. Carries information, or it isn't allowed.
+ *
+ * SETTLED. Two rounds of treatments went into the page behind a toggle and this
+ * is the one that was picked: the solid saturated fill. Outline-and-tint lost.
+ *
+ * THE ASSIGNMENT IS PART OF THE ANSWER, not an accident of it, and it is the
+ * part that moved. An earlier map read browser BLUE / network GREY / entra
+ * GREEN. These are the same three fills rotated one step, and this is the
+ * rotation that was on screen when it was approved. Do not rotate them back.
+ */
 const ACTOR_BAR: Record<Actor, string> = {
-  browser: 'bg-sky-400',
-  network: 'bg-slate-400',
-  entra: 'bg-emerald-400',
+  browser: 'bg-slate-400',
+  network: 'bg-emerald-400',
+  entra: 'bg-sky-400',
+}
+
+/**
+ * The name printed on a slice, on the overview track.
+ *
+ * SETTLED. Six variants went into the page behind a toggle — mono, sans, a
+ * different mono, bigger, lighter, wider — and this is the one that was picked.
+ * Typeface only: the size, weight and tracking never moved off the baseline, so
+ * they are back on the span as the plain `text-sm font-semibold` they always
+ * were. This is the whole of the change.
+ *
+ * Why the stack is written out rather than `font-sans`: Tailwind's --font-sans
+ * ends in four emoji families, and this is the stack that was actually on screen
+ * when it was picked. A request name never reaches an emoji glyph, so the two
+ * would render the same — but "the same" is a judgement and the literal stack
+ * needs none. Mono was buying column alignment that a bar label does not use;
+ * nothing on this track lines up vertically with anything.
+ */
+const SLICE_LABEL_FONT: CSSProperties = {
+  fontFamily:
+    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', Arial, sans-serif",
 }
 
 const TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1]
@@ -119,7 +175,12 @@ function resolvePath(ids: string[], roots: ZoomNode[]): ZoomNode[] {
   return out
 }
 
-export function JourneyTimeline({ token, tokenLabel }: Props) {
+export function JourneyTimeline({
+  token,
+  tokenLabel,
+  localSignOutCount = 0,
+  resolvedFlow = null,
+}: Props) {
   /**
    * Which real capture we're showing. Both were measured against the live tenant
    * on 16 July; switching between them IS the demo — same app, same person, and
@@ -130,7 +191,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
    * mount: landing on a recording of a flow you did not perform is what made
    * this page look fabricated, so it opens on the real one where possible.
    */
-  const [lastFlow] = useState(() => readLastFlow())
+  const [lastFlow, setLastFlow] = useState(() => readLastFlow())
   const [flow, setFlow] = useState<FlowId>(
     lastFlow?.kind === 'matched' ? lastFlow.flow : 'signin',
   )
@@ -165,14 +226,111 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
   /**
-   * The only way this component changes state. setPath is never called directly,
-   * so the fragment can only ever be written from a real click — see the note
-   * above readStepHash for why that matters more than it looks.
+   * ── The sign-up / sign-in answer, which arrives late ──────────────────────
+   *
+   * Every other flow is known before this component renders: the marker is in
+   * sessionStorage and readLastFlow is synchronous. This one is decided from a
+   * claim on the ID token, and it lands after mount for a structural reason
+   * rather than a slow one. The flow is picked in a useState initialiser, which
+   * runs during this component's render; the decode that settles it runs in an
+   * effect in App, and effects run after render. So the timeline has always
+   * already opened on something by the time the answer exists.
+   *
+   * Adopting it means moving the badge and the selected flow together. They are
+   * the same fact: `yours` is derived from lastFlow, and the tab is what the
+   * visitor is looking at. Move one without the other and the page either
+   * badges a flow it is not showing or shows a flow it will not badge.
+   *
+   * Compared during render for the same reason the sign-out below is, and it
+   * deliberately does not call navigate() for the same reason either — that
+   * writes the URL fragment, and this runs during render. Read the block above
+   * readStepHash before changing it.
+   *
+   * Sits ABOVE the sign-out branch so that a sign-out, which is a thing the
+   * visitor just did, outranks an answer about a session they have now left.
+   */
+  const [seenResolved, setSeenResolved] = useState(resolvedFlow)
+  if (resolvedFlow !== seenResolved) {
+    setSeenResolved(resolvedFlow)
+    if (resolvedFlow?.kind === 'matched') {
+      setLastFlow(resolvedFlow)
+      setFlow(resolvedFlow.flow)
+      setPath([])
+    }
+  }
+
+  /**
+   * ── A local sign-out selects its flow HERE, not through lastFlow ──────────
+   *
+   * lastFlow measures a redirect round trip: mark a start time, let the page
+   * unload, and freeze `Date.now() - started` when the browser comes back.
+   * Signing out of this app only calls clearCache() and never navigates, so
+   * there is no round trip, nothing to measure, and nothing to say. Routing it
+   * through lastFlow would have produced an elapsed time made of idle minutes
+   * and a banner announcing it.
+   *
+   * So the switch happens in the page and the page says nothing about timing.
+   * The lastFlow reset is the same motion: the banner and the "yours" badge are
+   * about a session that has just been dropped here, and clearLastFlow() has
+   * already taken their storage — this takes the copy that was read on mount.
+   *
+   * Compared during render rather than in an effect. React re-runs the
+   * component immediately on a state update from render, so the previous flow
+   * is never committed; an effect would paint it for a frame first, and a click
+   * registering instantly is the constraint this component is built around.
+   * `seen` starts at the prop's own first value, so the branch cannot fire on
+   * mount.
+   *
+   * It deliberately does NOT call navigate(), because navigate() writes the URL
+   * fragment and this runs during render. Read the block above readStepHash
+   * before changing that. The cost is a stale `#step=` left in the address bar
+   * if the visitor had drilled into a step before signing out; the next click
+   * on the timeline overwrites it.
+   */
+  const [seenSignOutCount, setSeenSignOutCount] = useState(localSignOutCount)
+  if (localSignOutCount !== seenSignOutCount) {
+    setSeenSignOutCount(localSignOutCount)
+    setFlow('signout')
+    // The path holds nodes from the journey being left. Carrying them into a
+    // different flow would zoom the axis to a step that is not in it.
+    setPath([])
+    setLastFlow(null)
+  }
+
+  /**
+   * The only thing that writes the fragment. A couple of places move the path
+   * without it — Escape, and the local sign-out above — and they are the reason
+   * to state the invariant this way round: the fragment is only ever written
+   * from a real click. See the note above readStepHash for why that matters
+   * more than it looks.
    */
   function navigate(next: ZoomNode[]) {
     setPath(next)
     writeStepHash(next)
   }
+
+  /**
+   * Up one level, and the only definition of "back" in here.
+   *
+   * It is one function rather than two call sites because it used to be two and
+   * they did different things: Escape dropped the last node, the button jumped
+   * clear of the whole zoom container. From two levels deep inside one request
+   * they landed in different places, and the one the visitor could see was the
+   * one that overshot. The guard lives in here too, so neither caller can fire
+   * on an empty path.
+   *
+   * Memoised on `path` so the Escape listener below re-subscribes when the path
+   * moves and not on every hover. It does the same two things navigate() does,
+   * and it is reached only from a click handler and a keydown handler, so
+   * writing the fragment is allowed. Read the block above readStepHash before
+   * that stops being true.
+   */
+  const back = useCallback(() => {
+    if (!path.length) return
+    const next = path.slice(0, -1)
+    setPath(next)
+    writeStepHash(next)
+  }, [path])
 
   const selected = path[path.length - 1] ?? null
 
@@ -202,17 +360,15 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
     0,
   )
 
-  // Escape backs out one level. Cheap, and it's what a tool should do.
+  // Escape backs out one level. Cheap, and it's what a tool should do. Same
+  // back() the control in the breadcrumb calls, which is the point.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && path.length) {
-        setPath(path.slice(0, -1))
-        writeStepHash(path.slice(0, -1))
-      }
+      if (e.key === 'Escape') back()
     }
     addEventListener('keydown', onKey)
     return () => removeEventListener('keydown', onKey)
-  }, [path])
+  }, [back])
 
   /** Select a node at the current detail level. */
   function open(node: ZoomNode) {
@@ -241,18 +397,17 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
               // theirs — which is exactly the confusion this banner exists to kill.
               <>
                 <span className="font-medium">
-                  You did not do this one. You did “{FLOW_META[yours!].label}”.
+                  This one is not yours. Yours is “{FLOW_META[yours!].label}”.
                 </span>{' '}
-                Everything below is a recorded reference flow, kept so you can compare it against
-                yours — switch back with the badged tab.
+                Everything below is a recorded reference flow. The badged tab switches back.
               </>
             ) : (
               <>
                 <span className="font-medium">
-                  You just did this one — it took {(lastFlow.elapsedMs / 1000).toFixed(1)}s.
+                  This one is yours. It took {(lastFlow.elapsedMs / 1000).toFixed(1)}s.
                 </span>{' '}
-                We know {lastFlow.because}. The breakdown below is a recorded capture of the same
-                flow, not a trace of your session — the browser throws that away on the redirect.
+                Identified because {lastFlow.because}. The breakdown below is a recorded capture of
+                the same flow, not a trace of your session.
               </>
             )
           ) : (
@@ -264,7 +419,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
               <span className="font-medium">
                 Your sign-in took {(lastFlow.elapsedMs / 1000).toFixed(1)}s.
               </span>{' '}
-              A prompt was involved, so it wasn't SSO — pick which one you did.
+              A prompt was involved, so it wasn't SSO.
             </>
           )}
         </div>
@@ -278,7 +433,16 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
               one the visitor actually performed, nothing else may look like it
               is theirs: yours is badged, the rest are visibly demoted to what
               they are, which is reference recordings. */}
-          <span className="flex overflow-hidden rounded border border-slate-700">
+          {/* flex-wrap is the whole of the phone fix, and it was measured, not
+              chosen. This strip is 368px of tabs and it was the only thing on
+              the page overflowing a 375px viewport: 422 against 375, so 47px of
+              the page ran off the right edge on the width a recruiter opens it
+              at. Letting it scroll instead was tried and does not work — the
+              strip becomes internally scrollable and stays 368px wide, so the
+              page still overflows by the same 47px. Wrapping is also free on
+              desktop: at 1905 the tabs fit on one line, and every box on the
+              page measures identical to the byte. */}
+          <span className="flex flex-wrap overflow-hidden rounded border border-slate-700">
             {/* Sign-out sits last on purpose: it is the only one that ends a
                 session rather than starting one, and its value is the contrast
                 with the five to its left. */}
@@ -354,11 +518,25 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
           <span className="font-mono text-xs uppercase tracking-wider text-slate-600">
             The whole {journey.label.toLowerCase()}
           </span>
-          <span className="flex flex-wrap items-center gap-x-3">
+          {/* The key to the only encoding on the page. A first-time reader did
+              not see it at all — not "found it small", did not find it. It was
+              an 8px square next to 12px type in slate-600, which is the same
+              ink the page uses for chrome it does not expect anyone to read, so
+              the whole line scanned as decoration and got skipped.
+
+              Four levers, all pointed the same way, none of them moving it: the
+              swatch is 50% wider, the type is up a step, the ink is up four
+              steps to the same slate-300 the request names use, and the entries
+              are spaced further apart so three pairs read as three things
+              rather than one strip. Contrast is doing most of the work — at
+              slate-600 it was roughly 3:1 against this panel, which is fine for
+              a decorative rule and not fine for the one thing that explains
+              what the colours mean. */}
+          <span className="flex flex-wrap items-center gap-x-4">
             {(Object.keys(ACTOR_LABELS) as Actor[]).map((actor) => (
-              <span key={actor} className="flex items-center gap-1">
-                <span className={`h-2 w-2 rounded-sm ${ACTOR_BAR[actor]}`} />
-                <span className="font-mono text-xs uppercase tracking-wider text-slate-600">
+              <span key={actor} className="flex items-center gap-1.5">
+                <span className={`h-3 w-3 rounded-sm ${ACTOR_BAR[actor]}`} />
+                <span className="font-mono text-sm uppercase tracking-wider text-slate-300">
                   {ACTOR_LABELS[actor]}
                 </span>
               </span>
@@ -408,7 +586,17 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                     build proved. Below the threshold you get a mark that invites
                     a click instead. */}
                 <span className="pointer-events-none flex h-full items-center justify-center px-1.5">
-                  <span className="truncate font-mono text-sm font-semibold text-slate-950">
+                  {/* Sans is narrower per character than the mono it replaced,
+                      so names now print on bars that used to fall under the 5%
+                      gate below and show nothing. That is the point of the
+                      change, not a side effect of it.
+
+                      The ink is settled separately: near-black on the saturated
+                      fill is what was approved. */}
+                  <span
+                    className="truncate text-sm font-semibold text-slate-950"
+                    style={SLICE_LABEL_FONT}
+                  >
                     {width.endsWith('%') && parseFloat(width) > 5
                       ? (event.short ?? event.label)
                       : ''}
@@ -454,13 +642,21 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                 <span className="font-mono text-sm text-emerald-300">
                   {zoomContainer.label}
                 </span>
-                <button
-                  onClick={() => navigate(path.slice(0, path.indexOf(zoomContainer)))}
-                  className="ml-1 rounded border border-slate-700 px-1.5 py-0.5 font-mono text-sm text-slate-300 hover:border-emerald-500/50 hover:text-emerald-300"
-                >
-                  ↑ back <span className="text-slate-600">esc</span>
-                </button>
               </>
+            )}
+            {/* Bound to the path, NOT to the zoom container, which is what it
+                used to hang off. Selecting a leaf deliberately does not move the
+                camera — there is nothing inside it to get closer to — so a leaf
+                produces no zoom container, so two levels down on a branch that
+                ends the way back out was an Escape key nothing on screen
+                mentions. A control the visitor cannot find does not exist. */}
+            {path.length > 0 && (
+              <button
+                onClick={back}
+                className="ml-1 rounded border border-slate-700 px-1.5 py-0.5 font-mono text-sm text-slate-300 hover:border-emerald-500/50 hover:text-emerald-300"
+              >
+                ↑ back <span className="text-slate-600">esc</span>
+              </button>
             )}
           </span>
           <span className="font-mono text-sm tabular-nums text-slate-400">
@@ -506,6 +702,9 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
             }
             const onlyHere =
               (FLOW_ONLY[flow] as readonly string[]).includes(node.id)
+            const barClass = node.absent
+              ? 'hatch'
+              : ACTOR_BAR[actorOf(node, zoomContainer ? actorOf(zoomContainer) : 'entra')]
 
             return (
               <li key={node.id}>
@@ -580,7 +779,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                     <span
                       style={{ left, width, minWidth: '4px' }}
                       className={`zoom-bar absolute top-0.5 h-3 rounded-sm ${
-                        node.absent ? 'hatch' : ACTOR_BAR[actorOf(node, zoomContainer ? actorOf(zoomContainer) : 'entra')]
+                        barClass
                       } ${
                         isSel
                           ? 'shadow-[0_0_0_2px] shadow-emerald-400/60'
@@ -681,7 +880,7 @@ function NodePanel({
       {node.absent && (
         <div className="mt-3 rounded border border-dashed border-slate-700 bg-slate-950/50 px-3 py-2">
           <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
-            Nothing here — and that's the finding
+            Nothing here. That's the finding
           </p>
           <p className="mt-1 text-sm leading-relaxed text-slate-400">{node.absent}</p>
         </div>
@@ -743,7 +942,7 @@ function CodeSection({ node }: { node: ZoomNode }) {
         <p className="mb-3 text-sm leading-relaxed text-slate-300">{code.note}</p>
         <div className="mb-2 flex items-center justify-between">
           <span className="font-mono text-sm text-slate-600">
-            the file that runs — embedded at build time, so it can't drift
+            the file that runs, embedded at build time, so it can't drift
           </span>
           <CopyButton value={code.source} />
         </div>

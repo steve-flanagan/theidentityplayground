@@ -187,7 +187,7 @@ export function buildTokenNode(token: string, label: string): ZoomNode {
     code: {
       file: 'web/src/lib/jwt.ts',
       source: jwtSource,
-      note: 'The decoder that produced everything below — and the reason it refuses to validate.',
+      note: 'The decoder that produced everything below, and the reason it refuses to validate.',
     },
     children: categories,
   }
@@ -268,7 +268,7 @@ export const FLOW_META: Record<
 > = {
   signup: {
     label: 'Sign-up',
-    summary: 'First time through. Same flow, plus the three requests that only ever happen once.',
+    summary: 'First time through. Three requests that only ever happen once, and no /kmsi.',
     outcome: { label: 'Token issued', ok: true },
   },
   signin: {
@@ -279,7 +279,7 @@ export const FLOW_META: Record<
   'sso-on': {
     label: 'SSO',
     summary:
-      'A live session already existed. No prompt, no typing — /authorize handed back a code off the session cookie.',
+      'A live session already existed. No prompt, no typing. /authorize handed back a code off the session cookie.',
     outcome: { label: 'Token issued', ok: true },
   },
   'sso-off': {
@@ -291,7 +291,7 @@ export const FLOW_META: Record<
   'sso-probe': {
     label: 'Silent probe',
     summary:
-      'prompt=none with no session. It cannot show UI, so it fails on purpose — and the failure is the useful part.',
+      'prompt=none with no session. It cannot show UI, so it fails on purpose, and the failure is the useful part.',
     // Overridden by the captured login_required anyway. Stated so the fallback is
     // never the thing that decides what a failing flow claims.
     outcome: { label: 'No token', ok: false },
@@ -299,7 +299,7 @@ export const FLOW_META: Record<
   signout: {
     label: 'Sign-out',
     summary:
-      'Global sign-out — two requests end the session at Entra. The local variant makes none at all, and that gap is the whole point.',
+      'Global sign-out. Two requests end the session at Entra. The local variant makes none at all, and that gap is the whole point.',
     outcome: { label: 'Session ended', ok: true },
   },
 }
@@ -369,18 +369,18 @@ const AUTHORIZE_INSIDE: ZoomNode[] = [
       what: 'The redirect_uri is compared to the registered list.',
       why: 'It is what stops a code being sent somewhere else.',
       gotcha:
-        'Matching is exact, not prefix. A trailing slash is a mismatch. This is why msalConfig uses window.location.origin and not "/" — origin yields the registered string verbatim.',
+        'Matching is exact, not prefix. A trailing slash is a mismatch. This is why msalConfig uses window.location.origin and not "/": origin yields the registered string verbatim.',
     },
   },
   {
     id: 'inside:userflow',
-    label: 'User flow selected — SUSI_Email',
+    label: 'User flow selected: SUSI_Email',
     summary: 'The knob that decides the rest',
     detail: {
       what: 'The sign-up/sign-in user flow bound to this app.',
       why: 'It determines the IdPs offered and the attributes collected.',
       gotcha:
-        'This is the knob. Change the user flow and the sign-in page, the available identity providers, and ultimately the claims in your token all change — without touching a line of app code.',
+        'This is the knob. Change the user flow and the sign-in page, the available identity providers, and ultimately the claims in your token all change, without touching a line of app code.',
     },
   },
   {
@@ -414,20 +414,20 @@ const AUTHORIZE_INSIDE: ZoomNode[] = [
 const LOGOUT_INSIDE: ZoomNode[] = [
   {
     id: 'inside:global',
-    label: 'Global sign-out — the session at Entra is ended',
+    label: 'Global sign-out: the session at Entra is ended',
     summary: 'end_session_endpoint, reached by a top-level navigation',
     detail: {
       what: 'The browser leaves for the tenant and Entra invalidates the session behind the cookie, then redirects to post_logout_redirect_uri.',
       why: 'logoutRedirect(). MSAL takes the endpoint from the discovery document fetched just before this.',
       gotcha:
-        'It has to be a top-level navigation. Ending a session means acting on a cookie for a host that is not ours, so the page is unloaded to do it — which is why a global sign-out costs a redirect and a full reload of the app, and the local one costs nothing.',
+        'It has to be a top-level navigation. Ending a session means acting on a cookie for a host that is not ours, so the page is unloaded to do it. That is why a global sign-out costs a redirect and a full reload of the app, and the local one costs nothing.',
     },
   },
   {
     id: 'inside:local',
-    label: 'Local sign-out — not this request, and not any request',
+    label: 'Local sign-out: not this request, and not any request',
     absent:
-      'clearCache() drops the tokens out of the browser and nothing leaves it. There is no capture of that flow on this site because there is nothing to capture: no request, no response, no number to put on an axis. The Entra session is untouched, so the next sign-in is silent SSO — /authorize hands a code straight back off the session cookie. That is the gap behind the oldest help-desk ticket in the enterprise: "I signed out, and it signed me straight back in." Both buttons are on this page, in the same file, doing genuinely different things.',
+      'clearCache() drops the tokens out of the browser and nothing leaves it. There is no capture of that flow on this site because there is nothing to capture: no request, no response, no number to put on an axis. The Entra session is untouched, so the next sign-in is silent SSO. /authorize hands a code straight back off the session cookie. That is the gap behind the oldest help-desk ticket in the enterprise: "I signed out, and it signed me straight back in." Both buttons are on this page, in the same file, doing genuinely different things.',
   },
 ]
 
@@ -437,11 +437,11 @@ const CA_MFA_INSIDE: ZoomNode[] = [
     id: 'inside:ca',
     label: 'Conditional Access evaluated',
     absent:
-      'No policy applied on this flow. This is where the CA timeline attaches once Module 4 exists — policy set in, signals evaluated, grant or block out.',
+      'No policy applied on this flow. This is where the CA timeline attaches once Module 4 exists: policy set in, signals evaluated, grant or block out.',
   },
   {
     id: 'inside:mfa',
-    label: 'MFA — not required',
+    label: 'MFA: not required',
     absent:
       'Nothing required it. When something does, this opens into the auth-methods timeline: challenge issued, method used, satisfied or not (Module 3). The token carries no amr to prove any of it either way, which is its own finding.',
   },
@@ -484,7 +484,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
       what: 'The browser leaves for the tenant-name subdomain carrying client_id, redirect_uri, scope, state, nonce and the PKCE challenge.',
       why: 'The authority MSAL is configured with.',
       gotcha:
-        '166 ms of this is spent before Entra reads a byte: DNS, TCP, TLS. Open the phases and it is right there. This is one of only two requests in the flow that pays that — the discovery call ahead of it is the other. Everything afterwards reuses a connection and is pure server time.',
+        '166 ms of this is spent before Entra reads a byte: DNS, TCP, TLS. Open the phases and it is right there. This is one of only two requests in the flow that pays that. The discovery call ahead of it is the other. Everything afterwards reuses a connection and is pure server time.',
     },
   },
   '/common/GetCredentialType': {
@@ -494,12 +494,12 @@ const ANNOTATIONS: Record<string, Annotation> = {
     label: 'POST /common/GetCredentialType',
     actor: 'entra',
     humanDoing: 'typing an email address',
-    summary: 'Home-realm discovery — before a password is ever typed.',
+    summary: 'Home-realm discovery, before a password is ever typed.',
     detail: {
       what: 'Entra decides what this identity is: a local account, or federated somewhere else.',
       why: 'It fires when the email loses focus, before the password field matters.',
       gotcha:
-        'This request decides whether you get a password box or a redirect to Google. On a federated identity the flow forks right here — which is exactly why idp appears in a social token and is absent from a local one.',
+        'This request decides whether you get a password box or a redirect to Google. On a federated identity the flow forks right here, which is exactly why idp appears in a social token and is absent from a local one.',
     },
   },
   '/{tid}/login': {
@@ -514,7 +514,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
       what: 'The credential is validated against the directory.',
       why: 'Email + password, per the SUSI_Email flow.',
       gotcha:
-        'Conditional Access and MFA evaluation both happen inside this one request. Neither triggered here, and neither is separately timed — a browser sees a single TTFB and nothing can decompose it.',
+        'Conditional Access and MFA evaluation both happen inside this one request. Neither triggered here, and neither is separately timed. A browser sees a single TTFB and nothing can decompose it.',
     },
   },
   '/{tid}/federation/oauth2': {
@@ -529,7 +529,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
       what: 'Entra hands off to the federated identity provider and takes the result back.',
       why: 'This account is a Google identity, and prompt=login forced a fresh authentication.',
       gotcha:
-        'This entire leg is what SSO skips. Compare the two SSO flows: with the session reused it does not appear at all, and /authorize returns a code in 190 ms. Defeat the session and you pay this round trip plus the human at the other end of it — 601 ms of machine and about eleven seconds of person.',
+        'This entire leg is what SSO skips. Compare the two SSO flows: with the session reused it does not appear at all, and /authorize returns a code in 190 ms. Defeat the session and you pay this round trip plus the human at the other end of it: 601 ms of machine and about eleven seconds of person.',
     },
   },
   '/kmsi': {
@@ -544,7 +544,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
       what: 'Records the answer to "stay signed in?" and issues the session cookie behind it.',
       why: 'The user flow offers it to a returning user.',
       gotcha:
-        'One of the four requests that differ between signing up and signing in — and the one that decides whether the NEXT sign-in needs a password at all.',
+        'One of the four requests that differ between signing up and signing in, and the one that decides whether the NEXT sign-in needs a password at all.',
     },
   },
   '/common/validateuserattributes': {
@@ -559,7 +559,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
       what: 'Validates the attributes the user flow collected, before anything is written.',
       why: 'SUSI_Email collects them on sign-up.',
       gotcha:
-        'Which attributes appear here is user-flow config, not code — and it is what decides which claims can exist in the token later.',
+        'Which attributes appear here is user-flow config, not code, and it is what decides which claims can exist in the token later.',
     },
   },
   '/common/createuser': {
@@ -571,7 +571,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
     summary: 'Sign-up only. The most expensive thing in either flow.',
     detail: {
       what: 'The directory object is actually created.',
-      why: 'First time through — there is no account yet.',
+      why: 'First time through. There is no account yet.',
       gotcha:
         'Measured at 1,673 ms: about 40% of the entire sign-up, and more than the whole sign-in flow costs end to end. Writing a user into a directory is the expensive part of identity, and it happens exactly once per account. Everything after is comparatively free.',
     },
@@ -595,7 +595,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
     match: 'SPA /',
     id: 'spa',
     short: 'SPA reload',
-    label: 'GET / — the SPA reloads',
+    label: 'GET / · the SPA reloads',
     actor: 'browser',
     summary: 'Back on our origin, carrying the code in the fragment.',
     detail: {
@@ -616,13 +616,13 @@ const ANNOTATIONS: Record<string, Annotation> = {
     code: {
       file: 'web/src/components/SignInPanel.tsx',
       source: signInPanelSource,
-      note: 'loginRedirect, not loginPopup — popups get blocked, and a recruiter on a phone is the case that matters.',
+      note: 'loginRedirect, not loginPopup. Popups get blocked, and a recruiter on a phone is the case that matters.',
     },
     detail: {
       what: 'The authorization code goes back with the original code_verifier, and the ID token comes out.',
       why: 'Redeeming the code.',
       gotcha:
-        'No client secret anywhere. A SPA cannot keep one, which is the entire reason PKCE exists — the verifier is the proof instead. Note the phases: zero setup cost, because the connection to this host is already warm.',
+        'No client secret anywhere. A SPA cannot keep one, which is the entire reason PKCE exists. The verifier is the proof instead. Note the phases: zero setup cost, because the connection to this host is already warm.',
     },
   },
   '/{tid}/oauth2/v2.0/logout': {
@@ -639,7 +639,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
     },
     detail: {
       what: 'The browser navigates to end_session_endpoint and Entra returns its sign-out page.',
-      why: 'logoutRedirect() — the "sign out everywhere" button.',
+      why: 'logoutRedirect(), the "sign out everywhere" button.',
       gotcha:
         'This is the entire difference between the two sign-outs, and it is visible as a bar because the other one has no bar to draw. Local sign-out ends at the browser; this one leaves it.',
     },
@@ -654,9 +654,9 @@ const ANNOTATIONS: Record<string, Annotation> = {
     summary: "What Entra's own sign-out page posts once you have picked an account.",
     detail: {
       what: 'The second half of the sign-out: the account chosen on the page is submitted back to the tenant.',
-      why: 'The sign-out page returned by /logout offered an account picker — its assets are in the same capture.',
+      why: 'The sign-out page returned by /logout offered an account picker. Its assets are in the same capture.',
       gotcha:
-        'The picker exists because a browser can hold more than one Entra session. Sign-out is per account, not per browser, so "I signed out" and "I am signed out" are different statements — and the one you ended is not necessarily the one the next app picks up.',
+        'The picker exists because a browser can hold more than one Entra session. Sign-out is per account, not per browser, so "I signed out" and "I am signed out" are different statements, and the one you ended is not necessarily the one the next app picks up.',
     },
   },
 }
@@ -681,7 +681,7 @@ const FLOW_ANNOTATIONS: Partial<Record<FlowId, Record<string, Annotation>>> = {
       short: 'discovery',
       label: 'GET /.well-known/openid-configuration',
       actor: 'network',
-      summary: 'Read again — this time for end_session_endpoint.',
+      summary: 'Read again, this time for end_session_endpoint.',
       detail: {
         what: 'The same discovery document, re-read so MSAL can find the sign-out endpoint.',
         why: 'MSAL builds the logout URL from metadata rather than from a hardcoded path.',
@@ -693,15 +693,15 @@ const FLOW_ANNOTATIONS: Partial<Record<FlowId, Record<string, Annotation>>> = {
       match: 'SPA /',
       id: 'spa',
       short: 'SPA reload',
-      label: 'GET / — the SPA reloads, signed out',
+      label: 'GET / · the SPA reloads, signed out',
       actor: 'browser',
       idleDoing: "Entra's sign-out page, before it hands the browser back",
       summary: 'Back on our own origin at post_logout_redirect_uri.',
       detail: {
         what: 'The browser lands back on the app and boots it fresh, with nothing in the cache.',
-        why: 'postLogoutRedirectUri — window.location.origin, set in msalConfig.',
+        why: 'postLogoutRedirectUri, set to window.location.origin in msalConfig.',
         gotcha:
-          'The flow ends here. There is no /token after it, because there is nothing to redeem — count the requests. On a sign-in this exact same reload is the moment MSAL finds the code in the fragment and spends it; here the reload is the last thing that happens.',
+          'The flow ends here. There is no /token after it, because there is nothing to redeem. Count the requests. On a sign-in this exact same reload is the moment MSAL finds the code in the fragment and spends it; here the reload is the last thing that happens.',
       },
     },
   },
@@ -734,7 +734,7 @@ const PHASE_COPY: Record<string, { label: string; what: string; gotcha?: string 
     label: 'TLS handshake',
     what: 'Negotiating the encrypted channel.',
     gotcha:
-      'Setting up a connection is what costs here. In this capture only two requests pay it — the discovery call (57 ms) and /authorize (166 ms). Every request after them reuses a connection and pays nothing: GetCredentialType, /login, /kmsi and /token are all pure server time. It is why the second half of the flow looks so cheap.',
+      'Setting up a connection is what costs here. In this capture only two requests pay it: the discovery call (57 ms) and /authorize (166 ms). Every request after them reuses a connection and pays nothing: GetCredentialType, /login, /kmsi and /token are all pure server time. It is why the second half of the flow looks so cheap.',
   },
   send: { label: 'Request sent', what: 'Writing the bytes.' },
   // Overridden per host below — "Entra thinking" is a lie on our own origin.
@@ -793,7 +793,7 @@ function toEvents(
     const m: Measured = {
       ...a,
       id,
-      label: cached ? `${a.label} — cached` : a.label,
+      label: cached ? `${a.label} (cached)` : a.label,
       short: cached ? `${a.short ?? a.label} (cached)` : a.short,
       summary: cached
         ? 'Same document, second ask. Served from cache in 0 ms.'
@@ -801,7 +801,7 @@ function toEvents(
       detail: cached
         ? {
             what: 'MSAL re-reads the discovery document after the redirect, because the page was torn down and rebuilt.',
-            why: 'The SPA reloaded — everything in memory went with it.',
+            why: 'The SPA reloaded. Everything in memory went with it.',
             gotcha:
               'Zero milliseconds. The browser had it cached, so the second ask costs nothing. This is the same lesson as the connection reuse on /token: the first time is expensive, and after that identity is mostly free.',
           }
@@ -853,8 +853,8 @@ function toEvents(
         label:
           key === 'wait'
             ? r.host.includes('ciamlogin')
-              ? 'Waiting — Entra thinking'
-              : 'Waiting — our host responding'
+              ? 'Waiting: Entra thinking'
+              : 'Waiting: our host responding'
             : copy.label,
         span: phaseSpan,
         summary: `${ms} ms`,

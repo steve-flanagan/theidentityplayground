@@ -4,6 +4,18 @@ import { InteractionStatus, BrowserAuthError } from '@azure/msal-browser'
 import { buildAuthRequest, isInteractionRequired, silentRedirectUri } from '../auth/ssoRequest'
 import { clearLastFlow, markFlowStart } from '../lib/lastFlow'
 
+type Props = {
+  /**
+   * Raised after a local sign-out so the page can move the timeline onto the
+   * sign-out flow.
+   *
+   * Optional because the panel signs out perfectly well on its own — the
+   * timeline is a listener, not a dependency, and the tests mount this
+   * standalone.
+   */
+  onLocalSignOut?: () => void
+}
+
 /**
  * Sign-in / sign-out controls, plus the SSO switches.
  *
@@ -24,7 +36,7 @@ import { clearLastFlow, markFlowStart } from '../lib/lastFlow'
  * clearCache(), drops the local tokens and leaves the Entra session standing, so
  * the next sign-in demonstrates SSO instead of hiding it.
  */
-export function SignInPanel() {
+export function SignInPanel({ onLocalSignOut }: Props) {
   const { instance, inProgress, accounts } = useMsal()
   const isAuthenticated = useIsAuthenticated()
   const [error, setError] = useState<string | null>(null)
@@ -63,12 +75,12 @@ export function SignInPanel() {
         ...buildAuthRequest('silent'),
         redirectUri: silentRedirectUri(),
       })
-      setNote('Silent sign-in succeeded — that token came from your existing session, with no prompt.')
+      setNote('Silent sign-in succeeded. That token came from your existing session, with no prompt.')
     } catch (e) {
       if (isInteractionRequired(e)) {
         // The instructive failure, not a bug: no session to single-sign-on with.
         setNote(
-          'Silent sign-in returned login_required — there is no active session to reuse, so SSO had nothing to work with. Sign in once, then try again.',
+          'Silent sign-in returned login_required. There is no active session to reuse, so SSO had nothing to work with. Sign in once, then try again.',
         )
         return
       }
@@ -83,11 +95,22 @@ export function SignInPanel() {
     try {
       await instance.clearCache()
       instance.setActiveAccount(null)
-      // The timeline's "you just did this" badge is about a session that no
-      // longer exists here. Drop it with the tokens.
+      // The old badge is about a session that no longer exists here, so it goes
+      // with the tokens.
       clearLastFlow()
+      // And markFlowStart is deliberately NOT called here, unlike the global
+      // button below. It stamps a start time for a REDIRECT to come back and
+      // finish; this path never leaves the page, so nothing would ever read the
+      // stamp. It would sit in storage until some unrelated later load turned
+      // the idle minutes since the click into "it took 41.7s" — an invented
+      // measurement, which is the one thing this site cannot do.
+      //
+      // Nothing navigated, so the timeline is still mounted and can simply be
+      // told which flow to show. No round trip, no number, nothing said about
+      // timing.
+      onLocalSignOut?.()
       setNote(
-        'Signed out of this app only. Your Entra session is still live, so signing in again should not ask for credentials — that is SSO.',
+        'Signed out of this app only. Your Entra session is still live, so signing in again should not ask for credentials. That is SSO.',
       )
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sign-out failed.')
@@ -99,7 +122,11 @@ export function SignInPanel() {
     setError(null)
     setNote(null)
     try {
+      // Both writes have to happen BEFORE logoutRedirect, which unloads the
+      // page. They ride through sessionStorage and are read when Entra sends
+      // the browser back, same as the sign-in marker.
       clearLastFlow()
+      markFlowStart('sign-out')
       await instance.logoutRedirect({ account: instance.getActiveAccount() ?? undefined })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sign-out failed.')
@@ -158,7 +185,7 @@ export function SignInPanel() {
             <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">
               Sends <span className="font-mono text-slate-400">prompt=login</span>, so Entra ignores
               any live session and demands credentials. Leave it off and an existing session is
-              reused — that default reuse <em>is</em> SSO.
+              reused. That default reuse <em>is</em> SSO.
             </span>
           </span>
         </label>
@@ -194,7 +221,7 @@ export function SignInPanel() {
 
         <p className="mt-2 text-xs leading-relaxed text-slate-600">
           "This app" drops local tokens and leaves the Entra session alive, so the next sign-in
-          demonstrates SSO. "Everywhere" ends the session too — after that there is nothing to
+          demonstrates SSO. "Everywhere" ends the session too. After that there is nothing to
           single-sign-on with.
         </p>
       </div>
@@ -213,9 +240,7 @@ export function SignInPanel() {
 
       {!isAuthenticated && (
         <p className="mt-3 text-xs leading-relaxed text-slate-600">
-          Accounts created here are demo accounts. Don't reuse a real password — not because this
-          site is untrustworthy, but because you shouldn't reuse passwords anywhere, and a site
-          about identity shouldn't have to tell you that.
+          Accounts created here are demo accounts. Don't reuse a real password.
         </p>
       )}
     </div>
