@@ -135,6 +135,9 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
     lastFlow?.kind === 'matched' ? lastFlow.flow : 'signin',
   )
 
+  /** The one flow we can honestly say the visitor performed, if any. */
+  const yours = lastFlow?.kind === 'matched' ? lastFlow.flow : null
+
   const journey: Journey = useMemo(
     () => buildJourney(flow, token, tokenLabel),
     [flow, token, tokenLabel],
@@ -216,13 +219,26 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
           }`}
         >
           {lastFlow.kind === 'matched' ? (
-            <>
-              <span className="font-medium">
-                You just did this one — it took {(lastFlow.elapsedMs / 1000).toFixed(1)}s.
-              </span>{' '}
-              We know {lastFlow.because}. The breakdown below is a recorded capture of the same
-              flow, not a trace of your session — the browser throws that away on the redirect.
-            </>
+            yours !== flow ? (
+              // Looking at a flow they did NOT perform. Say so before they read a
+              // single number, or the page is claiming someone else's sign-in was
+              // theirs — which is exactly the confusion this banner exists to kill.
+              <>
+                <span className="font-medium">
+                  You did not do this one. You did “{FLOW_META[yours!].label}”.
+                </span>{' '}
+                Everything below is a recorded reference flow, kept so you can compare it against
+                yours — switch back with the badged tab.
+              </>
+            ) : (
+              <>
+                <span className="font-medium">
+                  You just did this one — it took {(lastFlow.elapsedMs / 1000).toFixed(1)}s.
+                </span>{' '}
+                We know {lastFlow.because}. The breakdown below is a recorded capture of the same
+                flow, not a trace of your session — the browser throws that away on the redirect.
+              </>
+            )
           ) : (
             <>
               <span className="font-medium">
@@ -239,24 +255,42 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-slate-800 px-5 py-3">
         <div className="flex flex-wrap items-baseline gap-x-3">
-          {/* The switch IS the demo: same app, same person, four requests apart. */}
+          {/* The switch IS the demo — the diff between flows is the best content
+              on the page, so the others stay reachable. But when we know which
+              one the visitor actually performed, nothing else may look like it
+              is theirs: yours is badged, the rest are visibly demoted to what
+              they are, which is reference recordings. */}
           <span className="flex overflow-hidden rounded border border-slate-700">
-            {(['signup', 'signin', 'sso-on', 'sso-off', 'sso-probe'] as FlowId[]).map((f) => (
-              <button
-                key={f}
-                onClick={() => {
-                  setFlow(f)
-                  navigate([])
-                }}
-                className={`px-2.5 py-1 font-mono text-sm transition-colors ${
-                  flow === f
-                    ? 'bg-emerald-500/20 text-emerald-200'
-                    : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
-                }`}
-              >
-                {FLOW_META[f].label}
-              </button>
-            ))}
+            {(['signup', 'signin', 'sso-on', 'sso-off', 'sso-probe'] as FlowId[]).map((f) => {
+              const isYours = yours === f
+              const selected = flow === f
+              return (
+                <button
+                  key={f}
+                  onClick={() => {
+                    setFlow(f)
+                    navigate([])
+                  }}
+                  title={isYours ? 'The flow you just performed' : 'A recorded reference flow'}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 font-mono text-sm transition-colors ${
+                    selected
+                      ? isYours
+                        ? 'bg-emerald-500/25 text-emerald-100'
+                        : 'bg-slate-700/60 text-slate-200'
+                      : yours
+                        ? 'text-slate-600 hover:bg-slate-800 hover:text-slate-400'
+                        : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
+                  }`}
+                >
+                  {FLOW_META[f].label}
+                  {isYours && (
+                    <span className="rounded-full bg-emerald-400/20 px-1.5 text-xs text-emerald-300">
+                      yours
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </span>
           <p className="text-sm text-slate-500">{journey.summary}</p>
         </div>
