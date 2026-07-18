@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ACTOR_LABELS,
   buildJourney,
-  FLOW_DIFF,
+  FLOW_META,
+  FLOW_ONLY,
   codeUrl,
   spanMs,
   type Actor,
@@ -198,7 +199,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
         <div className="flex flex-wrap items-baseline gap-x-3">
           {/* The switch IS the demo: same app, same person, four requests apart. */}
           <span className="flex overflow-hidden rounded border border-slate-700">
-            {(['signin', 'signup'] as FlowId[]).map((f) => (
+            {(['signup', 'signin', 'sso-on', 'sso-off', 'sso-probe'] as FlowId[]).map((f) => (
               <button
                 key={f}
                 onClick={() => {
@@ -211,7 +212,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                     : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
                 }`}
               >
-                {f === 'signin' ? 'Sign-in' : 'Sign-up'}
+                {FLOW_META[f].label}
               </button>
             ))}
           </span>
@@ -223,9 +224,13 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
               {journey.duration.toLocaleString()}
             </span>{' '}
             <span className="text-sm">ms machine</span>
-            {/* The number nobody expects: the machine is not the slow part. */}
+            {/* The number nobody expects: the machine is not the slow part.
+                But only say "you typing" when a person actually did — on the SSO
+                flows nobody types at all, and claiming otherwise would be a small
+                lie on a page whose whole argument is that it doesn't tell them. */}
             <span className="ml-2 text-xs tabular-nums text-slate-600">
-              of {(journey.wallClock / 1000).toFixed(1)}s wall · the rest is you typing
+              of {(journey.wallClock / 1000).toFixed(1)}s wall
+              {journey.wallClock - journey.duration > 2000 && ' · the rest is you typing'}
             </span>
           </p>
           <span
@@ -393,8 +398,7 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
             const openable = timedChildren(node).length > 0 || Boolean(node.children?.length)
             const ev = node as { humanGapBefore?: number; humanDoing?: string }
             const onlyHere =
-              (FLOW_DIFF.signupOnly as readonly string[]).includes(node.id) ||
-              (FLOW_DIFF.signinOnly as readonly string[]).includes(node.id)
+              (FLOW_ONLY[flow] as readonly string[]).includes(node.id)
 
             return (
               <li key={node.id}>

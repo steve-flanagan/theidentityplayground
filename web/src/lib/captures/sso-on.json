@@ -1,0 +1,119 @@
+{
+  "flow": "sso-on",
+  "capturedAt": "2026-07-18T10:20:25.454-04:00",
+  "note": "Derived from a real HAR by scripts/har-to-timings.mjs. Timings only — no headers, cookies, bodies or query strings. The HAR itself is gitignored and must stay that way.",
+  "requestCount": 6,
+  "machineMs": 743,
+  "wallMs": 1067,
+  "humanMs": 324,
+  "requests": [
+    {
+      "path": "/{tid}/v2.0/.well-known/openid-configuration",
+      "host": "theidentityplayground.ciamlogin.com",
+      "method": "GET",
+      "status": 0,
+      "startedAt": 0,
+      "total": 0,
+      "idleBefore": 0,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 0,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/{tid}/oauth2/v2.0/authorize",
+      "host": "theidentityplayground.ciamlogin.com",
+      "method": "GET",
+      "status": 302,
+      "startedAt": 14,
+      "total": 190,
+      "idleBefore": 14,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 190,
+        "receive": 0
+      }
+    },
+    {
+      "path": "SPA /",
+      "host": "theidentityplayground.com",
+      "method": "GET",
+      "status": 304,
+      "startedAt": 209,
+      "total": 240,
+      "idleBefore": 5,
+      "timings": {
+        "blocked": 1,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 239,
+        "receive": 0
+      }
+    },
+    {
+      "path": "SPA /",
+      "host": "theidentityplayground.com",
+      "method": "GET",
+      "status": 304,
+      "startedAt": 665,
+      "total": 98,
+      "idleBefore": 216,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 98,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/{tid}/v2.0/.well-known/openid-configuration",
+      "host": "theidentityplayground.ciamlogin.com",
+      "method": "GET",
+      "status": 200,
+      "startedAt": 843,
+      "total": 0,
+      "idleBefore": 80,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 0,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/{tid}/oauth2/v2.0/token",
+      "host": "theidentityplayground.ciamlogin.com",
+      "method": "POST",
+      "status": 200,
+      "startedAt": 852,
+      "total": 215,
+      "idleBefore": 9,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 215,
+        "receive": 0
+      }
+    }
+  ]
+}

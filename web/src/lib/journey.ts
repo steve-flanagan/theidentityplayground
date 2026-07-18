@@ -98,7 +98,7 @@ export type JourneyEvent = ZoomNode & {
   humanDoing?: string
 }
 
-export type FlowId = 'signin' | 'signup'
+export type FlowId = 'signup' | 'signin' | 'sso-on' | 'sso-off' | 'sso-probe'
 
 export type Journey = {
   id: FlowId
@@ -191,6 +191,9 @@ export function buildTokenNode(token: string, label: string): ZoomNode {
 // Retyping numbers by hand is how a "real" figure quietly becomes a wrong one.
 import signinCapture from './captures/signin.json'
 import signupCapture from './captures/signup.json'
+import ssoOnCapture from './captures/sso-on.json'
+import ssoOffCapture from './captures/sso-off.json'
+import ssoProbeCapture from './captures/sso-probe.json'
 
 type CapturedRequest = {
   path: string
@@ -198,6 +201,8 @@ type CapturedRequest = {
   host: string
   method: string
   status: number
+  /** OAuth errors ride in the redirect, not the status line. e.g. login_required. */
+  oauthError?: string
   total: number
   idleBefore: number
   timings: Record<string, number>
@@ -213,8 +218,55 @@ type Capture = {
 }
 
 const CAPTURES: Record<FlowId, Capture> = {
-  signin: signinCapture as Capture,
   signup: signupCapture as Capture,
+  signin: signinCapture as Capture,
+  'sso-on': ssoOnCapture as Capture,
+  'sso-off': ssoOffCapture as Capture,
+  'sso-probe': ssoProbeCapture as Capture,
+}
+
+/**
+ * What each flow is, in one line. The SSO pair is the point: sso-on and sso-off
+ * are the SAME user with the SAME live Google-federated session, and they differ
+ * by exactly one request parameter. 1.1 seconds against 13.5.
+ */
+export const FLOW_META: Record<FlowId, { label: string; summary: string }> = {
+  signup: {
+    label: 'Sign-up',
+    summary: 'First time through. Same flow, plus the three requests that only ever happen once.',
+  },
+  signin: {
+    label: 'Sign-in',
+    summary: 'Interactive sign-in with a local account, no session to reuse.',
+  },
+  'sso-on': {
+    label: 'SSO',
+    summary:
+      'A live session already existed. No prompt, no typing — /authorize handed back a code off the session cookie.',
+  },
+  'sso-off': {
+    label: 'SSO bypassed',
+    summary:
+      'The same session, one parameter different: prompt=login makes Entra ignore it and re-authenticate anyway.',
+  },
+  'sso-probe': {
+    label: 'Silent probe',
+    summary:
+      'prompt=none with no session. It cannot show UI, so it fails on purpose — and the failure is the useful part.',
+  },
+}
+
+/**
+ * Requests unique to a flow, marked with ◆ so switching makes the diff visible.
+ * Nothing here is cosmetic: each entry is a request that exists in one flow and
+ * genuinely does not exist in its counterpart.
+ */
+export const FLOW_ONLY: Record<FlowId, readonly string[]> = {
+  signup: ['validate', 'createuser', 'consent'],
+  signin: ['kmsi'],
+  'sso-on': [],
+  'sso-off': ['federation'],
+  'sso-probe': [],
 }
 
 type Measured = {
@@ -376,6 +428,21 @@ const ANNOTATIONS: Record<string, Annotation> = {
       why: 'Email + password, per the SUSI_Email flow.',
       gotcha:
         'Conditional Access and MFA evaluation both happen inside this one request. Neither triggered here, and neither is separately timed — a browser sees a single TTFB and nothing can decompose it.',
+    },
+  },
+  '/{tid}/federation/oauth2': {
+    match: '/{tid}/federation/oauth2',
+    id: 'federation',
+    label: 'POST /federation/oauth2',
+    short: '/federation',
+    actor: 'entra',
+    humanDoing: 'signing in at Google',
+    summary: 'The trip out to Google and back. Only happens when SSO is defeated.',
+    detail: {
+      what: 'Entra hands off to the federated identity provider and takes the result back.',
+      why: 'This account is a Google identity, and prompt=login forced a fresh authentication.',
+      gotcha:
+        'This entire leg is what SSO skips. Compare the two SSO flows: with the session reused it does not appear at all, and /authorize returns a code in 190 ms. Defeat the session and you pay this round trip plus the human at the other end of it — 601 ms of machine and about eleven seconds of person.',
     },
   },
   '/kmsi': {
@@ -657,23 +724,23 @@ export function buildJourney(flow: FlowId, token: string, tokenLabel: string): J
   const capture = CAPTURES[flow]
   const events = toEvents(capture, token, tokenLabel)
 
+  // The outcome comes from the capture, not from an assumption that every flow
+  // succeeds. A silent probe against no session returns login_required, and
+  // saying so is the whole value of that flow — an OAuth failure arrives as a
+  // 302 carrying an error, never as a 4xx, which is why the script digs the code
+  // out of the redirect rather than reading the status line.
+  const failure = capture.requests.find((r) => r.oauthError)
+
   return {
     id: flow,
-    label: flow === 'signin' ? 'Sign-in' : 'Sign-up',
-    summary:
-      flow === 'signin'
-        ? 'Returning user. Authorization code + PKCE, measured against the live tenant.'
-        : 'First time through. Same flow, plus the three requests that only ever happen once.',
+    label: FLOW_META[flow].label,
+    summary: FLOW_META[flow].summary,
     // Both straight from the capture. Not computed here, not typed here.
     duration: capture.machineMs,
     wallClock: capture.wallMs,
-    outcome: { label: 'Token issued', ok: true },
+    outcome: failure
+      ? { label: failure.oauthError!, ok: false }
+      : { label: 'Token issued', ok: true },
     events,
   }
 }
-
-/** The four requests that differ. This is the whole comparison, precomputed. */
-export const FLOW_DIFF = {
-  signupOnly: ['validate', 'createuser', 'consent'],
-  signinOnly: ['kmsi'],
-} as const

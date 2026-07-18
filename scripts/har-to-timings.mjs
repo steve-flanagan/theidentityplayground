@@ -66,6 +66,15 @@ for (const e of entries) {
   const idleBefore = previousEnd === null ? 0 : Math.max(0, startedAt - previousEnd)
   previousEnd = startedAt + total
 
+  // An OAuth error comes back in the redirect, not the status line — a silent
+  // probe that finds no session is a 302, not a 4xx. Pull just the error CODE
+  // out of the Location header; nothing else from it, because that header also
+  // carries state and (on success) the authorization code.
+  const location = (e.response.headers ?? []).find(
+    (h) => h.name.toLowerCase() === 'location',
+  )?.value
+  const oauthError = location?.match(/[#&?]error=([^&]+)/)?.[1]
+
   requests.push({
     // Tenant GUID is public, but collapsing it keeps the labels readable.
     path: u.host.includes('ciamlogin')
@@ -74,6 +83,7 @@ for (const e of entries) {
     host: u.host,
     method: e.request.method,
     status: e.response.status,
+    ...(oauthError ? { oauthError: decodeURIComponent(oauthError) } : {}),
     startedAt,
     total,
     idleBefore,

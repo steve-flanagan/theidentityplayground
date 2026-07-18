@@ -3,7 +3,9 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { JourneyTimeline } from './JourneyTimeline'
 import { buildSampleToken } from '../lib/sampleToken'
 import signinCapture from '../lib/captures/signin.json'
-import { buildJourney, type ZoomNode } from '../lib/journey'
+import { buildJourney, FLOW_ONLY, type FlowId, type ZoomNode } from '../lib/journey'
+
+const FLOWS: FlowId[] = ['signup', 'signin', 'sso-on', 'sso-off', 'sso-probe']
 
 // These exist because of a real outage, not for coverage.
 //
@@ -118,7 +120,7 @@ describe('the timeline reports what was actually measured', () => {
     // duplicate and/or omit children. It rendered phantom rows in every detail
     // view, and React logged the error on every paint while the DOM assertions
     // all passed. Ids are the invariant; this is the guard.
-    for (const flow of ['signin', 'signup'] as const) {
+    for (const flow of FLOWS) {
       const journey = buildJourney(flow, token, 'Sample ID token')
       const ids: string[] = []
       const walk = (nodes: ZoomNode[]) => {
@@ -139,7 +141,7 @@ describe('the timeline reports what was actually measured', () => {
     // 146 ms" under a request labelled 146 ms. Same number, one click deeper,
     // nothing learned — "a lot of useless info and just entra waiting". Six of
     // the eight requests were like that. A level has to earn its existence.
-    for (const flow of ['signin', 'signup'] as const) {
+    for (const flow of FLOWS) {
       for (const event of buildJourney(flow, token, 'Sample ID token').events) {
         const timed = (event.children ?? []).filter((c) => c.span)
         expect(
@@ -160,6 +162,38 @@ describe('the timeline reports what was actually measured', () => {
     )
     const waits = (spa?.children ?? []).filter((c) => c.label.startsWith('Waiting'))
     for (const w of waits) expect(w.label).not.toContain('Entra')
+  })
+
+  it('builds every flow, and reports failure as failure', () => {
+    // The silent probe is the one flow that does NOT end in a token. Hardcoding
+    // "Token issued" would turn a correct, informative failure into a lie.
+    const outcomes = FLOWS.map((f) => [f, buildJourney(f, token, 'Sample ID token').outcome])
+    expect(Object.fromEntries(outcomes)).toMatchObject({
+      'sso-on': { ok: true },
+      'sso-off': { ok: true },
+      'sso-probe': { ok: false, label: 'login_required' },
+    })
+  })
+
+  it('marks only requests that genuinely exist in that flow', () => {
+    // A typo in FLOW_ONLY would silently stop the ◆ diff marker from ever
+    // rendering, and nothing else would fail. This is the guard.
+    for (const flow of FLOWS) {
+      const ids = new Set(buildJourney(flow, token, 'Sample ID token').events.map((e) => e.id))
+      for (const marked of FLOW_ONLY[flow]) {
+        expect(ids.has(marked), `${flow} marks "${marked}" but has no such request`).toBe(true)
+      }
+    }
+  })
+
+  it('proves the SSO pair differs by more than noise', () => {
+    // The demo's claim is that defeating SSO costs real time. If this ever
+    // inverts, the claim on the page is wrong and must change with it.
+    const on = buildJourney('sso-on', token, 'Sample ID token')
+    const off = buildJourney('sso-off', token, 'Sample ID token')
+    expect(off.wallClock).toBeGreaterThan(on.wallClock * 5)
+    expect(off.events.some((e) => e.id === 'federation')).toBe(true)
+    expect(on.events.some((e) => e.id === 'federation')).toBe(false)
   })
 
   it('never puts human thinking time on the machine axis', () => {

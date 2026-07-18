@@ -1,0 +1,137 @@
+{
+  "flow": "sso-off",
+  "capturedAt": "2026-07-18T10:22:22.740-04:00",
+  "note": "Derived from a real HAR by scripts/har-to-timings.mjs. Timings only — no headers, cookies, bodies or query strings. The HAR itself is gitignored and must stay that way.",
+  "requestCount": 7,
+  "machineMs": 2332,
+  "wallMs": 13481,
+  "humanMs": 11149,
+  "requests": [
+    {
+      "path": "/{tid}/v2.0/.well-known/openid-configuration",
+      "host": "theidentityplayground.ciamlogin.com",
+      "method": "GET",
+      "status": 0,
+      "startedAt": 0,
+      "total": 0,
+      "idleBefore": 0,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 0,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/{tid}/oauth2/v2.0/authorize",
+      "host": "theidentityplayground.ciamlogin.com",
+      "method": "GET",
+      "status": 200,
+      "startedAt": 14,
+      "total": 369,
+      "idleBefore": 14,
+      "timings": {
+        "blocked": 0,
+        "dns": 1,
+        "connect": 85,
+        "ssl": 82,
+        "send": 0,
+        "wait": 201,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/{tid}/federation/oauth2",
+      "host": "theidentityplayground.ciamlogin.com",
+      "method": "POST",
+      "status": 302,
+      "startedAt": 11191,
+      "total": 601,
+      "idleBefore": 10808,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 601,
+        "receive": 0
+      }
+    },
+    {
+      "path": "SPA /",
+      "host": "theidentityplayground.com",
+      "method": "GET",
+      "status": 304,
+      "startedAt": 11798,
+      "total": 227,
+      "idleBefore": 6,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 227,
+        "receive": 0
+      }
+    },
+    {
+      "path": "SPA /",
+      "host": "theidentityplayground.com",
+      "method": "GET",
+      "status": 304,
+      "startedAt": 12248,
+      "total": 106,
+      "idleBefore": 223,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 106,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/{tid}/v2.0/.well-known/openid-configuration",
+      "host": "theidentityplayground.ciamlogin.com",
+      "method": "GET",
+      "status": 200,
+      "startedAt": 12445,
+      "total": 0,
+      "idleBefore": 91,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 0,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/{tid}/oauth2/v2.0/token",
+      "host": "theidentityplayground.ciamlogin.com",
+      "method": "POST",
+      "status": 200,
+      "startedAt": 12452,
+      "total": 1029,
+      "idleBefore": 7,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 73,
+        "ssl": 81,
+        "send": 0,
+        "wait": 875,
+        "receive": 0
+      }
+    }
+  ]
+}
