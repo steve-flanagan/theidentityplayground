@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMsal, useIsAuthenticated } from '@azure/msal-react'
 import { InteractionStatus, BrowserAuthError } from '@azure/msal-browser'
 import { buildAuthRequest, isInteractionRequired, silentRedirectUri } from '../auth/ssoRequest'
-import { markFlowStart } from '../lib/lastFlow'
+import { clearLastFlow, markFlowStart } from '../lib/lastFlow'
 
 /**
  * Sign-in / sign-out controls, plus the SSO switches.
@@ -83,6 +83,9 @@ export function SignInPanel() {
     try {
       await instance.clearCache()
       instance.setActiveAccount(null)
+      // The timeline's "you just did this" badge is about a session that no
+      // longer exists here. Drop it with the tokens.
+      clearLastFlow()
       setNote(
         'Signed out of this app only. Your Entra session is still live, so signing in again should not ask for credentials — that is SSO.',
       )
@@ -96,6 +99,7 @@ export function SignInPanel() {
     setError(null)
     setNote(null)
     try {
+      clearLastFlow()
       await instance.logoutRedirect({ account: instance.getActiveAccount() ?? undefined })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sign-out failed.')

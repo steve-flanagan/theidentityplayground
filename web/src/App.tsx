@@ -125,8 +125,22 @@ function App() {
             <p className="mb-4 max-w-3xl rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-200/70">
               <span className="font-medium text-emerald-300">Measured, not estimated.</span> Every
               millisecond comes from a real capture of a real flow against this tenant — server time
-              per request, and the phases inside it. Your typing isn't on the axis: it happens between
-              requests, not inside them.
+              per request, and the phases inside it.{' '}
+              {/* Until someone signs in, every flow here is a recorded reference —
+                  real captures, but not theirs. Saying so up front is the difference
+                  between a demo and a page that looks like it is describing a
+                  sign-in that never happened. */}
+              {realIdToken ? (
+                <>
+                  The flow you performed is badged below; the others are recorded reference
+                  captures.
+                </>
+              ) : (
+                <>
+                  These are <span className="text-emerald-300">recorded sample flows</span> until
+                  you sign in — do that and the one you actually performed gets called out.
+                </>
+              )}
             </p>
 
             <JourneyTimeline

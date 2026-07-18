@@ -24,6 +24,16 @@ import type { FlowId } from './journey'
 
 const INTENT_KEY = 'tip.flow.intent'
 const START_KEY = 'tip.flow.start'
+/** The FROZEN answer. See finalize() for why this is not recomputed. */
+const RESULT_KEY = 'tip.flow.result'
+
+/**
+ * A sign-in round trip does not take five minutes. Anything longer is a marker
+ * left behind by a redirect that never completed — a closed tab, a cancelled
+ * sign-in, a stale session — and reporting it as "your sign-in took 825.0s" is
+ * an invented measurement, which is the one thing this site cannot do.
+ */
+export const STALE_AFTER_MS = 5 * 60_000
 
 /**
  * No human completes a credential entry this fast. Anything quicker than this
@@ -79,14 +89,61 @@ export function matchFlow(intent: string | null, elapsedMs: number | null): Flow
   return null
 }
 
-/** Read what the last redirect-based attempt was. Does not clear it. */
+/**
+ * Turn the start marker into a frozen result, exactly once.
+ *
+ * The bug this fixes: the elapsed time used to be recomputed as
+ * `Date.now() - start` on every render, so it grew for as long as the tab stayed
+ * open and the banner eventually announced an 825-second sign-in. The round trip
+ * has a definite duration and it is measured when the app comes back — after
+ * that it is a fact, not a running clock.
+ *
+ * The marker is single-use: consumed here whether or not it produced a result,
+ * so an abandoned redirect can never be reported as a later sign-in.
+ */
+function finalize(): void {
+  const intent = sessionStorage.getItem(INTENT_KEY)
+  const started = sessionStorage.getItem(START_KEY)
+  if (!intent || !started) return
+
+  sessionStorage.removeItem(INTENT_KEY)
+  sessionStorage.removeItem(START_KEY)
+
+  const elapsedMs = Date.now() - Number(started)
+  if (!Number.isFinite(elapsedMs) || elapsedMs > STALE_AFTER_MS) return
+
+  const match = matchFlow(intent, elapsedMs)
+  if (match) sessionStorage.setItem(RESULT_KEY, JSON.stringify(match))
+}
+
+/**
+ * What the visitor's last completed sign-in actually was, or null.
+ *
+ * Null is the common case and the correct one: on a cold page load nobody has
+ * signed in yet, so there is nothing to say and the timeline must present its
+ * flows as the recorded reference data they are.
+ */
 export function readLastFlow(): FlowMatch {
   try {
-    const intent = sessionStorage.getItem(INTENT_KEY)
-    const started = sessionStorage.getItem(START_KEY)
-    if (!intent || !started) return null
-    return matchFlow(intent, Date.now() - Number(started))
+    finalize()
+    const raw = sessionStorage.getItem(RESULT_KEY)
+    return raw ? (JSON.parse(raw) as FlowMatch) : null
   } catch {
     return null
+  }
+}
+
+/**
+ * Forget it. Called on sign-out: once the session is gone, "you just did this"
+ * is no longer true, and leaving the badge up would claim a sign-in that has
+ * been undone.
+ */
+export function clearLastFlow(): void {
+  try {
+    sessionStorage.removeItem(INTENT_KEY)
+    sessionStorage.removeItem(START_KEY)
+    sessionStorage.removeItem(RESULT_KEY)
+  } catch {
+    // Nothing to do. A stale badge is not worth throwing over.
   }
 }
