@@ -3,10 +3,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // WHERE THESE NUMBERS COME FROM
 //
-// Two HAR captures of two real flows against this real tenant, 16 July 2026:
-// one sign-up, one sign-in. Every millisecond below is a measured server wait
-// (HAR `timings.wait` — request sent → first byte back), which is exactly the
-// time Entra spent thinking. Nothing here is estimated.
+// Real HAR captures of real flows against this real tenant, 16–18 July 2026:
+// sign-up, sign-in, SSO, SSO bypassed, a silent probe, and a sign-out. Every
+// millisecond below is a measured server wait (HAR `timings.wait` — request sent
+// → first byte back), which is exactly the time Entra spent thinking. Nothing
+// here is estimated.
+//
+// The sign-out was cut out of a longer recording that also held a sign-in and
+// two probes — one tab, one person, four things. `--from/--to` on the derive
+// script slices one action out, and the slice is recorded in the JSON, because
+// summing four unrelated actions into one "flow" would produce a fabricated
+// total assembled entirely out of real numbers.
 //
 // An earlier version of this file invented all of it. Steve's rule killed that:
 // "everything that can be should be live data." Sample data is a placeholder
@@ -96,9 +103,15 @@ export type JourneyEvent = ZoomNode & {
   humanGapBefore?: number
   /** What they were doing in that gap. */
   humanDoing?: string
+  /**
+   * A gap that was NOT a person. Sign-out has one: Entra's own page finishing up
+   * before it redirects back. The gap is measured either way, but "a person,"
+   * over it would be a claim we can't support — see the gate in toEvents.
+   */
+  idleDoing?: string
 }
 
-export type FlowId = 'signup' | 'signin' | 'sso-on' | 'sso-off' | 'sso-probe'
+export type FlowId = 'signup' | 'signin' | 'sso-on' | 'sso-off' | 'sso-probe' | 'signout'
 
 export type Journey = {
   id: FlowId
@@ -194,6 +207,7 @@ import signupCapture from './captures/signup.json'
 import ssoOnCapture from './captures/sso-on.json'
 import ssoOffCapture from './captures/sso-off.json'
 import ssoProbeCapture from './captures/sso-probe.json'
+import signoutCapture from './captures/signout.json'
 
 type CapturedRequest = {
   path: string
@@ -214,6 +228,13 @@ type Capture = {
   machineMs: number
   wallMs: number
   humanMs: number
+  /**
+   * Present when the flow was sliced out of a longer recording. One browser
+   * session held a sign-in, two probes and a sign-out; the window says which
+   * milliseconds of it this is, so the slice is provenance rather than a silent
+   * edit. See scripts/har-to-timings.mjs --from/--to.
+   */
+  window?: { fromMs: number; toMs: number | null; note: string }
   requests: CapturedRequest[]
 }
 
@@ -223,36 +244,63 @@ const CAPTURES: Record<FlowId, Capture> = {
   'sso-on': ssoOnCapture as Capture,
   'sso-off': ssoOffCapture as Capture,
   'sso-probe': ssoProbeCapture as Capture,
+  signout: signoutCapture as Capture,
 }
 
 /**
  * What each flow is, in one line. The SSO pair is the point: sso-on and sso-off
  * are the SAME user with the SAME live Google-federated session, and they differ
  * by exactly one request parameter. 1.1 seconds against 13.5.
+ *
+ * ── THE OUTCOME IS PER FLOW, AND IT HAD TO BECOME SO ────────────────────────
+ *
+ * buildJourney used to default every flow that did not carry an OAuth error to
+ * "Token issued". That held while every flow was a sign-in. A SIGN-OUT ISSUES NO
+ * TOKEN — the label would have been a flat false statement, in the one badge a
+ * reader glances at first, on a site whose entire argument is that its labels are
+ * true. So each flow states its own ending and nothing can inherit one by
+ * accident. A captured OAuth error still overrides whatever is written here: a
+ * flow does not get to claim it succeeded when the capture says otherwise.
  */
-export const FLOW_META: Record<FlowId, { label: string; summary: string }> = {
+export const FLOW_META: Record<
+  FlowId,
+  { label: string; summary: string; outcome: { label: string; ok: boolean } }
+> = {
   signup: {
     label: 'Sign-up',
     summary: 'First time through. Same flow, plus the three requests that only ever happen once.',
+    outcome: { label: 'Token issued', ok: true },
   },
   signin: {
     label: 'Sign-in',
     summary: 'Interactive sign-in with a local account, no session to reuse.',
+    outcome: { label: 'Token issued', ok: true },
   },
   'sso-on': {
     label: 'SSO',
     summary:
       'A live session already existed. No prompt, no typing — /authorize handed back a code off the session cookie.',
+    outcome: { label: 'Token issued', ok: true },
   },
   'sso-off': {
     label: 'SSO bypassed',
     summary:
       'The same session, one parameter different: prompt=login makes Entra ignore it and re-authenticate anyway.',
+    outcome: { label: 'Token issued', ok: true },
   },
   'sso-probe': {
     label: 'Silent probe',
     summary:
       'prompt=none with no session. It cannot show UI, so it fails on purpose — and the failure is the useful part.',
+    // Overridden by the captured login_required anyway. Stated so the fallback is
+    // never the thing that decides what a failing flow claims.
+    outcome: { label: 'No token', ok: false },
+  },
+  signout: {
+    label: 'Sign-out',
+    summary:
+      'Global sign-out — two requests end the session at Entra. The local variant makes none at all, and that gap is the whole point.',
+    outcome: { label: 'Session ended', ok: true },
   },
 }
 
@@ -267,6 +315,8 @@ export const FLOW_ONLY: Record<FlowId, readonly string[]> = {
   'sso-on': [],
   'sso-off': ['federation'],
   'sso-probe': [],
+  // The only two requests on the site that end a session rather than start one.
+  signout: ['logout', 'logoutsession'],
 }
 
 type Measured = {
@@ -283,6 +333,8 @@ type Measured = {
   humanGapBefore?: number
   /** What the human was doing in that gap. */
   humanDoing?: string
+  /** What was happening in a gap that was NOT a human. See JourneyEvent.idleDoing. */
+  idleDoing?: string
   summary?: string
   literal?: string
   detail?: ZoomNode['detail']
@@ -341,6 +393,41 @@ const AUTHORIZE_INSIDE: ZoomNode[] = [
       gotcha:
         'The verifier never left the browser tab. That is what makes a public client safe without a secret, and why the app registration is SPA and not Web.',
     },
+  },
+]
+
+/**
+ * What is inside GET /logout — and, next to it, the sign-out that isn't here.
+ *
+ * The absent node is the point of the whole flow. A local sign-out makes NO
+ * network request, so there is no capture of it and there never can be: the
+ * measurement is the empty set. Rendering it as an `absent` node is the only
+ * honest way to put it on a timeline — it gets the hatched treatment and says
+ * why it's empty, instead of being given an invented bar next to five measured
+ * ones.
+ *
+ * The zero-request claim is not from memory. Verified against the installed
+ * @azure/msal-browser 5.17.1: clearCache() → SilentCacheClient.logout() →
+ * clearCacheOnLogout(), which touches browserStorage and IndexedDB and holds no
+ * network client at all.
+ */
+const LOGOUT_INSIDE: ZoomNode[] = [
+  {
+    id: 'inside:global',
+    label: 'Global sign-out — the session at Entra is ended',
+    summary: 'end_session_endpoint, reached by a top-level navigation',
+    detail: {
+      what: 'The browser leaves for the tenant and Entra invalidates the session behind the cookie, then redirects to post_logout_redirect_uri.',
+      why: 'logoutRedirect(). MSAL takes the endpoint from the discovery document fetched just before this.',
+      gotcha:
+        'It has to be a top-level navigation. Ending a session means acting on a cookie for a host that is not ours, so the page is unloaded to do it — which is why a global sign-out costs a redirect and a full reload of the app, and the local one costs nothing.',
+    },
+  },
+  {
+    id: 'inside:local',
+    label: 'Local sign-out — not this request, and not any request',
+    absent:
+      'clearCache() drops the tokens out of the browser and nothing leaves it. There is no capture of that flow on this site because there is nothing to capture: no request, no response, no number to put on an axis. The Entra session is untouched, so the next sign-in is silent SSO — /authorize hands a code straight back off the session cookie. That is the gap behind the oldest help-desk ticket in the enterprise: "I signed out, and it signed me straight back in." Both buttons are on this page, in the same file, doing genuinely different things.',
   },
 ]
 
@@ -538,6 +625,86 @@ const ANNOTATIONS: Record<string, Annotation> = {
         'No client secret anywhere. A SPA cannot keep one, which is the entire reason PKCE exists — the verifier is the proof instead. Note the phases: zero setup cost, because the connection to this host is already warm.',
     },
   },
+  '/{tid}/oauth2/v2.0/logout': {
+    match: '/{tid}/oauth2/v2.0/logout',
+    id: 'logout',
+    short: '/logout',
+    label: 'GET /oauth2/v2.0/logout',
+    actor: 'network',
+    summary: 'RP-initiated logout. The request the local sign-out never makes.',
+    code: {
+      file: 'web/src/components/SignInPanel.tsx',
+      source: signInPanelSource,
+      note: 'Both sign-outs, in one file: signOutAppOnly() calls clearCache() and touches no network at all; signOutEverywhere() calls logoutRedirect() and produces everything on this timeline.',
+    },
+    detail: {
+      what: 'The browser navigates to end_session_endpoint and Entra returns its sign-out page.',
+      why: 'logoutRedirect() — the "sign out everywhere" button.',
+      gotcha:
+        'This is the entire difference between the two sign-outs, and it is visible as a bar because the other one has no bar to draw. Local sign-out ends at the browser; this one leaves it.',
+    },
+  },
+  '/{tid}/oauth2/v2.0/logoutsession': {
+    match: '/{tid}/oauth2/v2.0/logoutsession',
+    id: 'logoutsession',
+    short: '/logoutsession',
+    label: 'POST /oauth2/v2.0/logoutsession',
+    actor: 'entra',
+    humanDoing: 'picking which account to sign out',
+    summary: "What Entra's own sign-out page posts once you have picked an account.",
+    detail: {
+      what: 'The second half of the sign-out: the account chosen on the page is submitted back to the tenant.',
+      why: 'The sign-out page returned by /logout offered an account picker — its assets are in the same capture.',
+      gotcha:
+        'The picker exists because a browser can hold more than one Entra session. Sign-out is per account, not per browser, so "I signed out" and "I am signed out" are different statements — and the one you ended is not necessarily the one the next app picks up.',
+    },
+  },
+}
+
+/**
+ * Prose that is only true in ONE flow, keyed by flow and then by request path.
+ *
+ * The shared map above is keyed by path alone, which was fine while every flow
+ * was a sign-in: `SPA /` meant the same thing in all of them. It stopped being
+ * true the moment a sign-out landed on the same URL — the shared entry says the
+ * browser arrives "carrying the code in the fragment", and after a sign-out
+ * there is no code and nothing to carry. Rather than water the sign-in copy down
+ * to something vague enough to cover both, a flow can override one path and say
+ * the specific true thing. Anything not overridden falls through to the shared
+ * map, so this stays small by construction.
+ */
+const FLOW_ANNOTATIONS: Partial<Record<FlowId, Record<string, Annotation>>> = {
+  signout: {
+    '/{tid}/v2.0/.well-known/openid-configuration': {
+      match: '/{tid}/v2.0/.well-known/openid-configuration',
+      id: 'discovery',
+      short: 'discovery',
+      label: 'GET /.well-known/openid-configuration',
+      actor: 'network',
+      summary: 'Read again — this time for end_session_endpoint.',
+      detail: {
+        what: 'The same discovery document, re-read so MSAL can find the sign-out endpoint.',
+        why: 'MSAL builds the logout URL from metadata rather than from a hardcoded path.',
+        gotcha:
+          'Zero on the clock: no round trip happened, the answer was already in the browser. The sign-out URL is assembled entirely from a document fetched for a different purpose minutes earlier, which is why the whole sign-out starts 18 ms after the button.',
+      },
+    },
+    'SPA /': {
+      match: 'SPA /',
+      id: 'spa',
+      short: 'SPA reload',
+      label: 'GET / — the SPA reloads, signed out',
+      actor: 'browser',
+      idleDoing: "Entra's sign-out page, before it hands the browser back",
+      summary: 'Back on our own origin at post_logout_redirect_uri.',
+      detail: {
+        what: 'The browser lands back on the app and boots it fresh, with nothing in the cache.',
+        why: 'postLogoutRedirectUri — window.location.origin, set in msalConfig.',
+        gotcha:
+          'The flow ends here. There is no /token after it, because there is nothing to redeem — count the requests. On a sign-in this exact same reload is the moment MSAL finds the code in the fragment and spends it; here the reload is the last thing that happens.',
+      },
+    },
+  },
 }
 
 // ── The phases: a real level down ───────────────────────────────────────────
@@ -594,8 +761,16 @@ function generic(r: CapturedRequest): Annotation {
 }
 
 /** Capture → plotted. Cumulative machine time; the human gaps advance nothing. */
-function toEvents(capture: Capture, token: string, tokenLabel: string): JourneyEvent[] {
+function toEvents(
+  flow: FlowId,
+  capture: Capture,
+  token: string,
+  tokenLabel: string,
+): JourneyEvent[] {
   let clock = 0
+
+  /** This flow's overrides, if it has any. Falls through to the shared map. */
+  const overrides = FLOW_ANNOTATIONS[flow] ?? {}
 
   // A path can repeat: MSAL fetches the discovery document once at startup and
   // again after the SPA reloads. Annotations are keyed by path, so both requests
@@ -605,7 +780,7 @@ function toEvents(capture: Capture, token: string, tokenLabel: string): JourneyE
   const seen = new Map<string, number>()
 
   return capture.requests.map((r) => {
-    const a = ANNOTATIONS[r.path] ?? generic(r)
+    const a = overrides[r.path] ?? ANNOTATIONS[r.path] ?? generic(r)
 
     const nth = (seen.get(a.id) ?? 0) + 1
     seen.set(a.id, nth)
@@ -633,10 +808,18 @@ function toEvents(capture: Capture, token: string, tokenLabel: string): JourneyE
         : a.detail,
       total: r.total,
       timings: r.timings,
-      // Only call it a human if it's long enough to be one. Sub-second gaps are
-      // the browser, not a person, and labelling those "you, typing" would be a
-      // small lie in a place that can't afford any.
-      humanGapBefore: r.idleBefore >= 1000 ? r.idleBefore : undefined,
+      // Only call it a human if it's long enough to be one AND we can say what
+      // they were doing. Sub-second gaps are the browser, not a person, and
+      // labelling those "you, typing" would be a small lie in a place that can't
+      // afford any.
+      //
+      // The second half of that gate arrived with sign-out, which has a 1.1s gap
+      // that is NOT a person: Entra's own page finishing before it redirects
+      // back. Without the gate the row would have read "a person," with nothing
+      // after it — an unsupported claim rendered by an accident of copy. Every
+      // gap over a second in the five older captures already carries a
+      // humanDoing, so nothing about them changes.
+      humanGapBefore: r.idleBefore >= 1000 && (a.humanDoing || a.idleDoing) ? r.idleBefore : undefined,
     }
 
     const span = { start: clock, end: clock + m.total }
@@ -648,9 +831,11 @@ function toEvents(capture: Capture, token: string, tokenLabel: string): JourneyE
         ? AUTHORIZE_INSIDE
         : m.id === 'login'
           ? CA_MFA_INSIDE
-          : m.attachToken
-            ? [buildTokenNode(token, tokenLabel)]
-            : []
+          : m.id === 'logout'
+            ? LOGOUT_INSIDE
+            : m.attachToken
+              ? [buildTokenNode(token, tokenLabel)]
+              : []
 
     // Phases, laid end to end across the request's own span. Real sub-timings.
     let pc = span.start
@@ -715,6 +900,7 @@ function toEvents(capture: Capture, token: string, tokenLabel: string): JourneyE
       code: m.code,
       humanGapBefore: m.humanGapBefore,
       humanDoing: m.humanDoing,
+      idleDoing: m.idleDoing,
       children,
     }
   })
@@ -722,7 +908,7 @@ function toEvents(capture: Capture, token: string, tokenLabel: string): JourneyE
 
 export function buildJourney(flow: FlowId, token: string, tokenLabel: string): Journey {
   const capture = CAPTURES[flow]
-  const events = toEvents(capture, token, tokenLabel)
+  const events = toEvents(flow, capture, token, tokenLabel)
 
   // The outcome comes from the capture, not from an assumption that every flow
   // succeeds. A silent probe against no session returns login_required, and
@@ -738,9 +924,11 @@ export function buildJourney(flow: FlowId, token: string, tokenLabel: string): J
     // Both straight from the capture. Not computed here, not typed here.
     duration: capture.machineMs,
     wallClock: capture.wallMs,
-    outcome: failure
-      ? { label: failure.oauthError!, ok: false }
-      : { label: 'Token issued', ok: true },
+    // A captured error always wins; otherwise the flow's own stated ending. This
+    // used to fall back to "Token issued" for anything without an error, which
+    // was true of five sign-in flows and false the instant a sign-out arrived.
+    // See FLOW_META.
+    outcome: failure ? { label: failure.oauthError!, ok: false } : FLOW_META[flow].outcome,
     events,
   }
 }

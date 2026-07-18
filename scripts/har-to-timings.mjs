@@ -13,23 +13,80 @@
 // out of here is a secret, which is the point of running it rather than
 // hand-copying numbers out of devtools.
 //
-//   node scripts/har-to-timings.mjs <capture.har> <flow-id> > web/src/lib/captures/<flow-id>.json
+//   node scripts/har-to-timings.mjs <capture.har> <flow-id> [--from <ms>] [--to <ms>]
+//     > web/src/lib/captures/<flow-id>.json
 //
 // The output is real measured data, recorded rather than live. That distinction
 // matters and it is not a dodge: recorded-real and live-real are both real, and
 // only fabricated is the problem. The site says which it is showing.
+//
+// ── ONE HAR CAN HOLD SEVERAL FLOWS ───────────────────────────────────────────
+//
+// A recording session is one browser tab, and a person sitting at it does more
+// than one thing: sign in, probe, sign out, probe again. The browser writes all
+// of it into a single HAR. Without a window this script folds four actions into
+// one "flow" whose machineMs is the sum of things that never happened together
+// — a fabricated number assembled out of real ones, which is worse than an
+// obviously invented one because it looks measured.
+//
+// So: --from / --to slice one action out. Both are milliseconds from the FIRST
+// entry in the HAR, which is the same zero the browser's network panel shows,
+// so the numbers you read off devtools are the numbers you pass here. The
+// filter is on when a request STARTED; a request that starts inside the window
+// is kept whole, even if its response lands after --to. Truncating a request's
+// own duration to fit a window would be inventing a shorter one.
+//
+// The window is recorded in the output so the slice is never a silent edit.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { readFile } from 'node:fs/promises'
 
-const [, , harPath, flowId] = process.argv
+const USAGE =
+  'usage: node scripts/har-to-timings.mjs <capture.har> <flow-id> [--from <ms>] [--to <ms>]'
+
+// Hand-rolled rather than a dependency: two flags, and this script is deliberately
+// zero-install so it can be run against a credential dump without npm touching it.
+const argv = process.argv.slice(2)
+const positional = []
+let fromMs = 0
+let toMs = Infinity
+
+for (let i = 0; i < argv.length; i++) {
+  const arg = argv[i]
+  if (arg === '--from' || arg === '--to') {
+    const value = Number(argv[++i])
+    if (!Number.isFinite(value) || value < 0) {
+      console.error(`${arg} needs a non-negative number of milliseconds`)
+      process.exit(1)
+    }
+    if (arg === '--from') fromMs = value
+    else toMs = value
+  } else if (arg.startsWith('--')) {
+    console.error(`unknown flag ${arg}\n${USAGE}`)
+    process.exit(1)
+  } else {
+    positional.push(arg)
+  }
+}
+
+const [harPath, flowId] = positional
 
 if (!harPath || !flowId) {
-  console.error('usage: node scripts/har-to-timings.mjs <capture.har> <flow-id>')
+  console.error(USAGE)
+  process.exit(1)
+}
+
+if (fromMs >= toMs) {
+  console.error(`--from (${fromMs}) must be less than --to (${toMs})`)
   process.exit(1)
 }
 
 const har = JSON.parse(await readFile(harPath, 'utf8'))
+
+if (!har.log?.entries?.length) {
+  console.error('this HAR has no entries at all')
+  process.exit(1)
+}
 
 /** Only the hosts this journey is about. Everything else is noise. */
 const isRelevant = (url) => {
@@ -41,9 +98,27 @@ const isRelevant = (url) => {
   return !/favicon|\.css$|\.svg$|\.ico$|\.js$|\.woff2?$/.test(u.pathname)
 }
 
-const entries = har.log.entries.filter((e) => isRelevant(e.request.url))
+/**
+ * The capture's own zero — the first entry in the file, relevant or not. Using
+ * the first *relevant* entry instead would make the window move whenever the
+ * relevance filter changed, so the same --from would slice a different action.
+ */
+const captureStart = new Date(har.log.entries[0].startedDateTime).getTime()
+const offsetOf = (e) => new Date(e.startedDateTime).getTime() - captureStart
+
+const sliced = toMs !== Infinity || fromMs !== 0
+
+const entries = har.log.entries.filter((e) => {
+  const offset = offsetOf(e)
+  return offset >= fromMs && offset <= toMs && isRelevant(e.request.url)
+})
+
 if (entries.length === 0) {
-  console.error('no relevant entries — is this the right capture?')
+  console.error(
+    sliced
+      ? `no relevant entries between ${fromMs} ms and ${toMs} ms — widen the window or check it's the right capture`
+      : 'no relevant entries — is this the right capture?',
+  )
   process.exit(1)
 }
 
@@ -106,8 +181,24 @@ console.log(
   JSON.stringify(
     {
       flow: flowId,
-      capturedAt: har.log.pages?.[0]?.startedDateTime ?? entries[0].startedDateTime,
+      // When sliced, the page's start time is the start of the whole recording
+      // — a different moment from this flow, sometimes by half a minute. The
+      // slice's own first request is the honest answer to "when was this".
+      capturedAt: sliced
+        ? entries[0].startedDateTime
+        : (har.log.pages?.[0]?.startedDateTime ?? entries[0].startedDateTime),
       note: 'Derived from a real HAR by scripts/har-to-timings.mjs. Timings only — no headers, cookies, bodies or query strings. The HAR itself is gitignored and must stay that way.',
+      // Present only on a slice, and it is provenance: it says this flow was cut
+      // out of a longer recording, and exactly where from.
+      ...(sliced
+        ? {
+            window: {
+              fromMs,
+              toMs: toMs === Infinity ? null : toMs,
+              note: 'Milliseconds from the first entry of the source HAR. One recording held several flows; this is one of them.',
+            },
+          }
+        : {}),
       requestCount: requests.length,
       machineMs,
       wallMs,

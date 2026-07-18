@@ -186,6 +186,22 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
   const detailNodes = zoomContainer ? timedChildren(zoomContainer) : journey.events
   const share = (spanMs(axis) / journey.duration) * 100
 
+  /**
+   * Time this page can actually attribute to a person — the sum of the gaps it
+   * labels "a person, …", and nothing else.
+   *
+   * The header used to derive it as wall minus machine, which was fine while
+   * every non-machine second was somebody typing. Sign-out broke that: 1.1s of
+   * its 2.6s idle is Entra's own sign-out page redirecting, so "2.6s of it a
+   * person" overstated the human by 43% on the one flow where a reader would be
+   * most likely to check. Summing what is actually attributed can only ever
+   * report gaps the rows themselves already name.
+   */
+  const attributedHumanMs = journey.events.reduce(
+    (total, event) => total + (event.humanDoing ? (event.humanGapBefore ?? 0) : 0),
+    0,
+  )
+
   // Escape backs out one level. Cheap, and it's what a tool should do.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -261,7 +277,10 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
               is theirs: yours is badged, the rest are visibly demoted to what
               they are, which is reference recordings. */}
           <span className="flex overflow-hidden rounded border border-slate-700">
-            {(['signup', 'signin', 'sso-on', 'sso-off', 'sso-probe'] as FlowId[]).map((f) => {
+            {/* Sign-out sits last on purpose: it is the only one that ends a
+                session rather than starting one, and its value is the contrast
+                with the five to its left. */}
+            {(['signup', 'signin', 'sso-on', 'sso-off', 'sso-probe', 'signout'] as FlowId[]).map((f) => {
               const isYours = yours === f
               const selected = flow === f
               return (
@@ -303,11 +322,13 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
             {/* The number nobody expects: the machine is not the slow part.
                 But only say "you typing" when a person actually did — on the SSO
                 flows nobody types at all, and claiming otherwise would be a small
-                lie on a page whose whole argument is that it doesn't tell them. */}
+                lie on a page whose whole argument is that it doesn't tell them.
+                Same reason it counts attributed gaps rather than wall minus
+                machine: see attributedHumanMs. */}
             <span className="ml-2 text-xs tabular-nums text-slate-600">
               of {(journey.wallClock / 1000).toFixed(1)}s wall
-              {journey.wallClock - journey.duration > 2000 &&
-                ` · ${((journey.wallClock - journey.duration) / 1000).toFixed(1)}s of it a person, in this recording`}
+              {attributedHumanMs > 2000 &&
+                ` · ${(attributedHumanMs / 1000).toFixed(1)}s of it a person, in this recording`}
             </span>
           </p>
           <span
@@ -325,8 +346,11 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
       {/* ── OVERVIEW. Always the whole thing. Never zooms. ─────────────── */}
       <div className="border-b border-slate-800 px-5 py-3">
         <div className="mb-1 flex items-baseline justify-between">
+          {/* Was hardcoded "The whole sign-in". That was already loose on the
+              sign-up capture and became flatly untrue on the sign-out one, which
+              is not a sign-in at all. The flow names itself. */}
           <span className="font-mono text-xs uppercase tracking-wider text-slate-600">
-            The whole sign-in
+            The whole {journey.label.toLowerCase()}
           </span>
           <span className="flex flex-wrap items-center gap-x-3">
             {(Object.keys(ACTOR_LABELS) as Actor[]).map((actor) => (
@@ -473,28 +497,40 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
             const { left, width } = place(node.span!, axis)
             const isSel = selected?.id === node.id
             const openable = timedChildren(node).length > 0 || Boolean(node.children?.length)
-            const ev = node as { humanGapBefore?: number; humanDoing?: string }
+            const ev = node as {
+              humanGapBefore?: number
+              humanDoing?: string
+              idleDoing?: string
+            }
             const onlyHere =
               (FLOW_ONLY[flow] as readonly string[]).includes(node.id)
 
             return (
               <li key={node.id}>
-                {/* A person, between two requests — off the machine axis, which
-                    doesn't advance for them.
+                {/* A gap between two requests — off the machine axis, which
+                    doesn't advance for it.
 
                     NO DURATION HERE, deliberately. It is a real measurement, but
                     it is one person's on one recording, and printing "20.5s
                     typing an email" next to a visitor who just autofilled reads
                     as invented data. The aggregate up top still carries the
                     magnitude honestly; the per-gap seconds only pretended to be
-                    about the reader. */}
+                    about the reader.
+
+                    NOT EVERY GAP IS A PERSON. Sign-out has a 1.1s one that is
+                    Entra's own page finishing before it redirects back. "a
+                    person," over that would be a claim nothing supports, so the
+                    label follows the data: humanDoing says a person, idleDoing
+                    says what else was going on, and a gap that can be described
+                    neither way is not labelled at all (journey.ts declines to
+                    set humanGapBefore in that case). */}
                 {ev.humanGapBefore != null && (
                   <div className="grid grid-cols-[13rem_1fr_3rem] items-center gap-3 px-1 py-0.5">
                     <span />
                     <span className="flex items-center gap-2">
                       <span className="h-px flex-1 bg-slate-800" />
                       <span className="font-mono text-xs uppercase tracking-wider text-slate-600">
-                        a person, {ev.humanDoing}
+                        {ev.humanDoing ? `a person, ${ev.humanDoing}` : ev.idleDoing}
                       </span>
                       <span className="h-px flex-1 bg-slate-800" />
                     </span>

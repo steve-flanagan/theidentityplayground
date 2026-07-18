@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { JourneyTimeline } from './JourneyTimeline'
 import { buildSampleToken } from '../lib/sampleToken'
 import signinCapture from '../lib/captures/signin.json'
+import signoutCapture from '../lib/captures/signout.json'
 import { buildJourney, FLOW_ONLY, type FlowId, type ZoomNode } from '../lib/journey'
 
-const FLOWS: FlowId[] = ['signup', 'signin', 'sso-on', 'sso-off', 'sso-probe']
+const FLOWS: FlowId[] = ['signup', 'signin', 'sso-on', 'sso-off', 'sso-probe', 'signout']
 
 // These exist because of a real outage, not for coverage.
 //
@@ -29,6 +30,15 @@ function setFragment(fragment: string) {
 function mount() {
   return render(<JourneyTimeline token={token} tokenLabel="Sample ID token" />)
 }
+
+/** Mount and switch to a flow the way a visitor does — by clicking its tab. */
+function mountFlow(label: string) {
+  const result = mount()
+  fireEvent.click(screen.getByRole('button', { name: label }))
+  return result
+}
+
+const journeyFor = (flow: FlowId) => buildJourney(flow, token, 'Sample ID token')
 
 beforeEach(() => setFragment(''))
 afterEach(cleanup)
@@ -172,6 +182,9 @@ describe('the timeline reports what was actually measured', () => {
       'sso-on': { ok: true },
       'sso-off': { ok: true },
       'sso-probe': { ok: false, label: 'login_required' },
+      // Succeeds, and still issues nothing. Those are not the same thing, and
+      // the default that assumed they were is gone — see FLOW_META.
+      signout: { ok: true, label: 'Session ended' },
     })
   })
 
@@ -200,5 +213,144 @@ describe('the timeline reports what was actually measured', () => {
     // The gaps are enormous — 12.5s typing an email against 1.9s of machine.
     // If they ever leaked onto the axis, machine time would balloon toward wall.
     expect(signinCapture.machineMs).toBeLessThan(signinCapture.wallMs / 5)
+  })
+
+  it('never says "a person" without being able to say what the person did', () => {
+    // The gap row reads "a person, typing a password". It renders off one field
+    // and the prose off another, so a gap with no prose used to render "a
+    // person," and a blank — an unsupported claim produced by an accident of
+    // copy. Sign-out is where it would have bitten: its 1.1s gap is Entra's own
+    // page redirecting, not anybody at a keyboard.
+    for (const flow of FLOWS) {
+      for (const event of journeyFor(flow).events) {
+        if (event.humanGapBefore == null) continue
+        expect(
+          Boolean(event.humanDoing || event.idleDoing),
+          `${flow}/${event.id} draws a gap it cannot describe`,
+        ).toBe(true)
+      }
+    }
+  })
+})
+
+// ── Sign-out ────────────────────────────────────────────────────────────────
+// The flow that ends a session instead of starting one, and the one that had to
+// break the assumption every other flow was built on: that a journey ends in a
+// token. It does not. Nothing here may say it does.
+
+describe('sign-out issues no token, and must not claim one', () => {
+  it('ends with the session, not with a token', () => {
+    expect(journeyFor('signout').outcome).toEqual({ label: 'Session ended', ok: true })
+  })
+
+  it('has no /token request that could have issued one', () => {
+    // The outcome above is prose. This is the check underneath it: the capture
+    // genuinely contains no token request, so there is nothing to have issued.
+    const ids = journeyFor('signout').events.map((e) => e.id)
+    expect(ids).not.toContain('token-request')
+    expect(journeyFor('signin').events.map((e) => e.id)).toContain('token-request')
+  })
+
+  it('renders "Session ended" and never "Token issued"', () => {
+    mountFlow('Sign-out')
+    expect(screen.getByText('Session ended')).toBeDefined()
+    expect(screen.queryByText('Token issued')).toBeNull()
+  })
+
+  it('takes its numbers from the derived capture, like every other flow', () => {
+    mountFlow('Sign-out')
+    // getAllByText, not getByText: at 683 ms the total and the right-hand ruler
+    // tick are the same number, which is not a bug — it is the axis agreeing
+    // with itself.
+    expect(screen.getAllByText(signoutCapture.machineMs.toLocaleString()).length).toBeGreaterThan(0)
+    expect(screen.getByText(`${signoutCapture.requestCount} steps · full scale`)).toBeDefined()
+    expect(screen.getByText(`${signoutCapture.requestCount} requests`)).toBeDefined()
+    // And the sign-in's numbers are gone, which is what proves the switch re-read
+    // the capture rather than relabelling the one already on screen.
+    expect(screen.queryByText(signinCapture.machineMs.toLocaleString())).toBeNull()
+  })
+
+  it('does not call the whole thing a sign-in', () => {
+    // The overview heading was hardcoded "The whole sign-in". On this flow that
+    // is not a loose label, it is a wrong one.
+    mountFlow('Sign-out')
+    expect(screen.getByText(/The whole sign-out/i)).toBeDefined()
+    expect(screen.queryByText(/The whole sign-in/i)).toBeNull()
+  })
+
+  it('does not bill Entra’s own redirect to a person', () => {
+    // Wall minus machine on sign-out is 2.6s, and only 1.5s of it is anybody at
+    // a keyboard — the rest is Entra's sign-out page handing the browser back.
+    // The header derived the figure the loose way and printed the lot as "a
+    // person", overstating the human by 43% on this flow.
+    mountFlow('Sign-out')
+    expect(screen.queryByText(/of it a person/)).toBeNull()
+  })
+
+  it('counts only the gaps it can actually name as a person', () => {
+    // Sign-in still shows the figure — it just shows the attributed one.
+    const j = journeyFor('signin')
+    const attributed = j.events.reduce(
+      (total, e) => total + (e.humanDoing ? (e.humanGapBefore ?? 0) : 0),
+      0,
+    )
+    const loose = ((j.wallClock - j.duration) / 1000).toFixed(1)
+    // If these ever coincide the assertion below proves nothing, so say so.
+    expect(loose).not.toBe((attributed / 1000).toFixed(1))
+
+    mount()
+    expect(
+      screen.getByText(new RegExp(`${(attributed / 1000).toFixed(1)}s of it a person`)),
+    ).toBeDefined()
+    expect(screen.queryByText(new RegExp(`${loose}s of it a person`))).toBeNull()
+  })
+
+  it('was sliced out of a longer recording, and says so in the file', () => {
+    // One tab held a sign-in, two probes and a sign-out. Without the window the
+    // totals would sum four unrelated actions into one fabricated flow.
+    expect(signoutCapture.window).toBeDefined()
+    expect(signoutCapture.window.fromMs).toBeLessThan(signoutCapture.window.toMs)
+  })
+})
+
+describe('the local sign-out, which is the point of the flow', () => {
+  const logoutNode = () => journeyFor('signout').events.find((e) => e.id === 'logout')
+
+  it('plots the two requests a global sign-out makes', () => {
+    const ids = journeyFor('signout').events.map((e) => e.id)
+    expect(ids).toContain('logout')
+    expect(ids).toContain('logoutsession')
+    // And no other flow has them, which is what earns them the ◆ diff marker.
+    for (const flow of FLOWS.filter((f) => f !== 'signout')) {
+      const others = journeyFor(flow).events.map((e) => e.id)
+      expect(others).not.toContain('logout')
+      expect(others).not.toContain('logoutsession')
+    }
+  })
+
+  it('annotates the local sign-out as absent rather than inventing a bar for it', () => {
+    // A local sign-out makes zero requests, so there is nothing to measure and
+    // no honest bar to draw. Giving it a span would be fabricating the one thing
+    // this page exists to not fabricate.
+    const local = logoutNode()?.children?.find((c) => c.id === 'inside:local')
+    expect(local).toBeDefined()
+    expect(local!.absent).toBeTruthy()
+    expect(local!.span).toBeUndefined()
+    expect(local!.detail).toBeUndefined()
+  })
+
+  it('does not tell a signed-out visitor they came home with a code', () => {
+    // Sign-in and sign-out land on the same URL. The shared copy says the
+    // browser arrives "carrying the code in the fragment", which is true of one
+    // of them. Flow-specific prose exists for exactly this.
+    const spa = journeyFor('signout').events.find((e) => e.id === 'spa')
+    const text = JSON.stringify(spa?.detail)
+    expect(text).not.toMatch(/#code/)
+    expect(text).not.toMatch(/authorization code/i)
+
+    // The sign-in copy must still carry the warning — this is the fragment bug's
+    // own note, and losing it to a refactor would be worse than never writing it.
+    const signinSpa = journeyFor('signin').events.find((e) => e.id === 'spa')
+    expect(signinSpa?.detail?.gotcha).toMatch(/FRAGMENT/)
   })
 })

@@ -1,0 +1,88 @@
+{
+  "flow": "signout",
+  "capturedAt": "2026-07-18T11:11:51.357-04:00",
+  "note": "Derived from a real HAR by scripts/har-to-timings.mjs. Timings only — no headers, cookies, bodies or query strings. The HAR itself is gitignored and must stay that way.",
+  "window": {
+    "fromMs": 35200,
+    "toMs": 38600,
+    "note": "Milliseconds from the first entry of the source HAR. One recording held several flows; this is one of them."
+  },
+  "requestCount": 4,
+  "machineMs": 683,
+  "wallMs": 3275,
+  "humanMs": 2592,
+  "requests": [
+    {
+      "path": "/{tid}/v2.0/.well-known/openid-configuration",
+      "host": "theidentityplayground.ciamlogin.com",
+      "method": "GET",
+      "status": 0,
+      "startedAt": 0,
+      "total": 0,
+      "idleBefore": 0,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 0,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/{tid}/oauth2/v2.0/logout",
+      "host": "theidentityplayground.ciamlogin.com",
+      "method": "GET",
+      "status": 200,
+      "startedAt": 18,
+      "total": 188,
+      "idleBefore": 18,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 188,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/{tid}/oauth2/v2.0/logoutsession",
+      "host": "theidentityplayground.ciamlogin.com",
+      "method": "POST",
+      "status": 200,
+      "startedAt": 1667,
+      "total": 260,
+      "idleBefore": 1461,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 260,
+        "receive": 0
+      }
+    },
+    {
+      "path": "SPA /",
+      "host": "theidentityplayground.com",
+      "method": "GET",
+      "status": 200,
+      "startedAt": 3040,
+      "total": 235,
+      "idleBefore": 1113,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 235,
+        "receive": 0
+      }
+    }
+  ]
+}
