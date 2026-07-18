@@ -13,6 +13,7 @@ import {
   type ZoomNode,
 } from '../lib/journey'
 import { highlight, TOKEN_CLASS } from '../lib/highlight'
+import { readLastFlow } from '../lib/lastFlow'
 
 // Overview + detail. The pattern every profiler, packet capture and network
 // waterfall uses, because it's the one that survives being kept open all day.
@@ -124,7 +125,15 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
    * on 16 July; switching between them IS the demo — same app, same person, and
    * exactly four requests different.
    */
-  const [flow, setFlow] = useState<FlowId>('signin')
+  /**
+   * What the visitor actually just did, if we can honestly tell. Read once on
+   * mount: landing on a recording of a flow you did not perform is what made
+   * this page look fabricated, so it opens on the real one where possible.
+   */
+  const [lastFlow] = useState(() => readLastFlow())
+  const [flow, setFlow] = useState<FlowId>(
+    lastFlow?.kind === 'matched' ? lastFlow.flow : 'signin',
+  )
 
   const journey: Journey = useMemo(
     () => buildJourney(flow, token, tokenLabel),
@@ -194,6 +203,39 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
 
   return (
     <div className="rounded-lg border border-slate-800 bg-slate-900/50">
+      {/* What the visitor actually just did, stated before anything else — and,
+          just as importantly, that everything below is a RECORDING. Showing a
+          capture of a flow they didn't perform, unlabelled, is what made this
+          read as fabricated. */}
+      {lastFlow && (
+        <div
+          className={`border-b px-5 py-3 text-sm leading-relaxed ${
+            lastFlow.kind === 'matched'
+              ? 'border-emerald-500/25 bg-emerald-500/5 text-emerald-200/90'
+              : 'border-amber-500/25 bg-amber-500/5 text-amber-200/90'
+          }`}
+        >
+          {lastFlow.kind === 'matched' ? (
+            <>
+              <span className="font-medium">
+                You just did this one — it took {(lastFlow.elapsedMs / 1000).toFixed(1)}s.
+              </span>{' '}
+              We know {lastFlow.because}. The breakdown below is a recorded capture of the same
+              flow, not a trace of your session — the browser throws that away on the redirect.
+            </>
+          ) : (
+            <>
+              <span className="font-medium">
+                Your sign-in took {(lastFlow.elapsedMs / 1000).toFixed(1)}s, and a prompt was
+                involved.
+              </span>{' '}
+              That could be a sign-in, a sign-up or a consent screen, and this app can't tell
+              which from the browser — so it won't guess. Pick the one you did.
+            </>
+          )}
+        </div>
+      )}
+
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-slate-800 px-5 py-3">
         <div className="flex flex-wrap items-baseline gap-x-3">
@@ -230,7 +272,8 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
                 lie on a page whose whole argument is that it doesn't tell them. */}
             <span className="ml-2 text-xs tabular-nums text-slate-600">
               of {(journey.wallClock / 1000).toFixed(1)}s wall
-              {journey.wallClock - journey.duration > 2000 && ' · the rest is you typing'}
+              {journey.wallClock - journey.duration > 2000 &&
+                ` · ${((journey.wallClock - journey.duration) / 1000).toFixed(1)}s of it a person, in this recording`}
             </span>
           </p>
           <span
@@ -402,17 +445,22 @@ export function JourneyTimeline({ token, tokenLabel }: Props) {
 
             return (
               <li key={node.id}>
-                {/* A human, between two requests. Measured, and deliberately not
-                    on the axis — the machine clock doesn't advance for it. */}
+                {/* A person, between two requests — off the machine axis, which
+                    doesn't advance for them.
+
+                    NO DURATION HERE, deliberately. It is a real measurement, but
+                    it is one person's on one recording, and printing "20.5s
+                    typing an email" next to a visitor who just autofilled reads
+                    as invented data. The aggregate up top still carries the
+                    magnitude honestly; the per-gap seconds only pretended to be
+                    about the reader. */}
                 {ev.humanGapBefore != null && (
                   <div className="grid grid-cols-[13rem_1fr_3rem] items-center gap-3 px-1 py-0.5">
-                    <span className="text-right font-mono text-xs tabular-nums text-slate-600">
-                      {(ev.humanGapBefore / 1000).toFixed(1)}s
-                    </span>
+                    <span />
                     <span className="flex items-center gap-2">
                       <span className="h-px flex-1 bg-slate-800" />
                       <span className="font-mono text-xs uppercase tracking-wider text-slate-600">
-                        you, {ev.humanDoing}
+                        a person, {ev.humanDoing}
                       </span>
                       <span className="h-px flex-1 bg-slate-800" />
                     </span>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMsal, useIsAuthenticated } from '@azure/msal-react'
 import { InteractionStatus, BrowserAuthError } from '@azure/msal-browser'
 import { buildAuthRequest, isInteractionRequired } from '../auth/ssoRequest'
+import { markFlowStart } from '../lib/lastFlow'
 
 /**
  * Sign-in / sign-out controls, plus the SSO switches.
@@ -36,8 +37,13 @@ export function SignInPanel() {
   async function signIn() {
     setError(null)
     setNote(null)
+    const mode = bypassSso ? 'force-credentials' : 'default'
+    // Recorded before we leave the page, so on the way back the timeline can
+    // show the flow that actually happened instead of whichever one it was
+    // sitting on. This must never be allowed to break sign-in — see markFlowStart.
+    markFlowStart(mode)
     try {
-      await instance.loginRedirect(buildAuthRequest(bypassSso ? 'force-credentials' : 'default'))
+      await instance.loginRedirect(buildAuthRequest(mode))
     } catch (e) {
       // user_cancelled isn't an error worth shouting about — they changed
       // their mind, which is allowed.
