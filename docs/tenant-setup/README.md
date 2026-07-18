@@ -14,7 +14,10 @@ Record here as they're created:
 | External ID tenant — org name | The Identity Playground |
 | External ID tenant — initial domain | `theidentityplayground.onmicrosoft.com` |
 | External ID tenant — tenant ID | `7e8da8a9-67bc-4d53-bfc7-fe3e13128382` |
-| Demo workforce tenant | **blocked** — paid P1 now required to create a workforce tenant; see the spec |
+| Demo workforce tenant — org name | The Identity Playground (workforce) |
+| Demo workforce tenant — initial domain | `theidentityplaygroundgmail.onmicrosoft.com` |
+| Demo workforce tenant — tenant ID | `9e1372b0-e94f-40af-aef8-6a5fa2bfb2e4` |
+| Demo workforce tenant — subscription | `c436a5b3-ecc8-4075-ace6-ff05cc5560c1` (trial) |
 | Azure subscription (hosting) | existing pay-as-you-go |
 | Resource group | `rg-theidentityplayground` |
 | DNS zone | `theidentityplayground.com` — delegated to Azure DNS, verified live |
