@@ -4,6 +4,8 @@ Identity work is invisible in production. This site makes it visible: sign in ag
 real Microsoft Entra tenant, then read the token that came back and every request that
 produced it.
 
+Live at https://theidentityplayground.com
+
 Built by Steven Flanagan.
 
 ## Status
@@ -14,10 +16,14 @@ captures against this tenant. Nothing on it is estimated.
 
 The other six modules are not built. The roadmap is on the homepage.
 
-The site is deployed but not linked anywhere yet. It runs a live sign-up form, and the
-public-readiness checklist in [the build spec](identity-playground-spec.md) has not passed.
-The main gap is account lifecycle: the cleanup script in `scripts/` has never been run, so
-nothing expires on its own yet.
+The link above is the only place the site is published. It runs a live sign-up form, and
+the public-readiness checklist in [the build spec](identity-playground-spec.md) has not
+passed.
+
+Demo accounts are deleted 24 hours after they are created, by a scheduled job that runs
+every six hours. It has authenticated against the tenant and reported correctly on a dry
+run. It has not yet completed an unattended run, so treat expiry as configured rather than
+proven.
 
 ## Why there are three tenants
 
