@@ -16,14 +16,14 @@ captures against this tenant. Nothing on it is estimated.
 
 The other six modules are not built. The roadmap is on the homepage.
 
-The link above is the only place the site is published. It runs a live sign-up form, and
-the public-readiness checklist in [the build spec](identity-playground-spec.md) has not
-passed.
+The link above is the only place the site is published. It runs a live sign-up form. The
+public-readiness checklist in [the build spec](identity-playground-spec.md) passed on
+20 July 2026.
 
 Demo accounts are deleted between 24 and 30 hours after they are created: a 24-hour TTL,
-swept by a scheduled job that runs every six hours. It has authenticated against the
-tenant and reported correctly on a dry run. It has not yet completed an unattended run, so
-treat expiry as configured rather than proven.
+swept by a scheduled job every six hours. The job has run unattended and reported
+correctly. It has not yet deleted anything, because no account has been old enough, so the
+deletion path itself is the one part still unproven.
 
 ## Why there are three tenants
 
