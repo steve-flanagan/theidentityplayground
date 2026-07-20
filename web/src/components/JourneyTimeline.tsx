@@ -163,34 +163,88 @@ function place(span: Span, axis: Span) {
 //
 // Two rules keep it fixed, and both are load-bearing:
 //
-//   1. NAMESPACE. Only a fragment starting with `step=` is ours. MSAL's starts
-//      with `code=` or `error=`. We never read or write anything else.
+//   1. NAMESPACE. Only a fragment starting with `step=` or `flow=` is ours.
+//      MSAL's starts with `code=` or `error=`, and neither `step` nor `flow` is
+//      a parameter any OAuth or OIDC response carries. We never read or write
+//      anything else.
 //   2. NEVER WRITE ON MOUNT. The fragment is only written in response to a
 //      click — by which time MSAL has long since consumed and cleared its own.
 //
 // If you are about to touch location.hash here, re-read this first.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const HASH_PREFIX = 'step='
+const STEP_PREFIX = 'step='
+const FLOW_PREFIX = 'flow='
 
-/** Our ids out of the fragment — or nothing, if the fragment isn't ours. */
-function readStepHash(): string[] {
-  const raw = location.hash.replace(/^#/, '')
-  if (!raw.startsWith(HASH_PREFIX)) return []
-  return raw.slice(HASH_PREFIX.length).split('/').filter(Boolean)
+/** The namespace rule, in one place, so read and write cannot disagree. */
+const oursToTouch = (raw: string) =>
+  raw.startsWith(STEP_PREFIX) || raw.startsWith(FLOW_PREFIX)
+
+/**
+ * A deep link, parsed.
+ *
+ * ── WHY THE FLOW HAD TO GO IN THE FRAGMENT ──────────────────────────────────
+ *
+ * The fragment used to be `#step=…` alone, and step ids are only unique WITHIN
+ * a flow. Everything resolved against whichever flow the page happened to open
+ * on, which is sign-in, so a link to any step that does not exist in a sign-in
+ * silently resolved to nothing and dumped the reader at the top of a flow they
+ * did not ask for. Measured against the real captures: 47 node paths out of
+ * 183 were unreachable that way, including every request unique to sign-up
+ * (/validate, /createuser, /Consent/Set), the /federation leg that is the whole
+ * point of the SSO comparison, and both halves of the sign-out.
+ */
+type StepLink = {
+  /** Named explicitly by `#flow=`, and only if it is a flow with a tab. */
+  flow: FlowId | null
+  /** The step path, outermost first. Empty when the fragment isn't ours. */
+  ids: string[]
 }
 
-/** Called from click handlers only. Never from an effect, never on mount. */
-function writeStepHash(path: ZoomNode[]): void {
+/**
+ * Only a flow a visitor can actually get back to by clicking. sso-probe builds
+ * and is real data, but it deliberately has no tab (see TAB_FLOWS), so landing
+ * a deep link on it would strand the reader on a flow the tab strip cannot
+ * show as selected.
+ */
+const asFlowId = (value: string | null): FlowId | null =>
+  value && (TAB_FLOWS as readonly string[]).includes(value) ? (value as FlowId) : null
+
+/** Our fragment, parsed — or nothing, if the fragment isn't ours. */
+function readStepHash(): StepLink {
+  const raw = location.hash.replace(/^#/, '')
+  if (!oursToTouch(raw)) return { flow: null, ids: [] }
+
+  // Ids are made of word characters, ':' and '-', none of which URLSearchParams
+  // touches, so a step path survives the round trip verbatim.
+  const params = new URLSearchParams(raw)
+  return {
+    flow: asFlowId(params.get('flow')),
+    ids: (params.get('step') ?? '').split('/').filter(Boolean),
+  }
+}
+
+/**
+ * Called from click handlers only. Never from an effect, never on mount.
+ *
+ * The flow is written every time, not just when it is not the default one.
+ * Whatever is in the address bar is what somebody pastes into Slack, and a link
+ * that only works if the reader happens to open on the same flow is the bug
+ * this is fixing. An empty path still clears the fragment outright, so backing
+ * out to the top leaves a clean URL exactly as it always did.
+ */
+function writeStepHash(flow: FlowId, path: ZoomNode[]): void {
   // Refuse to touch an auth response even if somehow called during one.
   const raw = location.hash.replace(/^#/, '')
-  if (raw && !raw.startsWith(HASH_PREFIX)) return
+  if (raw && !oursToTouch(raw)) return
 
   const ids = path.map((n) => n.id).join('/')
   history.replaceState(
     null,
     '',
-    ids ? `#${HASH_PREFIX}${ids}` : location.pathname + location.search,
+    ids
+      ? `#${FLOW_PREFIX}${flow}&${STEP_PREFIX}${ids}`
+      : location.pathname + location.search,
   )
 }
 
@@ -205,6 +259,39 @@ function resolvePath(ids: string[], roots: ZoomNode[]): ZoomNode[] {
     level = found.children ?? []
   }
   return out
+}
+
+const resolvesFully = (ids: string[], roots: ZoomNode[]) =>
+  resolvePath(ids, roots).length === ids.length
+
+/**
+ * Which flow a deep link opens on. Pure, and it runs during render, so it must
+ * not touch location — reading the fragment already happened, and writing it on
+ * a mount path is the outage above.
+ *
+ * The order is the compatibility rule. `#step=` links that predate `#flow=`
+ * resolve in the flow the page would have opened on anyway, so every one of
+ * them that works today still works; only the ones that resolved to nothing go
+ * looking elsewhere. An explicit `#flow=` is an instruction and skips the
+ * search entirely.
+ *
+ * A step that matches nothing anywhere leaves the flow alone, and resolvePath
+ * then does its usual best-effort partial resolve. That is the existing
+ * behaviour for a bad link and it is the right one: land at the top of the
+ * journey, never error.
+ */
+function landingFlow(
+  link: StepLink,
+  current: FlowId,
+  eventsFor: (flow: FlowId) => ZoomNode[],
+): FlowId {
+  if (link.flow) return link.flow
+  if (!link.ids.length) return current
+  if (resolvesFully(link.ids, eventsFor(current))) return current
+
+  return (
+    TAB_FLOWS.find((f) => f !== current && resolvesFully(link.ids, eventsFor(f))) ?? current
+  )
 }
 
 export function JourneyTimeline({
@@ -224,8 +311,29 @@ export function JourneyTimeline({
    * this page look fabricated, so it opens on the real one where possible.
    */
   const [lastFlow, setLastFlow] = useState(() => readLastFlow())
-  const [flow, setFlow] = useState<FlowId>(
-    lastFlow?.kind === 'matched' ? lastFlow.flow : 'signin',
+
+  /**
+   * The deep link, read ONCE during the first render. Held in state rather than
+   * re-read, because the fragment is rewritten on every click and the landing
+   * decision below is about where the visitor arrived, not where they have got
+   * to since.
+   */
+  const [link] = useState(readStepHash)
+
+  /**
+   * A deep link outranks the flow the page would otherwise open on, because it
+   * is the more specific request: the visitor followed a link to a step. What
+   * they just performed is still stated in the banner and still badged on its
+   * tab, so nothing is lost by showing them what they asked for.
+   *
+   * Costs one extra buildJourney per candidate flow, and only when a fragment
+   * is present and does not resolve where the page was already going. With no
+   * fragment it short-circuits before building anything.
+   */
+  const [flow, setFlow] = useState<FlowId>(() =>
+    landingFlow(link, lastFlow?.kind === 'matched' ? lastFlow.flow : 'signin', (f) =>
+      buildJourney(f, token, tokenLabel).events,
+    ),
   )
 
   /** The one flow we can honestly say the visitor performed, if any. */
@@ -243,10 +351,11 @@ export function JourneyTimeline({
    * effect races the effect that writes it: StrictMode double-invokes effects in
    * dev, so the write pass (path still empty) wiped the hash before the second
    * read pass saw it, and the link silently resolved to nothing.
+   *
+   * Resolved against the journey the line above settled on, so the nodes in the
+   * path are the same objects the rest of the render is working with.
    */
-  const [path, setPath] = useState<ZoomNode[]>(() =>
-    resolvePath(readStepHash(), journey.events),
-  )
+  const [path, setPath] = useState<ZoomNode[]>(() => resolvePath(link.ids, journey.events))
 
   /**
    * Brushing and linking (Becker/Cleveland, late 1980s — canonical, not
@@ -315,9 +424,9 @@ export function JourneyTimeline({
    *
    * It deliberately does NOT call navigate(), because navigate() writes the URL
    * fragment and this runs during render. Read the block above readStepHash
-   * before changing that. The cost is a stale `#step=` left in the address bar
-   * if the visitor had drilled into a step before signing out; the next click
-   * on the timeline overwrites it.
+   * before changing that. The cost is a stale `#flow=…&step=…` left in the
+   * address bar if the visitor had drilled into a step before signing out; the
+   * next click on the timeline overwrites it.
    */
   const [seenSignOutCount, setSeenSignOutCount] = useState(localSignOutCount)
   if (localSignOutCount !== seenSignOutCount) {
@@ -338,7 +447,7 @@ export function JourneyTimeline({
    */
   function navigate(next: ZoomNode[]) {
     setPath(next)
-    writeStepHash(next)
+    writeStepHash(flow, next)
   }
 
   /**
@@ -361,8 +470,8 @@ export function JourneyTimeline({
     if (!path.length) return
     const next = path.slice(0, -1)
     setPath(next)
-    writeStepHash(next)
-  }, [path])
+    writeStepHash(flow, next)
+  }, [flow, path])
 
   const selected = path[path.length - 1] ?? null
 

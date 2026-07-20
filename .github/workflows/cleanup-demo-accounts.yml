@@ -93,7 +93,7 @@ jobs:
       WHAT_IF: ${{ !(github.event_name == 'schedule' || inputs.delete == true) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # ── The token exchange ──────────────────────────────────────────────────
       # No `set -x` here, ever. It would print the assertion and the access token.

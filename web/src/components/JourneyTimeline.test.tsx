@@ -126,6 +126,170 @@ describe('our own deep links', () => {
   })
 })
 
+// ── A deep link has to carry its flow ───────────────────────────────────────
+//
+// Step ids are only unique WITHIN a flow, and the fragment named the step
+// without naming the flow. Everything therefore resolved against whichever flow
+// the page opened on, which is sign-in, so a link to anything that does not
+// happen in a sign-in resolved to nothing and dropped the reader at the top of
+// a flow they had not asked for. No error, no message, no clue.
+//
+// MEASURED against the real captures before the fix, not guessed: 47 of the 183
+// node paths across the six flows were unreachable. The whole of sign-up's
+// unique half (/validate, /createuser, /Consent/Set), the /federation leg that
+// is the entire point of the SSO comparison, both halves of the sign-out, and
+// every phase and claim hanging under them.
+//
+// One correction to the note that recorded this: `#step=kmsi` was NOT among
+// them. /kmsi is a sign-in request and sign-in is the flow the page opens on,
+// so that link always worked. The test below is what keeps the claim honest.
+
+describe('a deep link carries the flow it belongs to', () => {
+  /** Every node path in a journey, outermost first. The full address space. */
+  const nodePaths = (nodes: ZoomNode[], prefix: ZoomNode[] = []): ZoomNode[][] =>
+    nodes.flatMap((n) => {
+      const here = [...prefix, n]
+      return [here, ...nodePaths(n.children ?? [], here)]
+    })
+
+  const idsOf = (path: ZoomNode[]) => path.map((n) => n.id).join('/')
+
+  /** The overview heading, which names the flow currently on screen. */
+  const showing = (flow: FlowId) => `The whole ${FLOW_META[flow].label.toLowerCase()}`
+
+  it('reaches every step of every flow, at every depth', () => {
+    // The exhaustive version, and the one that would have caught this. 177 node
+    // paths across the five flows a visitor can reach, each mounted from a cold
+    // URL the way somebody following a link arrives.
+    let checked = 0
+
+    for (const flow of TAB_FLOWS) {
+      for (const path of nodePaths(journeyFor(flow).events)) {
+        cleanup()
+        setFragment(`#flow=${flow}&step=${idsOf(path)}`)
+        mount()
+
+        const target = path[path.length - 1]
+        // One h4 exists at a time: the selected node's own heading. Comparing
+        // its text rather than searching for the label means two nodes sharing
+        // a label cannot make this pass by accident.
+        expect(
+          screen.getByRole('heading', { level: 4 }).textContent,
+          `#flow=${flow}&step=${idsOf(path)} did not land on ${target.id}`,
+        ).toBe(target.label)
+        // And it landed there in the right flow, not on a same-named step in
+        // the one the page would have opened on anyway. queryByText, so the
+        // message above survives: getByText throws before vitest reads it.
+        expect(
+          screen.queryByText(showing(flow)),
+          `#flow=${flow}&step=${idsOf(path)} landed on the wrong flow`,
+        ).not.toBeNull()
+
+        checked += 1
+      }
+    }
+
+    // Or a loop that silently iterated nothing would report success.
+    expect(checked).toBeGreaterThan(150)
+  })
+
+  it('still resolves an old-style #step= link inside the default flow', () => {
+    // These predate #flow= and people may hold them. Every one that resolved
+    // before must resolve now, which is why the search starts with the flow the
+    // page was already opening on.
+    setFragment('#step=kmsi')
+
+    mount()
+
+    expect(screen.getByRole('heading', { level: 4 }).textContent).toBe('POST /kmsi')
+    expect(screen.getByText(showing('signin'))).toBeDefined()
+  })
+
+  it('sends an old-style link to the flow its step actually lives in', () => {
+    // The three from the handoff note, measured: none of them resolved before.
+    const elsewhere: [string, FlowId, string][] = [
+      ['logout', 'signout', 'GET /oauth2/v2.0/logout'],
+      ['federation', 'sso-off', 'POST /federation/oauth2'],
+      ['createuser', 'signup', 'POST /common/createuser'],
+    ]
+
+    for (const [id, flow, label] of elsewhere) {
+      cleanup()
+      setFragment(`#step=${id}`)
+
+      mount()
+
+      expect(screen.getByRole('heading', { level: 4 }).textContent, id).toBe(label)
+      expect(screen.queryByText(showing(flow)), `#step=${id} landed on the wrong flow`).not.toBeNull()
+    }
+  })
+
+  it('names the flow when it writes, so what gets pasted carries it', () => {
+    // The write side of the same bug. Clicking /logout on the sign-out tab used
+    // to put `#step=logout` in the address bar, and that link resolved to
+    // nothing anywhere but the tab it was copied from.
+    mountFlow('Sign-out')
+    fireEvent.click(screen.getByRole('button', { name: 'GET /oauth2/v2.0/logout' }))
+
+    expect(location.hash).toBe('#flow=signout&step=logout')
+  })
+
+  it('clears the fragment outright when there is no step left', () => {
+    // The flow rides along with a step and never on its own. Backing out to the
+    // top leaves a clean URL, which is what it has always done.
+    setFragment('#step=login/inside:ca')
+    mount()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(location.hash).toBe('#flow=signin&step=login')
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(location.hash).toBe('')
+  })
+
+  it('falls back to the top of the journey when the step names nothing real', () => {
+    // Current behaviour, and correct. A bad link must not error, and it must not
+    // invent something to show.
+    setFragment('#flow=signout&step=no-such-request')
+
+    mount()
+
+    expect(screen.getByText(/steps · full scale/)).toBeDefined()
+    expect(screen.getByText(showing('signout'))).toBeDefined()
+  })
+
+  it('ignores a flow it does not have, and still finds the step', () => {
+    setFragment('#flow=not-a-flow&step=createuser')
+
+    mount()
+
+    expect(screen.getByRole('heading', { level: 4 }).textContent).toBe('POST /common/createuser')
+    expect(screen.getByText(showing('signup'))).toBeDefined()
+  })
+
+  it('will not land on a flow the tab strip cannot show', () => {
+    // sso-probe builds and its numbers are real, but it deliberately has no tab
+    // (see TAB_FLOWS). Honouring a link to it would strand the reader on a flow
+    // nothing on screen is selected for.
+    setFragment('#flow=sso-probe&step=authorize')
+
+    mount()
+
+    expect(screen.getByText(showing('signin'))).toBeDefined()
+  })
+
+  it('leaves MSAL’s fragment alone while doing all of it', () => {
+    // The landing decision runs during render and can now build several
+    // journeys before settling. None of that may touch location.
+    const authResponse = '#code=FAKE_CODE_abc123&client_info=xyz&state=st1'
+    setFragment(authResponse)
+
+    mount()
+
+    expect(location.hash).toBe(authResponse)
+    expect(screen.getByText(showing('signin'))).toBeDefined()
+  })
+})
+
 // ── Getting back out ────────────────────────────────────────────────────────
 // Escape has always backed out one level. Nothing on screen said so, and the
 // control that did exist hung off the ZOOM CONTAINER rather than off the path.
@@ -203,8 +367,10 @@ describe('getting back out', () => {
     const viaEscape = from(() => fireEvent.keyDown(window, { key: 'Escape' }))
 
     expect(viaControl).toEqual(viaEscape)
-    // And they both actually moved, or the line above compares two no-ops.
-    expect(viaControl.hash).toBe('#step=login')
+    // And they both actually moved, or the line above compares two no-ops. The
+    // flow is in the fragment now: a step id alone does not say which journey
+    // it belongs to. See "a deep link carries the flow it belongs to".
+    expect(viaControl.hash).toBe('#flow=signin&step=login')
   })
 
   it('climbs one level per press, and stops offering once it is out', () => {
@@ -212,7 +378,7 @@ describe('getting back out', () => {
     mount()
 
     fireEvent.click(backControl())
-    expect(location.hash).toBe('#step=login')
+    expect(location.hash).toBe('#flow=signin&step=login')
     // Still one level in, so still offered, and still in both places.
     expect(backControls()).toHaveLength(2)
 
@@ -233,7 +399,7 @@ describe('getting back out', () => {
 
     fireEvent.click(backControl())
 
-    expect(location.hash).toBe('#step=authorize/authorize:wait')
+    expect(location.hash).toBe('#flow=signin&step=authorize/authorize:wait')
     expect(screen.getByText('Waiting: Entra thinking', { selector: 'h4' })).toBeDefined()
   })
 
@@ -306,7 +472,7 @@ describe('getting back out', () => {
     const viaPanel = from((all) => all[all.length - 1])
 
     expect(viaPanel).toEqual(viaBreadcrumb)
-    expect(viaPanel.hash).toBe('#step=authorize/authorize:wait')
+    expect(viaPanel.hash).toBe('#flow=signin&step=authorize/authorize:wait')
   })
 })
 

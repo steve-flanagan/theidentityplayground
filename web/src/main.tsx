@@ -6,6 +6,7 @@ import './index.css'
 import App from './App.tsx'
 import { msalConfig } from './auth/msalConfig.ts'
 import { clearForeignInteractionLock } from './auth/interactionLock.ts'
+import { completeRedirect } from './auth/redirectBoot.ts'
 import { isApp2Path } from './app2/route.ts'
 
 // getElementById returns HTMLElement | null, and createRoot won't accept null.
@@ -70,6 +71,27 @@ if (isApp2Path(window.location.pathname)) {
       msalInstance.setActiveAccount(payload.account)
     }
   })
+
+  // Consume the authorization response BEFORE React mounts, which is the order
+  // app2/mountApp2.tsx has always used. Relying on MsalProvider to call
+  // handleRedirectPromise from an effect leaves a returning visitor with no
+  // recovery when it declines to redeem the code: no component is mounted yet,
+  // so there is no button to press and nothing to press it. Full argument, and
+  // the msal-browser source it rests on, in auth/redirectBoot.ts.
+  //
+  // Registered AFTER the event callback above on purpose. LOGIN_SUCCESS fires
+  // during this call, so the handler has to already be listening for the
+  // success path to behave exactly as it did before.
+  //
+  // This is the last thing before mount, and it must not become a way to fail
+  // to mount. completeRedirect handles its own failures and does not throw;
+  // this try/catch is the outer guarantee that nothing it grows later can
+  // either.
+  try {
+    await completeRedirect(msalInstance)
+  } catch {
+    // Deliberately empty. The app renders regardless.
+  }
 
   createRoot(rootElement).render(
     <StrictMode>

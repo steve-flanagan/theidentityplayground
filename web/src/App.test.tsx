@@ -181,6 +181,37 @@ describe('a signed-out visitor is never badged with a flow that never happened',
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// /app2 was built, deployed, working, and linked from nowhere. Typing the URL
+// was the only way in.
+//
+// It is gated on the token rather than explained, because a signed-out visitor
+// following it does not get the demonstration: with no session to reuse, Entra
+// asks for credentials and App2's own copy drops to "the round trip does not
+// prove SSO". The claim the page makes is that no prompt appeared, so the one
+// state where a prompt does appear is the one state not to offer it in.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const app2Link = () => screen.queryByRole('link', { name: '/app2' })
+
+describe('the homepage links to /app2', () => {
+  it('offers it to someone holding a token, who is who it demonstrates anything to', () => {
+    signedIn = [accountHolding(realToken(5))]
+
+    render(<App />)
+
+    // A real href, not a click handler: each app boots its own MSAL instance,
+    // and swapping instances in place leaves a half-initialised one behind.
+    expect(app2Link()?.getAttribute('href')).toBe('/app2')
+  })
+
+  it('does not offer it to a signed-out visitor, who would only get a prompt', () => {
+    render(<App />)
+
+    expect(app2Link()).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // A failed sign-in must not leave the state that failed it behind
 //
 // Measured on the live site: /authorize returned 302 with a code and no /token

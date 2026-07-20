@@ -173,6 +173,36 @@ function App() {
               label={realIdToken ? 'Your ID token' : 'Sample ID token'}
               live={Boolean(realIdToken)}
             />
+
+            {/* ── The way to /app2, which was reachable only by typing the URL ──
+                Placed under the token because that is where a reader who has
+                just finished reading their claims is, and the next thing /app2
+                does is hand them a second set.
+
+                GATED ON THE TOKEN, not merely explained. A signed-out visitor
+                who follows this gets sent to Entra for credentials, and App2
+                says so itself: with no session to reuse, its own copy drops to
+                "the round trip does not prove SSO … press the button again".
+                The demonstration is that no prompt appears, so offering it in
+                the one state where a prompt does appear spends the page's best
+                argument on the visitor least able to check it. `realIdToken`
+                already gates copy elsewhere in this file, so the condition
+                costs nothing new.
+
+                A plain sentence, deliberately: this is a reference the reader
+                either wants or doesn't, and the same underline treatment /app2
+                uses for its link back here. */}
+            {realIdToken && (
+              <p className="mt-4 text-sm leading-relaxed text-slate-400">
+                <a
+                  href="/app2"
+                  className="font-mono text-slate-300 underline decoration-slate-700 underline-offset-4 transition hover:text-emerald-300"
+                >
+                  /app2
+                </a>{' '}
+                is a second app registration in this tenant: same session, its own token.
+              </p>
+            )}
           </section>
 
           <section aria-labelledby="journey" className="min-w-0 lg:col-start-1 lg:row-start-1">
