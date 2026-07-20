@@ -191,7 +191,11 @@ describe('a deep link carries the flow it belongs to', () => {
 
     // Or a loop that silently iterated nothing would report success.
     expect(checked).toBeGreaterThan(150)
-  })
+    // 177 full mounts. Comfortable locally, over vitest's 5s default on a CI
+    // runner, which is how it broke the deploy rather than the branch. The
+    // timeout below is the fix; the honest alternative is asserting path
+    // resolution without mounting, which would be faster and test less.
+  }, 30_000)
 
   it('still resolves an old-style #step= link inside the default flow', () => {
     // These predate #flow= and people may hold them. Every one that resolved
