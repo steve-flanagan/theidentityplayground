@@ -32,12 +32,37 @@ const START_KEY = 'tip.flow.start'
 const RESULT_KEY = 'tip.flow.result'
 
 /**
- * A sign-in round trip does not take five minutes. Anything longer is a marker
- * left behind by a redirect that never completed — a closed tab, a cancelled
- * sign-in, a stale session — and reporting it as "your sign-in took 825.0s" is
- * an invented measurement, which is the one thing this site cannot do.
+ * Past this the marker is dropped rather than reported.
+ *
+ * What it catches is a redirect that never came back on its own: a closed tab,
+ * an abandoned sign-in, a visitor who wandered off and returned to the app by
+ * some other route. The interval measured in that case is real, but it is a
+ * measure of the wandering, and putting it on the badge announces a flow that
+ * did not happen the way the number says it did.
+ *
+ * ── WHY FIFTEEN MINUTES AND NOT FIVE ────────────────────────────────────────
+ *
+ * Five was sized on a sign-in, which is a round trip of seconds. Sign-up is not
+ * that shape. External ID mails a verification code, and waiting on an email
+ * runs past five minutes often enough that the slowest sign-ups were the only
+ * flows getting no badge at all.
+ *
+ * Nothing on this side can separate a slow sign-up from an abandonment returned
+ * to later. Both are genuine intervals and only the reason for their length
+ * differs, which is not observable from here. Fifteen minutes is where that
+ * trade is set: long enough for an email round trip, short enough that a tab
+ * left open over lunch is still thrown away.
+ *
+ * Two things this does NOT relax. The marker is consumed on the first read
+ * whatever this says (see finalize), so a longer window cannot leave one lying
+ * around to be picked up by a later flow. And HUMAN_FLOOR_MS is a lower bound on
+ * a different question entirely; nothing here moves it.
+ *
+ * It does widen the window resolveAmbiguous tests a creation time against, since
+ * that window is elapsedMs wide. A returning visitor's account is hours or days
+ * old, so widening it to a quarter of an hour still does not reach one.
  */
-export const STALE_AFTER_MS = 5 * 60_000
+export const STALE_AFTER_MS = 15 * 60_000
 
 /**
  * No human completes a credential entry this fast. Anything quicker than this
@@ -126,30 +151,34 @@ export function matchFlow(intent: string | null, elapsedMs: number | null): Flow
 }
 
 /**
- * The part of the flow this app never measured.
+ * How far outside the measured window a creation time may sit and still count
+ * as inside it.
  *
- * `elapsedMs` ends the moment the returned document began loading. The token is
- * minted after that, at the /token call, so `iat` sits a little past the end of
- * the measured interval. Steve's own HAR has the browser landing at 1441 ms and
- * /token answering at 4043 — about 2.6s of exchange plus app boot.
+ * The window is stamped by the browser and the creation time is stamped by
+ * Entra, so two clocks meet in this comparison and the offset between them
+ * lands in the answer. That is the price of dropping `iat` (see
+ * resolveAmbiguous), and it is a good trade: an NTP-synced machine is off by
+ * well under a second, where `iat` in this tenant was off by 292.
  *
- * Ten seconds covers that with room, and is nowhere near the age of an account
- * that already existed, which is measured in minutes to days. It is a bound on
- * what can be decided, not a measurement, and on the wrong side of it nothing
- * gets claimed at all.
+ * The two ends do not cost the same, which is why one number covers both.
+ *
+ *   PAST THE END     An account created after the flow that used it is
+ *                    impossible, so nothing legitimate lives out here and
+ *                    widening this end costs nothing at all. Past the
+ *                    tolerance a clock is wrong by over a minute, and then
+ *                    nothing gets claimed.
+ *
+ *   BEFORE THE START This is where every genuine sign-in lives, because its
+ *                    account was created hours or days ago. Widening this end
+ *                    is the expensive direction. A minute is still three orders
+ *                    of magnitude short of a day, so no returning visitor is
+ *                    reachable by it.
+ *
+ * What the start end buys: a sign-up whose account was created just before the
+ * measured round trip began, which is what a sign-up finishing across two trips
+ * looks like from here. Without the allowance that reads as a sign-in.
  */
-export const TOKEN_EXCHANGE_ALLOWANCE_MS = 10_000
-
-/** `iat` in epoch milliseconds, or null if this token cannot say. */
-function tokenIssuedAtMs(token: string): number | null {
-  try {
-    const iat = decodeJwt(token).payload.iat
-    if (typeof iat !== 'number' || !Number.isFinite(iat)) return null
-    return iat * 1000
-  } catch {
-    return null
-  }
-}
+export const WINDOW_TOLERANCE_MS = 60_000
 
 /**
  * The claim carrying when the account was created, exactly as it arrives:
@@ -225,53 +254,84 @@ export function accountCreatedAtMs(token: string | null): number | null {
  *
  * ── WHY THIS IS NOT A GUESS ─────────────────────────────────────────────────
  *
- * The flow started when the visitor clicked. An account that existed before
- * that click was not created by this flow; an account that did not exist before
- * it was. That is the whole inference, and it is the same shape as the SSO
- * bound above: a fact about ordering, not a judgement about behaviour.
+ * The flow started when the visitor clicked and ended when the browser landed
+ * back here. An account created inside that window was created by this flow; an
+ * account that already existed before it was not. That is the whole inference,
+ * and it is the same shape as the SSO bound above: a fact about ordering, not a
+ * judgement about behaviour.
  *
- * ── WHY BOTH TIMESTAMPS COME FROM ENTRA ─────────────────────────────────────
+ * The recorded sign-up capture shows why it separates cleanly. POST
+ * /common/createuser fires at 50.4s of a 54.8s round trip, seconds before the
+ * browser comes back. A sign-in's account is days old. Nothing sits between.
  *
- * The creation time is stamped by Entra. `iat` is stamped by Entra. Subtracting
- * them yields a real duration with no cross-clock offset in it. Comparing the
- * creation time against the browser's `Date.now()` would have been simpler and
- * wrong: a browser clock running slow makes an old account look newly created,
- * which is the exact error this page cannot afford — a badge telling someone
- * they signed up when they signed in.
+ * ── WHY NOT `iat` ───────────────────────────────────────────────────────────
  *
- * The duration this is measured against, `elapsedMs`, is browser-measured. That
- * is fine: an absolute offset between two clocks cancels out of a duration, and
- * rate drift over twenty seconds is nothing.
+ * This used to ask a different question: is the account younger than the token
+ * naming it. The premise was that `iat` and the creation time are both stamped
+ * by Entra, so subtracting them leaves no cross-clock offset in the answer.
+ *
+ * That premise is false in this tenant. A real sign-up came back with `iat`
+ * dated 292 SECONDS EARLIER than `createddatetime` — the token stamped before
+ * the account it describes, and before the captured flow entirely. Whatever
+ * `iat` marks here, it is not the minting moment, and no tolerance absorbs a
+ * five-minute error while still telling a sign-up from a sign-in.
+ *
+ * So the window replaces it, and `iat` is not read at all. Both ends of the
+ * window are browser-stamped: `performance.timeOrigin` is the moment the
+ * returned document began loading, and `elapsedMs` back from it is the click.
+ * See roundTripMs, which built that pair from this same anchor.
+ *
+ * ── WHAT THE WINDOW COSTS ───────────────────────────────────────────────────
+ *
+ * A browser-stamped window against an Entra-stamped creation time puts two
+ * clocks back into the comparison, which is exactly what the old design was
+ * built to avoid. The margin swallows it: a sign-up creates the account inside
+ * a window tens of seconds wide, and a sign-in's account is hours or days old.
+ * Seconds of skew cannot move a day. WINDOW_TOLERANCE_MS carries the sizing.
  *
  * ── WHAT IT STILL CANNOT TELL ───────────────────────────────────────────────
  *
- * An account created seconds ago in another tab, signing in interactively right
+ * An account created moments ago in another tab, signing in interactively right
  * now, reads as a sign-up. That needs a fresh account AND a dead Entra session
- * AND a second interactive sign-in inside the same few seconds. Named here
- * rather than papered over.
+ * AND a second interactive sign-in inside the window this flow ran in, which is
+ * that flow's own elapsed time plus the tolerance and never wider than
+ * STALE_AFTER_MS. Named here rather than papered over.
  *
- * Pure, and every failure returns the match untouched. No signal means today's
- * behaviour, which is to say nothing.
+ * Every failure returns the match untouched. No signal means today's behaviour,
+ * which is to say nothing.
+ *
+ * `landedAtMs` is a parameter so the reasoning stays pure and testable against
+ * written-down numbers. It defaults to the one real anchor, so no caller passes
+ * it and none had to change.
  */
 export function resolveAmbiguous(
   match: FlowMatch,
   createdAtMs: number | null,
   idToken: string | null,
+  landedAtMs: number = performance.timeOrigin,
 ): FlowMatch {
   // Never disturb a branch that already knows. force-credentials, sign-out and
   // the sub-human-floor SSO bound are deterministic and are not up for revision.
   if (!match || match.kind !== 'ambiguous') return match
   if (createdAtMs === null || !Number.isFinite(createdAtMs) || !idToken) return match
 
-  const issuedAtMs = tokenIssuedAtMs(idToken)
-  if (issuedAtMs === null) return match
+  // The window this flow ran in. The pair is exact by construction: roundTripMs
+  // built elapsedMs by subtracting the click from this same timeOrigin, so
+  // adding it back recovers the click. Nothing new is stored to get here.
+  if (!Number.isFinite(landedAtMs) || !Number.isFinite(match.elapsedMs) || match.elapsedMs < 0) {
+    return match
+  }
 
-  const ageAtIssueMs = issuedAtMs - createdAtMs
-  // An account younger than the token naming it. Something is wrong with a
-  // clock or a parse, and a wrong badge is worse than no badge.
-  if (ageAtIssueMs < 0) return match
+  const windowEndMs = landedAtMs
+  const windowStartMs = landedAtMs - match.elapsedMs
 
-  if (ageAtIssueMs <= match.elapsedMs + TOKEN_EXCHANGE_ALLOWANCE_MS) {
+  // An account dated after the flow that carried it. That order is impossible,
+  // so a clock is out by more than the tolerance and this declines to say which
+  // one. Same posture as the negative-age guard it replaces: nonsense in means
+  // nothing out.
+  if (createdAtMs > windowEndMs + WINDOW_TOLERANCE_MS) return match
+
+  if (createdAtMs >= windowStartMs - WINDOW_TOLERANCE_MS) {
     return {
       kind: 'matched',
       flow: 'signup',

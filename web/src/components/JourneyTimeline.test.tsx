@@ -1,20 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { JourneyTimeline } from './JourneyTimeline'
+import { JourneyTimeline, formatElapsed } from './JourneyTimeline'
 import { buildSampleToken } from '../lib/sampleToken'
 import signinCapture from '../lib/captures/signin.json'
 import signoutCapture from '../lib/captures/signout.json'
+import signupCapture from '../lib/captures/signup.json'
+import ssoOnCapture from '../lib/captures/sso-on.json'
+import ssoOffCapture from '../lib/captures/sso-off.json'
+import ssoProbeCapture from '../lib/captures/sso-probe.json'
 import {
   ACTOR_LABELS,
   buildJourney,
   FLOW_META,
   FLOW_ONLY,
+  TAB_FLOWS,
   type Actor,
   type FlowId,
   type ZoomNode,
 } from '../lib/journey'
-import { clearLastFlow, markFlowStart, type FlowMatch } from '../lib/lastFlow'
+import { clearLastFlow, markFlowStart, STALE_AFTER_MS, type FlowMatch } from '../lib/lastFlow'
 
+/**
+ * Every flow that can be BUILT, which is not the same as every flow that gets a
+ * tab. sso-probe has no tab any more and its data reaches the page folded into
+ * the SSO flow, but the capture is still real and every guard below still has
+ * to hold for it. Anything that reaches a flow by clicking its tab uses
+ * TAB_FLOWS instead.
+ */
 const FLOWS: FlowId[] = ['signup', 'signin', 'sso-on', 'sso-off', 'sso-probe', 'signout']
 
 // These exist because of a real outage, not for coverage.
@@ -383,6 +395,308 @@ describe('the timeline reports what was actually measured', () => {
   })
 })
 
+// ── Prose that quotes a measurement belongs to the capture it measured ──────
+// The TLS gotcha was one shared string, keyed by phase name alone and written
+// off the sign-in capture. It named the two requests that pay for a connection
+// (57 ms and 166 ms) and listed /token among the ones that reuse one. True in
+// four flows. In sso-off /token opens a fresh connection — 73 ms of connect,
+// 81 ms of TLS — and the string rendered as the gotcha ON that handshake row:
+// the page told the reader a connection cost nothing, directly beneath the
+// 81 ms it had just charged for one.
+//
+// Nothing caught it, because every check on this file compares the page against
+// the sign-in capture, which is the one flow the sentence was true in.
+
+/** Only the fields these assertions read. Same cast journey.ts uses on the JSON. */
+type CaptureShape = {
+  requests: {
+    path: string
+    /** Who served it. The DNS assertion below turns on two requests sharing one. */
+    host: string
+    total: number
+    /** The idle gap before it fired. Quoted in prose, so it is a measurement. */
+    idleBefore: number
+    timings: Record<string, number>
+  }[]
+}
+
+const CAPTURE: Record<FlowId, CaptureShape> = {
+  signup: signupCapture as CaptureShape,
+  signin: signinCapture as CaptureShape,
+  'sso-on': ssoOnCapture as CaptureShape,
+  'sso-off': ssoOffCapture as CaptureShape,
+  'sso-probe': ssoProbeCapture as CaptureShape,
+  signout: signoutCapture as CaptureShape,
+}
+
+describe('per-capture prose stays inside the capture it was measured from', () => {
+  /**
+   * Every phase row in a flow. A request's timed children ARE its phases: the
+   * untimed children are the composition hanging off `wait`, which carries no
+   * measurement and so nothing for these assertions to check.
+   */
+  const phaseRows = (flow: FlowId) =>
+    journeyFor(flow).events.flatMap((e) => (e.children ?? []).filter((c) => c.span))
+
+  it('does not tell the sso-off reader that /token paid nothing for its connection', () => {
+    // The precondition, read from the capture rather than assumed. This is the
+    // only flow in which /token opens a connection of its own.
+    const req = CAPTURE['sso-off'].requests.find((r) => r.path.endsWith('/oauth2/v2.0/token'))
+    expect(req?.timings.connect).toBeGreaterThan(0)
+    expect(req?.timings.ssl).toBeGreaterThan(0)
+
+    const node = journeyFor('sso-off').events.find((e) => e.id === 'token-request')
+    // And the handshake really is on screen, or the assertion below is vacuous.
+    expect(node?.children?.some((c) => c.id === 'token-request:ssl')).toBe(true)
+
+    // Everything the page says on that request: its own detail and every phase
+    // row under it. The old sentence rendered on the TLS row.
+    const said = JSON.stringify([node?.detail, ...(node?.children ?? []).map((c) => c.detail)])
+    expect(said).not.toMatch(/pure server time/i)
+    expect(said).not.toMatch(/reuses a connection and pays nothing/i)
+  })
+
+  /**
+   * Every figure a capture can support: a request total, any single phase, the
+   * idle gap before it fired, and the connection setup it paid, which is what
+   * the TLS gotcha is about and is a sum rather than a field.
+   */
+  const measuredIn = (flow: FlowId) => {
+    const measured = new Set<number>()
+    for (const r of CAPTURE[flow].requests) {
+      measured.add(r.total)
+      measured.add(r.idleBefore)
+      let setup = 0
+      for (const [phase, ms] of Object.entries(r.timings)) {
+        measured.add(ms)
+        if (phase === 'dns' || phase === 'connect' || phase === 'ssl') setup += ms
+      }
+      measured.add(setup)
+    }
+    return measured
+  }
+
+  /** Every word the page says about a node, at every depth, in one string. */
+  const proseIn = (flow: FlowId) => {
+    const out: { id: string; text: string }[] = []
+    const walk = (nodes: ZoomNode[]) => {
+      for (const n of nodes) {
+        out.push({
+          id: n.id,
+          text: [n.summary, n.detail?.what, n.detail?.why, n.detail?.gotcha, n.absent]
+            .filter(Boolean)
+            .join(' '),
+        })
+        if (n.children) walk(n.children)
+      }
+    }
+    walk(journeyFor(flow).events)
+    return out
+  }
+
+  /**
+   * The only figures a flow may quote from someone else's capture, and the
+   * capture each one belongs to.
+   *
+   * Two sentences on the site are deliberate cross-flow comparisons, which is
+   * the whole demo rather than a leak: sso-off names what /authorize costs when
+   * the session IS reused, and sso-on names what the same endpoint answers when
+   * the request cannot reach the session at all. Listing them here is what
+   * keeps the rule strict everywhere else, and the assertion below checks that
+   * the named capture really did measure the number, so an exception cannot
+   * shelter one nobody measured.
+   */
+  const CROSS_FLOW: Partial<Record<FlowId, Record<number, FlowId>>> = {
+    'sso-on': { 197: 'sso-probe' },
+    'sso-off': { 190: 'sso-on' },
+  }
+
+  it('quotes no millisecond figure the flow did not measure, anywhere on the page', () => {
+    // The general form, and the guard that makes a repeat impossible rather
+    // than merely fixed. This used to cover phase prose only, with the request
+    // level explicitly left out — and the request level is where the worst one
+    // was: /authorize told four flows out of five that 166 ms of it was
+    // connection setup, off the sign-in capture, on the flagship row. Extending
+    // the loop is what found it.
+    for (const flow of FLOWS) {
+      const measured = measuredIn(flow)
+      const allowed = CROSS_FLOW[flow] ?? {}
+
+      for (const node of proseIn(flow)) {
+        // Thousands separators included: "Measured at 1,673 ms" is one figure,
+        // and a naive \d+ reads the tail of it as 673 and calls it invented.
+        for (const [, digits] of node.text.matchAll(/([\d,]+) ms\b/g)) {
+          const ms = Number(digits.replace(/,/g, ''))
+          if (measured.has(ms)) continue
+
+          const from = allowed[ms]
+          expect(
+            from,
+            `${flow}/${node.id} quotes ${ms} ms, and nothing in that capture measured it`,
+          ).toBeDefined()
+          expect(
+            measuredIn(from!).has(ms),
+            `${flow}/${node.id} borrows ${ms} ms from ${from}, which did not measure it either`,
+          ).toBe(true)
+        }
+      }
+    }
+  })
+
+  it('does not claim only the first trip to a host pays for a lookup', () => {
+    // Read from the capture, not assumed. Two requests in the sign-in pay DNS
+    // and they go to the SAME host, so "Only the first trip to a host pays"
+    // was false, and it rendered as the gotcha ON the second one's row: the
+    // page denied the 11 ms it had just charged.
+    const paidDns = CAPTURE.signin.requests.filter((r) => r.timings.dns > 0)
+    expect(paidDns).toHaveLength(2)
+    expect(new Set(paidDns.map((r) => r.host)).size).toBe(1)
+
+    const said = phaseRows('signin')
+      .map((row) => row.detail?.gotcha ?? '')
+      .join(' ')
+
+    expect(said).not.toMatch(/only the first trip/i)
+    // And the flow says what it actually measured, both times.
+    for (const r of paidDns) expect(said).toContain(`${r.timings.dns} ms`)
+  })
+
+  it('keeps a sentence written off one capture out of the other five', () => {
+    // 57 ms and 166 ms belong to sign-in. Sign-up measures 66 and 49 for those
+    // same two requests, and in sso-off discovery is a cache hit that pays
+    // nothing at all, so the sentence is not merely imprecise there. It is wrong.
+    const SIGNIN_ONLY = 'the discovery call (57 ms)'
+
+    for (const flow of FLOWS) {
+      const said = phaseRows(flow)
+        .map((row) => row.detail?.gotcha ?? '')
+        .join(' ')
+
+      if (flow === 'signin') {
+        expect(said, 'the sign-in sentence stopped rendering').toContain(SIGNIN_ONLY)
+      } else {
+        expect(said, `${flow} renders prose measured from the sign-in capture`).not.toContain(
+          SIGNIN_ONLY,
+        )
+      }
+    }
+  })
+})
+
+// ── The silent probe is data, not a destination ─────────────────────────────
+// It sat as a sixth tab beside five flows a visitor can actually perform, which
+// implied it was a sixth thing to try. It is not: the hidden-iframe leg it
+// needs cannot receive the ciamlogin.com session cookie in any browser with
+// third-party cookie protection on, so no state a visitor can put their browser
+// in makes it succeed. The capture is real and stays; it moved onto the request
+// it is the counterfactual to.
+
+describe('the silent probe is folded into the SSO flow, not offered as one', () => {
+  /** The probe's own measurement, read from the capture rather than typed. */
+  const probeAuthorize = (ssoProbeCapture as CaptureShape).requests.find((r) =>
+    r.path.endsWith('/oauth2/v2.0/authorize'),
+  )!
+
+  it('renders no tab for it, and still renders one for everything else', () => {
+    mount()
+
+    for (const flow of TAB_FLOWS) {
+      expect(
+        screen.getByRole('button', { name: FLOW_META[flow].label }),
+        `${flow} lost its tab`,
+      ).toBeDefined()
+    }
+    expect(TAB_FLOWS).not.toContain('sso-probe')
+    expect(screen.queryByRole('button', { name: FLOW_META['sso-probe'].label })).toBeNull()
+  })
+
+  it('carries the probe’s measurement onto the SSO flow’s /authorize', () => {
+    // The request the probe contradicts: same endpoint, same session, one
+    // parameter and one browsing context different, opposite outcomes.
+    const said =
+      journeyFor('sso-on').events.find((e) => e.id === 'authorize')?.detail?.gotcha ?? ''
+
+    expect(said).toContain(`${probeAuthorize.total} ms`)
+    expect(said).toContain('login_required')
+  })
+
+  it('keeps the third-party-cookie finding, which is the interesting part', () => {
+    // Deleting the tab must not delete the reason. This is the strongest thing
+    // in notes/findings.md and the probe was the only place it appeared.
+    const said =
+      journeyFor('sso-on').events.find((e) => e.id === 'authorize')?.detail?.gotcha ?? ''
+
+    expect(said).toMatch(/AADSTS50058/)
+    expect(said).toMatch(/third-party/i)
+  })
+
+  it('still builds the flow, so the capture cannot rot unnoticed', () => {
+    // Every guard in this file runs over sso-probe. Dropping it from FlowId
+    // would have taken the capture out from under all of them.
+    const probe = journeyFor('sso-probe')
+    expect(probe.events).toHaveLength(ssoProbeCapture.requestCount)
+    expect(probe.outcome).toEqual({ label: 'login_required', ok: false })
+  })
+})
+
+// ── The badge prints a duration, and it has to survive a long one ───────────
+// STALE_AFTER_MS went from five minutes to fifteen so a sign-up waiting on an
+// emailed verification code gets a badge at all. Nothing moved the formatting
+// with it, so a thirteen-minute sign-up rendered "It took 786.3s." — true, and
+// indistinguishable from a number nobody measured. The comment that change
+// replaced named "your sign-in took 825.0s" as the exact thing that must never
+// appear again.
+
+describe('how long it took, in units a reader can hold', () => {
+  /** A finished round trip of exactly this length. Same seeding lastFlow uses. */
+  const seed = (intent: 'default' | 'force-credentials', elapsedMs: number) => {
+    markFlowStart(intent)
+    // Against performance.timeOrigin, not Date.now(): the round trip is
+    // measured from the click to when the returned document began loading.
+    sessionStorage.setItem('tip.flow.start', String(performance.timeOrigin - elapsedMs))
+  }
+
+  it('leaves everything under two minutes exactly as it was', () => {
+    // The sub-threshold rendering is not up for revision. A sign-in is seconds
+    // and 20.8s is the right way to say it.
+    expect(formatElapsed(1_000)).toBe('1.0s')
+    expect(formatElapsed(20_800)).toBe('20.8s')
+    expect(formatElapsed(119_949)).toBe('119.9s')
+  })
+
+  it('says a long wait in minutes and seconds', () => {
+    expect(formatElapsed(120_000)).toBe('2m 0s')
+    expect(formatElapsed(786_300)).toBe('13m 6s')
+    // The longest interval that can reach the badge at all, so the longest
+    // string this ever has to produce.
+    expect(formatElapsed(STALE_AFTER_MS)).toBe('15m 0s')
+  })
+
+  it('carries a remainder that rounds up to a whole minute', () => {
+    // 59.6s of remainder is 60s to the nearest second, and "8m 60s" is not a
+    // time. 479_600 is 7m 59.6s.
+    expect(formatElapsed(479_600)).toBe('8m 0s')
+  })
+
+  it('renders the short form on a flow the visitor performed', () => {
+    seed('force-credentials', 20_800)
+
+    mount()
+
+    expect(screen.getByText(/It took 20\.8s\./)).toBeDefined()
+  })
+
+  it('renders minutes on the sign-up that waited on an email', () => {
+    seed('default', 786_300)
+
+    mount()
+
+    expect(screen.getByText(/Your sign-in took 13m 6s\./)).toBeDefined()
+    // The number that started this. It must not be anywhere on the page.
+    expect(screen.queryByText(/786/)).toBeNull()
+  })
+})
+
 // ── Sign-out ────────────────────────────────────────────────────────────────
 // The flow that ends a session instead of starting one, and the one that had to
 // break the assumption every other flow was built on: that a journey ends in a
@@ -742,7 +1056,9 @@ describe('the actor colours, which are settled', () => {
   it('paints every overview bar in its own actor colour, in every flow', () => {
     const covered = new Set<Actor>()
 
-    for (const flow of FLOWS) {
+    // TAB_FLOWS, not FLOWS: this one reaches a flow by clicking its tab, and
+    // the silent probe no longer has one.
+    for (const flow of TAB_FLOWS) {
       cleanup()
       const events = journeyFor(flow).events
       mountFlow(FLOW_META[flow].label)

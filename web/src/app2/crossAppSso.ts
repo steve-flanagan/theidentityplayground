@@ -33,6 +33,34 @@ const START_KEY = 'tip.app2.start'
 const ELAPSED_KEY = 'tip.app2.elapsed'
 
 /**
+ * Past this the marker is dropped rather than reported.
+ *
+ * What it catches is a redirect that never came back on its own: a closed tab,
+ * an abandoned sign-in, a visitor who wandered off and reached /app2 again by
+ * some other route. That interval is real, but it measures the wandering, and
+ * putting it on the page announces a round trip that did not happen the way the
+ * number says it did.
+ *
+ * ── WHY FIVE AND NOT THE MAIN APP'S FIFTEEN ─────────────────────────────────
+ *
+ * Fifteen is sized for sign-up, where External ID mails a verification code and
+ * the wait on that mailbox runs past five minutes often enough to matter. There
+ * is no sign-up on this page. `crossAppSsoRequest` carries no prompt and no user
+ * flow, so the two outcomes are a session bounce of well under a second, or a
+ * credential entry on Entra's own page. Neither one waits on an email.
+ *
+ * Five minutes is already generous for the slow end of that: a federated hop out
+ * to Google plus an MFA prompt is tens of seconds. What it will not survive is a
+ * tab left open over lunch, which is the case worth throwing away.
+ *
+ * Two things this does not touch. The marker is consumed on the first read
+ * whatever this says (see completeApp2Timing), so the window cannot leave one
+ * lying around for a later flow to pick up. And HUMAN_FLOOR_MS answers a
+ * different question at the other end of the scale; nothing here moves it.
+ */
+export const APP2_STALE_AFTER_MS = 5 * 60_000
+
+/**
  * Call immediately before the redirect leaves the page.
  *
  * Storage can be unavailable (private mode, blocked cookies). Losing the
@@ -55,15 +83,53 @@ export function markApp2Start(): void {
  * what lets a page refresh still say something true. sessionStorage and MSAL's
  * token cache die together when the tab closes, so the measurement and the
  * token it describes stay in step.
+ *
+ * ── WHERE THE INTERVAL ENDS ─────────────────────────────────────────────────
+ *
+ * At `performance.timeOrigin`: the epoch-millisecond moment THIS document's
+ * navigation began, which is the instant the browser came back from Entra. Same
+ * clock as the `Date.now()` stamped at the click, so the two subtract cleanly,
+ * and fixed for the life of the document, so it does not matter how late in the
+ * boot this runs.
+ *
+ * `Date.now()` used to sit at that end, and it is the same bug the main app's
+ * roundTripMs already fixed. It is evaluated after the returned document has
+ * loaded AND the SPA has booted, so the interval covered click → Entra →
+ * redirect back → the entire cold boot. A real 1.4s SSO measured 3.8s.
+ *
+ * It costs more here than it did there. classifyAcquisition puts this number
+ * straight against HUMAN_FLOOR_MS, so boot time carries a genuine SSO over the
+ * floor and the page then refuses to call it SSO, on the one page whose whole
+ * subject is SSO.
+ *
+ * `landedAtMs` is a parameter so the reasoning stays testable against
+ * written-down numbers. It defaults to the one real anchor, so no caller passes
+ * it.
  */
-export function completeApp2Timing(now: number = Date.now()): number | null {
+export function completeApp2Timing(
+  landedAtMs: number = performance.timeOrigin,
+): number | null {
   try {
     const started = sessionStorage.getItem(START_KEY)
+    // Consumed before anything below can reject it, so the marker is single-use
+    // whatever happens next. An abandoned redirect can never be left lying
+    // around for a later one to pick up and report as its own.
     sessionStorage.removeItem(START_KEY)
     if (!started) return readApp2Elapsed()
 
-    const elapsedMs = now - Number(started)
-    if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return null
+    const elapsedMs = landedAtMs - Number(started)
+
+    // NaN from garbage in storage, or an environment with no usable time origin.
+    if (!Number.isFinite(elapsedMs)) return null
+
+    // Not positive means no navigation separated the click from this read: the
+    // document doing the reading is the one that did the clicking, or an older
+    // one the browser restored from its back/forward cache. Either way its time
+    // origin predates the click and there is no round trip here to measure.
+    if (elapsedMs <= 0) return null
+
+    // Longer than any redirect that came back on its own. See APP2_STALE_AFTER_MS.
+    if (elapsedMs > APP2_STALE_AFTER_MS) return null
 
     sessionStorage.setItem(ELAPSED_KEY, String(elapsedMs))
     return elapsedMs

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMsal, useIsAuthenticated } from '@azure/msal-react'
 import { InteractionStatus, BrowserAuthError } from '@azure/msal-browser'
-import { buildAuthRequest, isInteractionRequired, silentRedirectUri } from '../auth/ssoRequest'
+import { buildAuthRequest } from '../auth/ssoRequest'
 import { clearLastFlow, markFlowStart } from '../lib/lastFlow'
 
 type Props = {
@@ -26,8 +26,16 @@ type Props = {
  *
  * SSO is not a feature you turn on. A plain authorization request already
  * honours an existing session — that IS single sign-on, and it's the default.
- * So the demo is the reverse: a switch that DEFEATS it (prompt=login), and a
- * silent probe that can only succeed off a session (prompt=none).
+ * So the demo is the reverse: a switch that DEFEATS it (prompt=login).
+ *
+ * There was a third control here, "Try silent sign-in", calling ssoSilent().
+ * It is gone. Its hidden-iframe leg cannot receive the ciamlogin.com session
+ * cookie in any browser with third-party cookie protection on, which is a
+ * capture this repo already holds (notes/findings.md, 18 July): the same user,
+ * the same live session, seconds apart, top-level returns a code and the iframe
+ * returns login_required. So the button failed every time it was pressed, and a
+ * control that always fails teaches nothing that the recorded flow does not
+ * teach better. The finding kept its place on the timeline; the button did not.
  *
  * The sign-out split is what makes any of it observable. `logoutRedirect` ends
  * the session at Entra, so after it there is nothing to single-sign-on WITH —
@@ -61,30 +69,6 @@ export function SignInPanel({ onLocalSignOut }: Props) {
       // their mind, which is allowed.
       if (e instanceof BrowserAuthError && e.errorCode === 'user_cancelled') return
       setError(e instanceof Error ? e.message : 'Sign-in failed.')
-    }
-  }
-
-  /** prompt=none. Succeeds off an existing session or fails; never shows UI. */
-  async function silentSignIn() {
-    setError(null)
-    setNote(null)
-    try {
-      // Land the hidden iframe on the empty page, not the app — see
-      // silentRedirectUri. This is the fix for the `timed_out` failure.
-      await instance.ssoSilent({
-        ...buildAuthRequest('silent'),
-        redirectUri: silentRedirectUri(),
-      })
-      setNote('Silent sign-in succeeded. That token came from your existing session, with no prompt.')
-    } catch (e) {
-      if (isInteractionRequired(e)) {
-        // The instructive failure, not a bug: no session to single-sign-on with.
-        setNote(
-          'Silent sign-in returned login_required. There is no active session to reuse, so SSO had nothing to work with. Sign in once, then try again.',
-        )
-        return
-      }
-      setError(e instanceof Error ? e.message : 'Silent sign-in failed.')
     }
   }
 
@@ -190,34 +174,27 @@ export function SignInPanel({ onLocalSignOut }: Props) {
           </span>
         </label>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            onClick={silentSignIn}
-            disabled={busy}
-            className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-emerald-500/50 hover:text-emerald-300 disabled:opacity-50"
-          >
-            Try silent sign-in
-          </button>
-
-          {isAuthenticated && (
-            <>
-              <button
-                onClick={signOutAppOnly}
-                disabled={busy}
-                className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500 disabled:opacity-50"
-              >
-                Sign out of this app
-              </button>
-              <button
-                onClick={signOutEverywhere}
-                disabled={busy}
-                className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500 disabled:opacity-50"
-              >
-                Sign out everywhere
-              </button>
-            </>
-          )}
-        </div>
+        {/* The whole row is behind the auth check now. It used to hold a third
+            button that rendered signed out as well, so the container was always
+            there; on its own it would leave 12px of nothing above the caption. */}
+        {isAuthenticated && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              onClick={signOutAppOnly}
+              disabled={busy}
+              className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500 disabled:opacity-50"
+            >
+              Sign out of this app
+            </button>
+            <button
+              onClick={signOutEverywhere}
+              disabled={busy}
+              className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500 disabled:opacity-50"
+            >
+              Sign out everywhere
+            </button>
+          </div>
+        )}
 
         <p className="mt-2 text-xs leading-relaxed text-slate-600">
           "This app" drops local tokens and leaves the Entra session alive, so the next sign-in

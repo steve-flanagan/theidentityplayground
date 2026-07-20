@@ -124,8 +124,8 @@ function App() {
           </h1>
           <p className="mt-6 text-lg leading-relaxed text-slate-400">
             Identity work is invisible in production. This site makes it visible: sign in
-            for real, then read exactly what happened underneath. The tokens, the policies,
-            the provisioning calls.
+            for real, then read the token that came back and every request that produced
+            it.
           </p>
           <p className="mt-4 text-lg leading-relaxed text-slate-400">
             Built on Microsoft Entra by{' '}

@@ -1,0 +1,224 @@
+# Deletes and purges expired demo accounts from the External ID tenant.
+#
+# The site tells every visitor their account self-destructs. This is what makes
+# that true without anyone being at a keyboard. Decision 003 has the reasoning:
+# docs/decisions/003-cross-tenant-graph.md
+#
+# NO STORED CREDENTIAL. There is no client secret and no certificate anywhere in
+# this repo or in GitHub secrets. The job proves who it is with a token GitHub
+# mints for this workflow, which Entra trusts through a federated identity
+# credential on the app registration. Nothing to rotate, nothing to leak.
+#
+# The exchange, which is three hops and worth reading once:
+#
+#   1. Ask GitHub for an OIDC ID token with audience api://AzureADTokenExchange.
+#      Needs `id-token: write` below, and nothing else gets you this token.
+#   2. POST that token to the External ID tenant as `client_assertion`, with
+#      client_assertion_type urn:ietf:params:oauth:client-assertion-type:jwt-bearer.
+#      Entra matches its issuer, subject and audience against the federated
+#      credential, and returns an app-only Graph token.
+#   3. Hand that to Connect-MgGraph -AccessToken.
+#
+# Note what is NOT used: azure/login. That gets an Azure Resource Manager session,
+# and this identity has no subscription and no RM role. It only has Graph
+# application permissions in a tenant that owns no Azure resources.
+#
+# PUSH ACCESS TO main IS USER-DELETE IN THE CIAM TENANT. The federated credential
+# trusts a repo ref, so branch protection on main is an access control here, not
+# hygiene.
+
+name: Cleanup demo accounts
+
+on:
+  # Every six hours. The TTL is 24 hours, so this is four chances to catch an
+  # expiry rather than one, and it keeps the token count low if client-credential
+  # requests turn out to be metered on this tenant.
+  #
+  # Scheduled workflows on public repos are disabled automatically after 60 days
+  # with no repository activity, and a job that stops running raises nothing. See
+  # the monitoring section of decision 003.
+  schedule:
+    - cron: '17 */6 * * *'
+
+  workflow_dispatch:
+    inputs:
+      delete:
+        description: 'Actually delete. Leave unchecked for a dry run.'
+        type: boolean
+        default: false
+      maxDeletions:
+        description: 'Abort without deleting anything if more candidates than this.'
+        type: string
+        default: '10'
+      tokenHost:
+        description: 'Token endpoint host. Switch only if the default is rejected.'
+        type: choice
+        default: 'login.microsoftonline.com'
+        options:
+          - 'login.microsoftonline.com'
+          - 'theidentityplayground.ciamlogin.com'
+
+# id-token: write is what lets the job request an OIDC token at all.
+# contents: read is what lets checkout fetch the script. Nothing else is needed,
+# and this block replaces the default token permissions entirely.
+permissions:
+  id-token: write
+  contents: read
+
+# Two runs deleting the same users at once would have the second one failing on
+# objects the first already purged.
+concurrency:
+  group: cleanup-demo-accounts
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      # Public identifiers. Neither is a secret, and both are meant to be readable
+      # here. See "What must never be in the repo" in decision 003.
+      TENANT_ID: '7e8da8a9-67bc-4d53-bfc7-fe3e13128382'
+      CLIENT_ID: '2d0fb6bd-4e37-463c-9a9a-4b78bde66803'
+
+      TOKEN_HOST: ${{ inputs.tokenHost || 'login.microsoftonline.com' }}
+      MAX_DELETIONS: ${{ inputs.maxDeletions || '10' }}
+
+      # Dry run unless this is the schedule, or someone explicitly ticked delete.
+      # Written as "not (scheduled or explicitly asked)" so that any event type
+      # added later lands on the dry-run side by default. The first thing anyone
+      # does with a new workflow is press the button, and pressing the button must
+      # not delete users.
+      WHAT_IF: ${{ !(github.event_name == 'schedule' || inputs.delete == true) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── The token exchange ──────────────────────────────────────────────────
+      # No `set -x` here, ever. It would print the assertion and the access token.
+      - name: Get an app-only Graph token
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # These two are injected only when the job has id-token: write. Checked
+          # explicitly because `set -u` would otherwise fail on an unbound variable,
+          # which does not point at the permissions block.
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "No OIDC token endpoint in the environment." >&2
+            echo "The job needs 'permissions: id-token: write'." >&2
+            exit 1
+          fi
+
+          # Step 1. GitHub's OIDC token for this workflow run.
+          # The audience must match the federated credential exactly.
+          id_token=$(curl -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" \
+            | jq -r '.value')
+
+          if [ -z "$id_token" ] || [ "$id_token" = "null" ]; then
+            echo "Could not get an OIDC token from GitHub. Is 'id-token: write' set?" >&2
+            exit 1
+          fi
+          echo "::add-mask::$id_token"
+
+          # The subject and audience this run is actually presenting. These are
+          # the three fields Entra matches against the federated credential, and a
+          # mismatch fails at exchange with an opaque AADSTS error rather than at
+          # save time. Printing them turns "it just fails" into "paste this into
+          # the credential". They are not secrets. The token itself is never
+          # printed, only these claims.
+          payload=$(printf '%s' "$id_token" | cut -d. -f2 | tr '_-' '/+')
+          case $(( ${#payload} % 4 )) in
+            2) payload="${payload}==" ;;
+            3) payload="${payload}="  ;;
+          esac
+          echo "Presenting to Entra:"
+          printf '%s' "$payload" | base64 -d 2>/dev/null \
+            | jq -r '"  issuer  : \(.iss)\n  subject : \(.sub)\n  audience: \(.aud)"' \
+            || echo "  (could not decode the token payload, continuing)"
+
+          # Step 2. Exchange it for a Graph token at the External ID tenant.
+          # Documented as the "access token request with a federated credential"
+          # case of the client credentials flow.
+          response=$(curl -sS -X POST \
+            "https://${TOKEN_HOST}/${TENANT_ID}/oauth2/v2.0/token" \
+            -H 'Content-Type: application/x-www-form-urlencoded' \
+            --data-urlencode "client_id=${CLIENT_ID}" \
+            --data-urlencode 'scope=https://graph.microsoft.com/.default' \
+            --data-urlencode 'grant_type=client_credentials' \
+            --data-urlencode 'client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer' \
+            --data-urlencode "client_assertion=${id_token}")
+
+          access_token=$(jq -r '.access_token // empty' <<<"$response" 2>/dev/null || true)
+
+          if [ -z "$access_token" ]; then
+            echo "Token exchange failed at ${TOKEN_HOST}." >&2
+            # error_description carries the AADSTS code, which is the whole
+            # diagnostic. There is no token in an error response.
+            jq -r '"  error: \(.error)\n  description: \(.error_description)"' <<<"$response" >&2 \
+              || echo "  Response was not JSON." >&2
+            echo "" >&2
+            echo "AADSTS700016 or 'application not found' usually means the wrong token host." >&2
+            echo "AADSTS70021 'No matching federated identity record found' means the" >&2
+            echo "issuer, subject or audience above does not match the credential." >&2
+            exit 1
+          fi
+
+          echo "::add-mask::$access_token"
+          echo "GRAPH_TOKEN=$access_token" >> "$GITHUB_ENV"
+          echo "Got a Graph token from ${TOKEN_HOST}."
+
+      # ── Run the script that already works ───────────────────────────────────
+      # Only the three modules the script requires. Installing all of
+      # Microsoft.Graph pulls in about forty modules and minutes of install time
+      # for cmdlets this never calls.
+      - name: Install the Graph modules
+        shell: pwsh
+        run: |
+          # Without this, Install-Module spends most of its time drawing a bar.
+          $ProgressPreference = 'SilentlyContinue'
+
+          # Pinned. 2.38.1 is the version the script is verified against, and
+          # pinning keeps a bad SDK release from taking the cleanup down on a day
+          # nobody is looking. 2.35.1 shipped a regression where -AccessToken with
+          # a SecureString silently fell through to a different credential type on
+          # Linux, which is exactly this code path on exactly this runner.
+          $modules = @(
+            'Microsoft.Graph.Authentication'
+            'Microsoft.Graph.Users'
+            'Microsoft.Graph.Identity.DirectoryManagement'
+          )
+          foreach ($module in $modules) {
+            Install-Module $module -RequiredVersion 2.38.1 `
+              -Scope CurrentUser -Force -AllowClobber
+          }
+
+      - name: Remove expired demo accounts
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+
+          $parameters = @{
+            AccessToken  = ConvertTo-SecureString $env:GRAPH_TOKEN -AsPlainText -Force
+            MaxDeletions = [int] $env:MAX_DELETIONS
+
+            # ShouldProcess would otherwise prompt, and there is nobody here to
+            # answer. -MaxDeletions is what stands in for it. The script aborts
+            # without deleting anything if the candidate count exceeds it.
+            Confirm      = $false
+          }
+
+          # No -TenantId. Connect-MgGraph's AccessToken parameter set does not
+          # take one, and the token already says which tenant it is for.
+
+          if ($env:WHAT_IF -eq 'true') {
+            Write-Host 'DRY RUN. Reporting what would go, deleting nothing.'
+            Write-Host 'Re-run from the Actions tab with "Actually delete" ticked.'
+            Write-Host ''
+            $parameters['WhatIf'] = $true
+          }
+
+          & "$env:GITHUB_WORKSPACE/scripts/Remove-ExpiredDemoAccounts.ps1" @parameters

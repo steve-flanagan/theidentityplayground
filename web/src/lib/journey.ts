@@ -305,6 +305,34 @@ export const FLOW_META: Record<
 }
 
 /**
+ * The flows a visitor is offered, in the order they appear.
+ *
+ * NOT every FlowId. sso-probe is a real capture and its numbers are real, but
+ * the tab strip is a list of things somebody can go and do, and a prompt=none
+ * probe is not one of them: the hidden-iframe leg it needs cannot receive the
+ * ciamlogin.com session cookie in any browser with third-party cookie
+ * protection on, so there is no state a visitor can put their browser in that
+ * makes it succeed. Sitting as a peer beside five performable flows implied
+ * otherwise.
+ *
+ * The capture stays and the finding stays. Both moved INTO the SSO flow, onto
+ * /authorize, which is the request the probe is the counterfactual to: see
+ * FLOW_ANNOTATIONS['sso-on']. The id stays in FlowId because CAPTURES,
+ * FLOW_META and FLOW_ONLY are all Record<FlowId, …> and the flow is still
+ * buildable; what changed is that nothing offers it.
+ *
+ * Sign-out sits last on purpose: it is the only one that ends a session rather
+ * than starting one, and its value is the contrast with the four to its left.
+ */
+export const TAB_FLOWS: readonly FlowId[] = [
+  'signup',
+  'signin',
+  'sso-on',
+  'sso-off',
+  'signout',
+]
+
+/**
  * Requests unique to a flow, marked with ◆ so switching makes the diff visible.
  * Nothing here is cosmetic: each entry is a request that exists in one flow and
  * genuinely does not exist in its counterpart.
@@ -348,6 +376,35 @@ type Measured = {
 type Annotation = Omit<Measured, 'total' | 'timings' | 'humanGapBefore'> & {
   /** Matches CapturedRequest.path. */
   match: string
+}
+
+/**
+ * What ONE flow says differently about a request. Merged over the shared
+ * annotation rather than replacing it, `detail` included, so a flow that only
+ * has its own millisecond figure to state writes one sentence instead of
+ * restating what the request is and why it happens.
+ *
+ * This is the same shape FLOW_PHASE_COPY takes one level down, and it is the
+ * same shape on purpose: a measurement belongs to a capture, so the sentence
+ * quoting it belongs to a flow, and everything else falls through.
+ */
+type AnnotationOverride = Partial<Omit<Annotation, 'detail'>> & {
+  detail?: Partial<NonNullable<Annotation['detail']>>
+}
+
+/** Shared annotation plus this flow's differences. See AnnotationOverride. */
+function mergeAnnotation(base: Annotation, override?: AnnotationOverride): Annotation {
+  if (!override) return base
+
+  // `what` is the one required field, so it decides whether there is a detail
+  // block at all. Everything else merges key by key.
+  const what = override.detail?.what ?? base.detail?.what
+
+  return {
+    ...base,
+    ...override,
+    detail: what === undefined ? undefined : { ...base.detail, ...override.detail, what },
+  }
 }
 
 /** What Entra does inside /authorize. Real steps, no timings — see the header. */
@@ -427,7 +484,7 @@ const LOGOUT_INSIDE: ZoomNode[] = [
     id: 'inside:local',
     label: 'Local sign-out: not this request, and not any request',
     absent:
-      'clearCache() drops the tokens out of the browser and nothing leaves it. There is no capture of that flow on this site because there is nothing to capture: no request, no response, no number to put on an axis. The Entra session is untouched, so the next sign-in is silent SSO. /authorize hands a code straight back off the session cookie. That is the gap behind the oldest help-desk ticket in the enterprise: "I signed out, and it signed me straight back in." Both buttons are on this page, in the same file, doing genuinely different things.',
+      'clearCache() drops the tokens out of the browser and nothing leaves it. There is no capture of that flow because there is nothing to capture: no request, no response, nothing to put on an axis. The Entra session is untouched, so the next sign-in is silent SSO and /authorize hands a code straight back off the session cookie. That is the gap behind "I signed out, and it signed me straight back in."',
   },
 ]
 
@@ -483,8 +540,13 @@ const ANNOTATIONS: Record<string, Annotation> = {
     detail: {
       what: 'The browser leaves for the tenant-name subdomain carrying client_id, redirect_uri, scope, state, nonce and the PKCE challenge.',
       why: 'The authority MSAL is configured with.',
+      // Deliberately quotes no measurement. How much of this request is
+      // connection setup varies from capture to capture, and it varies a long
+      // way: 166 ms in one, 49 in another, none at all in a third. Every flow
+      // that measures it overrides this with its own figure. See
+      // FLOW_ANNOTATIONS.
       gotcha:
-        '166 ms of this is spent before Entra reads a byte: DNS, TCP, TLS. Open the phases and it is right there. This is one of only two requests in the flow that pays that. The discovery call ahead of it is the other. Everything afterwards reuses a connection and is pure server time.',
+        'Some of this may not be Entra at all. DNS, TCP and TLS are paid by whichever request reaches the tenant host on a cold connection, and they are setup rather than server time. Whether this one paid them depends on what the browser already had open.',
     },
   },
   '/common/GetCredentialType': {
@@ -616,13 +678,13 @@ const ANNOTATIONS: Record<string, Annotation> = {
     code: {
       file: 'web/src/components/SignInPanel.tsx',
       source: signInPanelSource,
-      note: 'loginRedirect, not loginPopup. Popups get blocked, and a recruiter on a phone is the case that matters.',
+      note: 'loginRedirect, not loginPopup. Popups get blocked, and they behave badly on mobile.',
     },
     detail: {
       what: 'The authorization code goes back with the original code_verifier, and the ID token comes out.',
       why: 'Redeeming the code.',
       gotcha:
-        'No client secret anywhere. A SPA cannot keep one, which is the entire reason PKCE exists. The verifier is the proof instead. Note the phases: zero setup cost, because the connection to this host is already warm.',
+        'No client secret anywhere. A SPA cannot keep one, which is the entire reason PKCE exists. The verifier is the proof instead.',
     },
   },
   '/{tid}/oauth2/v2.0/logout': {
@@ -641,7 +703,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
       what: 'The browser navigates to end_session_endpoint and Entra returns its sign-out page.',
       why: 'logoutRedirect(), the "sign out everywhere" button.',
       gotcha:
-        'This is the entire difference between the two sign-outs, and it is visible as a bar because the other one has no bar to draw. Local sign-out ends at the browser; this one leaves it.',
+        'Local sign-out ends at the browser. This one leaves it, and that single request is the entire difference between them.',
     },
   },
   '/{tid}/oauth2/v2.0/logoutsession': {
@@ -672,8 +734,73 @@ const ANNOTATIONS: Record<string, Annotation> = {
  * to something vague enough to cover both, a flow can override one path and say
  * the specific true thing. Anything not overridden falls through to the shared
  * map, so this stays small by construction.
+ *
+ * ── /authorize, which was the same bug at request level ─────────────────────
+ *
+ * The shared gotcha on /authorize read "166 ms of this is spent before Entra
+ * reads a byte… one of only two requests in the flow that pays that. The
+ * discovery call ahead of it is the other. Everything afterwards reuses a
+ * connection and is pure server time." Measured off the sign-in capture, keyed
+ * by path, rendered in all five flows that have an /authorize. It is true in
+ * exactly one of them.
+ *
+ *   signin     11 + 74 + 81 = 166. Discovery pays 57. Nothing after pays. TRUE.
+ *   signup      0 + 27 + 22 =  49, and no DNS at all. Discovery pays 66.
+ *   sso-off     1 + 85 + 82 = 168. Discovery is a 0 ms cache hit, so the other
+ *                                  payer is /token, at 154.
+ *   sso-on      0 + 0 + 0. The request pays nothing and has no phases to open.
+ *   sso-probe   0 + 0 + 0. Same.
+ *
+ * So the reader of four flows out of five was invited to open a phase
+ * breakdown against a figure that flow never measured, on the flagship row.
  */
-const FLOW_ANNOTATIONS: Partial<Record<FlowId, Record<string, Annotation>>> = {
+const FLOW_ANNOTATIONS: Partial<Record<FlowId, Record<string, AnnotationOverride>>> = {
+  signup: {
+    '/{tid}/oauth2/v2.0/authorize': {
+      detail: {
+        gotcha:
+          '49 ms of this is spent before Entra reads a byte: TCP and TLS, and no DNS, because the discovery call resolved the host a moment earlier. Open the phases and it is right there. This is one of only two requests in the flow that pays for a connection. The discovery call is the other, at 66 ms. Everything afterwards reuses one and is pure server time.',
+      },
+    },
+  },
+  signin: {
+    '/{tid}/oauth2/v2.0/authorize': {
+      detail: {
+        gotcha:
+          '166 ms of this is spent before Entra reads a byte: DNS, TCP, TLS. Open the phases and it is right there. This is one of only two requests in the flow that pays that. The discovery call ahead of it is the other, at 57 ms. Everything afterwards reuses a connection and is pure server time.',
+      },
+    },
+  },
+  'sso-on': {
+    '/{tid}/oauth2/v2.0/authorize': {
+      // Where the silent probe lives now. It was a tab of its own beside five
+      // flows a visitor can perform, which read as a sixth thing to try; it is
+      // not one, and this is the request it is the counterfactual to. Same
+      // endpoint, same session, one parameter and one browsing context
+      // different, opposite outcomes. The capture is untouched: 197 ms and
+      // login_required are read off sso-probe.json.
+      detail: {
+        gotcha:
+          'None of this is connection setup. DNS, TCP and TLS all measured 0 ms, so the whole 190 ms is Entra reading the session cookie and handing back a code. The same endpoint with prompt=none, sent from a hidden iframe, came back login_required in 197 ms with that session still live. Firefox partitions the ciamlogin.com cookie away from a third-party frame, so Entra never sees it and answers AADSTS50058, "the cookies used to represent the user\'s session were not sent in the request." Silent SSO by iframe is finished in any browser with that protection on. This request works because a top-level navigation is first-party.',
+      },
+    },
+  },
+  'sso-off': {
+    '/{tid}/oauth2/v2.0/authorize': {
+      detail: {
+        gotcha:
+          '168 ms of this is spent before Entra reads a byte: DNS, TCP, TLS. Open the phases and it is right there. One other request in this flow pays for a connection and it is /token, at 154 ms. The discovery call ahead of it measured 0 ms, because the answer was already in the browser.',
+      },
+    },
+  },
+  'sso-probe': {
+    '/{tid}/oauth2/v2.0/authorize': {
+      detail: {
+        gotcha:
+          'None of this is connection setup. The whole 197 ms is Entra deciding it cannot answer, then saying so: prompt=none forbids showing UI, so the only move left is a redirect carrying login_required.',
+      },
+    },
+  },
   signout: {
     '/{tid}/v2.0/.well-known/openid-configuration': {
       match: '/{tid}/v2.0/.well-known/openid-configuration',
@@ -726,15 +853,22 @@ const PHASE_COPY: Record<string, { label: string; what: string; gotcha?: string 
   dns: {
     label: 'DNS lookup',
     what: 'Resolving the hostname.',
+    // Was "Only the first trip to a host pays." It is not a rule, and the
+    // sign-in capture breaks it on the same host inside a fifth of a second:
+    // 9 ms on the discovery call and 11 ms again on /authorize. The sentence
+    // rendered on the 11 ms row, denying the number it sat under. Quotes
+    // nothing now; the flow that measured it says so itself.
     gotcha:
-      'Zero on every later request: the browser caches it. Only the first trip to a host pays.',
+      'Most requests here measure 0 for it, because the browser already holds an answer. Having resolved a host once is not a guarantee that the next request to it is free.',
   },
   connect: { label: 'TCP connect', what: 'Opening the socket.' },
   ssl: {
     label: 'TLS handshake',
     what: 'Negotiating the encrypted channel.',
+    // Deliberately quotes no measurement. Which requests pay for a connection,
+    // and how much, is a fact about one capture — see FLOW_PHASE_COPY.
     gotcha:
-      'Setting up a connection is what costs here. In this capture only two requests pay it: the discovery call (57 ms) and /authorize (166 ms). Every request after them reuses a connection and pays nothing: GetCredentialType, /login, /kmsi and /token are all pure server time. It is why the second half of the flow looks so cheap.',
+      'Setting up a connection is what costs here. A request that reuses one pays none of it.',
   },
   send: { label: 'Request sent', what: 'Writing the bytes.' },
   // Overridden per host below — "Entra thinking" is a lie on our own origin.
@@ -748,6 +882,51 @@ const PHASE_COPY: Record<string, { label: string; what: string; gotcha?: string 
 }
 
 const PHASE_ORDER = ['blocked', 'dns', 'connect', 'ssl', 'send', 'wait', 'receive'] as const
+
+/**
+ * Phase prose that is only true in ONE flow, keyed by flow and then by phase.
+ * The same mechanism as FLOW_ANNOTATIONS, one level down.
+ *
+ * PHASE_COPY is keyed by phase name alone, so a sentence written off the sign-in
+ * capture rendered on every flow. The TLS gotcha named the two requests that pay
+ * for a connection (57 ms and 166 ms) and listed /token among the ones that
+ * reuse. True in four flows. In sso-off /token opens a fresh connection and pays
+ * 73 ms of connect and 81 ms of TLS, and the sentence rendered as the gotcha ON
+ * that handshake row: the page told the reader a connection cost nothing,
+ * directly beneath the 81 ms it had just charged for one.
+ *
+ * A measurement belongs to a capture, so the prose quoting it belongs to a flow.
+ * Anything not overridden falls through to PHASE_COPY, which quotes nothing.
+ *
+ * `ssl` is here for three flows because only three pay for a connection at all:
+ * sso-on, sso-probe and signout reuse throughout and render no phase rows for
+ * it. `dns` is here for one, because sign-in is the flow that disproves the
+ * sentence PHASE_COPY.dns used to carry.
+ */
+const FLOW_PHASE_COPY: Partial<Record<FlowId, Record<string, { gotcha: string }>>> = {
+  signup: {
+    ssl: {
+      gotcha:
+        'Setting up a connection is what costs here. Two requests pay it: the discovery call (66 ms) and /authorize (49 ms). Everything after them reuses a connection, so the 1673 ms in createuser is pure server time.',
+    },
+  },
+  signin: {
+    ssl: {
+      gotcha:
+        'Setting up a connection is what costs here. Only two requests pay it: the discovery call (57 ms) and /authorize (166 ms). Every request after them reuses a connection and pays nothing: GetCredentialType, /login, /kmsi and /token are all pure server time. It is why the second half of the flow looks so cheap.',
+    },
+    dns: {
+      gotcha:
+        'Paid twice on the same host in this flow: 9 ms on the discovery call, then 11 ms again on /authorize a fifth of a second later. A resolved host does not stay resolved.',
+    },
+  },
+  'sso-off': {
+    ssl: {
+      gotcha:
+        'Setting up a connection is what costs here. Two requests pay it: /authorize (168 ms) and /token (154 ms). In every other capture /token reuses a connection.',
+    },
+  },
+}
 
 /** A request the annotation map doesn't know. Rendered honestly, not dropped. */
 function generic(r: CapturedRequest): Annotation {
@@ -772,6 +951,9 @@ function toEvents(
   /** This flow's overrides, if it has any. Falls through to the shared map. */
   const overrides = FLOW_ANNOTATIONS[flow] ?? {}
 
+  /** The same, for the phase rows inside a request. See FLOW_PHASE_COPY. */
+  const phaseOverrides = FLOW_PHASE_COPY[flow] ?? {}
+
   // A path can repeat: MSAL fetches the discovery document once at startup and
   // again after the SPA reloads. Annotations are keyed by path, so both requests
   // used to come out with id 'discovery' — duplicate React keys, and React's
@@ -780,7 +962,10 @@ function toEvents(
   const seen = new Map<string, number>()
 
   return capture.requests.map((r) => {
-    const a = overrides[r.path] ?? ANNOTATIONS[r.path] ?? generic(r)
+    // Shared prose first, then this flow's differences merged over it. An
+    // override used to REPLACE the entry, which meant a flow correcting one
+    // sentence had to restate the whole annotation. See mergeAnnotation.
+    const a = mergeAnnotation(ANNOTATIONS[r.path] ?? generic(r), overrides[r.path])
 
     const nth = (seen.get(a.id) ?? 0) + 1
     seen.set(a.id, nth)
@@ -803,7 +988,7 @@ function toEvents(
             what: 'MSAL re-reads the discovery document after the redirect, because the page was torn down and rebuilt.',
             why: 'The SPA reloaded. Everything in memory went with it.',
             gotcha:
-              'Zero milliseconds. The browser had it cached, so the second ask costs nothing. This is the same lesson as the connection reuse on /token: the first time is expensive, and after that identity is mostly free.',
+              'Zero milliseconds. The browser had it cached, so the second ask costs nothing.',
           }
         : a.detail,
       total: r.total,
@@ -858,7 +1043,8 @@ function toEvents(
             : copy.label,
         span: phaseSpan,
         summary: `${ms} ms`,
-        detail: { what: copy.what, gotcha: copy.gotcha },
+        // The flow's own sentence if it has one, otherwise the shared copy.
+        detail: { what: copy.what, gotcha: phaseOverrides[key]?.gotcha ?? copy.gotcha },
         children: key === 'wait' && insideWait.length ? insideWait : undefined,
       })
     }

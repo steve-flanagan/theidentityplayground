@@ -3,7 +3,7 @@ import {
   ACCOUNT_CREATED_CLAIM,
   HUMAN_FLOOR_MS,
   STALE_AFTER_MS,
-  TOKEN_EXCHANGE_ALLOWANCE_MS,
+  WINDOW_TOLERANCE_MS,
   accountCreatedAtMs,
   clearLastFlow,
   markFlowStart,
@@ -11,6 +11,7 @@ import {
   readLastFlow,
   resolveAmbiguous,
   settleLastFlow,
+  type FlowMatch,
 } from './lastFlow'
 import { CLAIMS } from './claims'
 import { decodeJwt } from './jwt'
@@ -300,12 +301,15 @@ describe('the interval ends where the browser came back, not where the app finis
 // the account was created, and the token carries that directly: a claims mapping
 // policy on the app registration emits `createddatetime`.
 //
-// Both timestamps come from Entra — `iat` and the creation time, stamped by the
-// same authority. That is the point of the design, so the tests are written the
-// same way: an `iat` is chosen, and the creation time is placed relative to it.
+// The question is whether that moment falls inside the window the flow ran in.
+// Both ends of the window are browser-stamped, so these tests hand the window in
+// rather than reading whatever clock the suite happens to run on.
+//
+// It used to be `iat` on the other side of the comparison. That is gone: see the
+// 18 July regression at the end of this file for the measurement that took it
+// out, and resolveAmbiguous for why no tolerance could rescue it.
 
 const ISSUED_AT_SECONDS = 1_800_000_000
-const ISSUED_AT_MS = ISSUED_AT_SECONDS * 1000
 
 const seg = (o: unknown) =>
   btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
@@ -326,82 +330,154 @@ function tokenCreatedAt(created: unknown, iat: unknown = ISSUED_AT_SECONDS): str
 
 const INTERACTIVE = matchFlow('default', 20_000)
 const TOKEN = tokenIssuedAt(ISSUED_AT_SECONDS)
-/** Created this many ms before the token was issued. */
-const createdBeforeIssue = (ms: number) => ISSUED_AT_MS - ms
 
-describe('an account younger than the flow that produced it was created by it', () => {
+/**
+ * The moment the browser landed back from Entra, written down instead of
+ * measured, so every window below is exact and none of it shifts with the clock
+ * the suite runs on. Real value: Steve's 18 July sign-up.
+ */
+const LANDED_AT_MS = Date.parse('2026-07-18T23:17:41Z')
+
+/** Created this many ms before the browser came back. */
+const createdBeforeLanding = (ms: number) => LANDED_AT_MS - ms
+
+/** resolveAmbiguous against the written-down window, which is the usual case. */
+const resolve = (
+  createdAtMs: number | null,
+  token: string | null = TOKEN,
+  match: FlowMatch = INTERACTIVE,
+) => resolveAmbiguous(match, createdAtMs, token, LANDED_AT_MS)
+
+describe('an account created inside the window was created by that flow', () => {
   it('starts from a genuinely ambiguous match, or the rest proves nothing', () => {
     expect(INTERACTIVE).toMatchObject({ kind: 'ambiguous', elapsedMs: 20_000 })
   })
 
-  it('calls it a sign-up when the account did not exist before the click', () => {
-    // Created five seconds before the token was issued, inside a flow that took
-    // twenty. It cannot have been there when the visitor clicked.
-    expect(resolveAmbiguous(INTERACTIVE, createdBeforeIssue(5_000), TOKEN)).toMatchObject({
+  it('calls it a sign-up when the account appeared during the flow', () => {
+    // Created five seconds before the browser came back, inside a flow that ran
+    // for twenty. It cannot have been there when the visitor clicked.
+    expect(resolve(createdBeforeLanding(5_000))).toMatchObject({
+      kind: 'matched',
+      flow: 'signup',
+    })
+  })
+
+  it('puts a real sign-up where the capture puts it, seconds before the landing', () => {
+    // Not an edge case — the shape this has to get right. captures/signup.json
+    // has POST /common/createuser at 50.4s of a 54.8s round trip, so the account
+    // appears 4.4s before the browser comes back.
+    const flow = matchFlow('default', 54_800)
+    expect(resolveAmbiguous(flow, createdBeforeLanding(4_400), TOKEN, LANDED_AT_MS)).toMatchObject({
       kind: 'matched',
       flow: 'signup',
     })
   })
 
   it('calls it a sign-in when the account was already there', () => {
-    expect(resolveAmbiguous(INTERACTIVE, createdBeforeIssue(3_600_000), TOKEN)).toMatchObject({
+    expect(resolve(createdBeforeLanding(3_600_000))).toMatchObject({
       kind: 'matched',
       flow: 'signin',
     })
   })
 
+  it('is not close on a returning visitor', () => {
+    // The margin the design rests on: a day of age against a window tens of
+    // seconds wide. This is why two clocks in the comparison are affordable.
+    expect(resolve(createdBeforeLanding(24 * 60 * 60 * 1000))).toMatchObject({ flow: 'signin' })
+  })
+
   it('keeps the measured elapsed time, and does not invent a new one', () => {
     // The banner prints this number. Resolving WHICH flow it was must not touch
     // HOW LONG it took — that was measured, and nothing here re-measures it.
-    const signedUp = resolveAmbiguous(INTERACTIVE, createdBeforeIssue(5_000), TOKEN)
+    const signedUp = resolve(createdBeforeLanding(5_000))
     expect((signedUp as { elapsedMs: number }).elapsedMs).toBe(20_000)
   })
 
-  it('puts the boundary at the end of the flow, plus the exchange it never saw', () => {
-    // elapsedMs stops when the browser lands; the token is minted after that.
-    // The allowance is that gap, and either side of it is a different answer.
-    const edge = 20_000 + TOKEN_EXCHANGE_ALLOWANCE_MS
-    expect(resolveAmbiguous(INTERACTIVE, createdBeforeIssue(edge), TOKEN)).toMatchObject({
-      flow: 'signup',
-    })
-    expect(resolveAmbiguous(INTERACTIVE, createdBeforeIssue(edge + 1), TOKEN)).toMatchObject({
-      flow: 'signin',
-    })
+  it('puts the early boundary at the click, plus the tolerance', () => {
+    // The click is 20s before the landing. Earlier than that plus the allowance
+    // for two clocks, the account predates the flow and this is a sign-in.
+    const edge = 20_000 + WINDOW_TOLERANCE_MS
+    expect(resolve(createdBeforeLanding(edge))).toMatchObject({ flow: 'signup' })
+    expect(resolve(createdBeforeLanding(edge + 1))).toMatchObject({ flow: 'signin' })
+  })
+
+  it('refuses an account dated after the flow that carried it', () => {
+    // Impossible in that order. Inside the tolerance it is skew; past it a clock
+    // is badly wrong, and then nothing is claimed rather than something guessed.
+    expect(resolve(LANDED_AT_MS + WINDOW_TOLERANCE_MS)).toMatchObject({ flow: 'signup' })
+    expect(resolve(LANDED_AT_MS + WINDOW_TOLERANCE_MS + 1)).toBe(INTERACTIVE)
+  })
+})
+
+describe('two clocks in the comparison, and the margin that absorbs them', () => {
+  // The window is browser-stamped and the creation time is Entra-stamped. That
+  // offset is the price of dropping `iat`, and these are the two directions it
+  // can run, at a size far past any machine that syncs its clock at all.
+  const SKEW_MS = 5_000
+
+  it('still calls a sign-up a sign-up when the browser clock runs fast', () => {
+    // A fast browser dates the window later than it really was, so the creation
+    // time reads earlier against it, back toward the click.
+    expect(resolve(createdBeforeLanding(5_000 + SKEW_MS))).toMatchObject({ flow: 'signup' })
+  })
+
+  it('still calls a sign-up a sign-up when the browser clock runs slow', () => {
+    // A slow browser dates the window earlier, so the creation time reads later,
+    // past the landing. Inside the tolerance that is still a sign-up.
+    expect(resolve(LANDED_AT_MS + SKEW_MS)).toMatchObject({ flow: 'signup' })
+  })
+
+  it('cannot turn a returning visitor into a sign-up at any plausible skew', () => {
+    // The one error this page truly cannot make. A two-day-old account is not
+    // reachable from a twenty-second window by any offset worth the name.
+    const twoDays = 2 * 24 * 60 * 60 * 1000
+    for (const skew of [-60_000, -5_000, 0, 5_000, 60_000]) {
+      expect(
+        resolveAmbiguous(INTERACTIVE, createdBeforeLanding(twoDays), TOKEN, LANDED_AT_MS + skew),
+      ).toMatchObject({ flow: 'signin' })
+    }
   })
 })
 
 describe('no signal means no claim, which is exactly today’s behaviour', () => {
-  it('stays ambiguous when Graph said nothing', () => {
-    expect(resolveAmbiguous(INTERACTIVE, null, TOKEN)).toBe(INTERACTIVE)
+  it('stays ambiguous when the claim said nothing', () => {
+    expect(resolve(null)).toBe(INTERACTIVE)
   })
 
-  it('stays ambiguous when there is no token to date the flow against', () => {
-    expect(resolveAmbiguous(INTERACTIVE, createdBeforeIssue(5_000), null)).toBe(INTERACTIVE)
-  })
-
-  it('stays ambiguous when the token is not a token', () => {
-    expect(resolveAmbiguous(INTERACTIVE, createdBeforeIssue(5_000), 'not-a-jwt')).toBe(INTERACTIVE)
-  })
-
-  it('stays ambiguous when the token carries no iat', () => {
-    expect(resolveAmbiguous(INTERACTIVE, createdBeforeIssue(5_000), tokenIssuedAt(undefined))).toBe(
-      INTERACTIVE,
-    )
-    expect(resolveAmbiguous(INTERACTIVE, createdBeforeIssue(5_000), tokenIssuedAt('soon'))).toBe(
-      INTERACTIVE,
-    )
+  it('stays ambiguous when there is no token to read the claim off', () => {
+    expect(resolve(createdBeforeLanding(5_000), null)).toBe(INTERACTIVE)
   })
 
   it('stays ambiguous when the numbers are garbage', () => {
-    expect(resolveAmbiguous(INTERACTIVE, Number.NaN, TOKEN)).toBe(INTERACTIVE)
-    expect(resolveAmbiguous(INTERACTIVE, Infinity, TOKEN)).toBe(INTERACTIVE)
+    expect(resolve(Number.NaN)).toBe(INTERACTIVE)
+    expect(resolve(Infinity)).toBe(INTERACTIVE)
   })
 
-  it('stays ambiguous when the account is younger than its own token', () => {
-    // Impossible, so a clock or a parse is wrong. Saying nothing beats guessing
-    // which one, and a badge reading "you signed up" when they signed in is the
-    // single worst thing this page can print.
-    expect(resolveAmbiguous(INTERACTIVE, ISSUED_AT_MS + 1, TOKEN)).toBe(INTERACTIVE)
+  it('stays ambiguous when there is no window to test against', () => {
+    // Either end can go missing: an environment with no readable time origin, or
+    // a frozen elapsed time that is not a duration. Without both there is no
+    // window, and a comparison against half a window is not a measurement.
+    const created = createdBeforeLanding(5_000)
+    expect(resolveAmbiguous(INTERACTIVE, created, TOKEN, Number.NaN)).toBe(INTERACTIVE)
+    expect(resolveAmbiguous(INTERACTIVE, created, TOKEN, Infinity)).toBe(INTERACTIVE)
+
+    const inverted: FlowMatch = { kind: 'ambiguous', elapsedMs: -1 }
+    expect(resolveAmbiguous(inverted, created, TOKEN, LANDED_AT_MS)).toBe(inverted)
+    const notADuration: FlowMatch = { kind: 'ambiguous', elapsedMs: Number.NaN }
+    expect(resolveAmbiguous(notADuration, created, TOKEN, LANDED_AT_MS)).toBe(notADuration)
+  })
+
+  it('no longer bails on what iat says, because it no longer reads it', () => {
+    // Every one of these used to return ambiguous, and the 18 July sign-up is
+    // why they no longer do. In the app a token this broken yields a null
+    // creation time and the first guard catches it, which the end-to-end cases
+    // below still pin. This is only about iat being out of the reasoning.
+    const created = createdBeforeLanding(5_000)
+    for (const token of [tokenIssuedAt(undefined), tokenIssuedAt('soon'), 'not-a-jwt']) {
+      expect(resolveAmbiguous(INTERACTIVE, created, token, LANDED_AT_MS)).toMatchObject({
+        flow: 'signup',
+      })
+    }
   })
 })
 
@@ -441,8 +517,11 @@ describe('the creation time is read off the token, with nothing on the wire', ()
   })
 
   it('accepts an epoch, in seconds or in milliseconds', () => {
-    expect(accountCreatedAtMs(tokenCreatedAt(ISSUED_AT_SECONDS))).toBe(ISSUED_AT_MS)
-    expect(accountCreatedAtMs(tokenCreatedAt(ISSUED_AT_MS))).toBe(ISSUED_AT_MS)
+    // Three orders of magnitude apart, so the two windows cannot overlap for any
+    // date this claim can carry. Nothing to do with the flow window below.
+    const asMs = ISSUED_AT_SECONDS * 1000
+    expect(accountCreatedAtMs(tokenCreatedAt(ISSUED_AT_SECONDS))).toBe(asMs)
+    expect(accountCreatedAtMs(tokenCreatedAt(asMs))).toBe(asMs)
   })
 
   it('says nothing on every shape it cannot read confidently', () => {
@@ -483,10 +562,14 @@ describe('the creation time is read off the token, with nothing on the wire', ()
     expect(accountCreatedAtMs(buildSampleToken())).not.toBeNull()
   })
 
-  it('dates the sample account well before the token it sits in', () => {
+  it('dates the sample account well before any window it could land in', () => {
     // The sample never reaches this reasoning in the app — only a real token
-    // does. The coherence still has to hold, because a creation time seconds off
-    // `iat` reads as an account that signed up during the flow on screen.
+    // does. The coherence still has to hold, because a creation time seconds
+    // old reads as an account that signed up during the flow on screen.
+    //
+    // No window is handed in here on purpose: the sample is built off the real
+    // clock, so the real anchor is the one it has to be coherent with. This is
+    // also the only case covering the default parameter.
     const token = buildSampleToken()
     expect(resolveAmbiguous(INTERACTIVE, accountCreatedAtMs(token), token)).toMatchObject({
       kind: 'matched',
@@ -496,16 +579,14 @@ describe('the creation time is read off the token, with nothing on the wire', ()
 })
 
 // Steve's account was created on 16 July 2026 and he signs in on the 18th. It is
-// two days older than any token it can issue, so every sign-in of his has to
-// read as a sign-in. Sign-up is the case his own account cannot exercise: that
-// needs an account created inside the flow being measured.
+// two days older than any flow it can appear in, so every sign-in of his has to
+// read as a sign-in.
 const STEVE_CREATED = '2026-07-16T19:32:51Z'
-const STEVE_SIGNED_IN_AT = Math.floor(Date.parse('2026-07-18T14:05:00Z') / 1000)
 
 describe('the flow is settled from the claim, end to end', () => {
   it('calls a two-day-old account signing in a sign-in', () => {
-    const token = tokenCreatedAt(STEVE_CREATED, STEVE_SIGNED_IN_AT)
-    expect(resolveAmbiguous(INTERACTIVE, accountCreatedAtMs(token), token)).toMatchObject({
+    const token = tokenCreatedAt(STEVE_CREATED)
+    expect(resolve(accountCreatedAtMs(token), token)).toMatchObject({
       kind: 'matched',
       flow: 'signin',
     })
@@ -513,8 +594,8 @@ describe('the flow is settled from the claim, end to end', () => {
 
   it('calls an account created inside the flow a sign-up', () => {
     // The same path with five seconds of age instead of two days.
-    const token = tokenCreatedAt(new Date(ISSUED_AT_MS - 5_000).toISOString())
-    expect(resolveAmbiguous(INTERACTIVE, accountCreatedAtMs(token), token)).toMatchObject({
+    const token = tokenCreatedAt(new Date(createdBeforeLanding(5_000)).toISOString())
+    expect(resolve(accountCreatedAtMs(token), token)).toMatchObject({
       kind: 'matched',
       flow: 'signup',
     })
@@ -526,8 +607,130 @@ describe('the flow is settled from the claim, end to end', () => {
     // measured a flow, and it is not naming which.
     for (const value of [undefined, '', '   ', 'whenever', 42, true]) {
       const token = tokenCreatedAt(value)
-      expect(resolveAmbiguous(INTERACTIVE, accountCreatedAtMs(token), token)).toBe(INTERACTIVE)
+      expect(resolve(accountCreatedAtMs(token), token)).toBe(INTERACTIVE)
     }
+  })
+})
+
+// ── The staleness window ────────────────────────────────────────────────────
+//
+// The bound was five minutes, sized on a sign-in. Sign-up does not fit in it:
+// External ID mails a verification code, and the wait for that email sits inside
+// the measured round trip. So the slowest sign-ups were the only flows getting
+// no badge at all, which is the wrong way round.
+//
+// These sit here rather than up with the other freeze tests because the sign-up
+// half needs the token helpers defined above.
+describe('a sign-up slow enough to wait on an email still gets its badge', () => {
+  beforeEach(() => clearLastFlow())
+
+  it('is set at fifteen minutes', () => {
+    // Pinned. The value is the whole change, and a quiet drift back to five
+    // would put the case below out of reach with every other test still green.
+    expect(STALE_AFTER_MS).toBe(15 * 60_000)
+  })
+
+  it('keeps a nine-minute flow instead of discarding it', () => {
+    markFlowStart('default')
+    sessionStorage.setItem('tip.flow.start', startedBeforeLanding(9 * 60_000))
+
+    const match = readLastFlow()
+    expect(match).toMatchObject({ kind: 'ambiguous' })
+    expect((match as { elapsedMs: number }).elapsedMs).toBe(9 * 60_000)
+  })
+
+  it('badges that nine-minute flow as the sign-up it was', () => {
+    // The end this is for. Nine minutes of round trip, most of it spent waiting
+    // on the code, and the account created half a minute before the browser came
+    // back. Under the old bound the whole thing was thrown away before it got
+    // anywhere near resolveAmbiguous.
+    markFlowStart('default')
+    sessionStorage.setItem('tip.flow.start', startedBeforeLanding(9 * 60_000))
+    expect(readLastFlow()).toMatchObject({ kind: 'ambiguous' })
+
+    // settleLastFlow takes no window, so the creation time is placed against the
+    // real anchor, inside the nine minutes seeded above.
+    expect(settleLastFlow(performance.timeOrigin - 30_000, TOKEN)).toMatchObject({
+      kind: 'matched',
+      flow: 'signup',
+    })
+  })
+
+  it('keeps the flow landing exactly on the bound', () => {
+    // The guard is `>`, so the bound itself is inside it. An off-by-one here is
+    // invisible everywhere else.
+    markFlowStart('default')
+    sessionStorage.setItem('tip.flow.start', startedBeforeLanding(STALE_AFTER_MS))
+
+    expect(readLastFlow()).not.toBeNull()
+  })
+
+  it('still discards the one past it', () => {
+    // Raising the bound moved it, it did not remove it. A redirect that never
+    // came back is still reported as nothing at all.
+    markFlowStart('default')
+    sessionStorage.setItem('tip.flow.start', startedBeforeLanding(STALE_AFTER_MS + 1))
+
+    expect(readLastFlow()).toBeNull()
+  })
+})
+
+// ── The 18 July sign-up, and why the comparison changed ─────────────────────
+//
+// A real sign-up came back badged 'ambiguous'. The diagnostic said why:
+//
+//   iat              1784416311   = 2026-07-18T23:11:51Z
+//   createddatetime  "2026-07-18 23:16:43Z"
+//   iat - created    = -292 seconds
+//
+// The token was dated nearly five minutes BEFORE the account it describes, so
+// the old comparison hit its negative-age guard and refused to decide. `iat` in
+// this tenant is not the minting moment. A tolerance big enough to cover a
+// five-minute error is bigger than the flows being measured, so there was no
+// version of that comparison worth keeping.
+//
+// This case is the whole reason the window exists, so it stays pinned here.
+describe('the 18 July sign-up resolves, with iat as wrong as it ever was', () => {
+  const IAT_SECONDS = 1_784_416_311
+  const CREATED = '2026-07-18 23:16:43Z'
+  const ELAPSED_MS = 46_500
+
+  const token = tokenCreatedAt(CREATED, IAT_SECONDS)
+  const createdAtMs = accountCreatedAtMs(token) as number
+  const flow = matchFlow('default', ELAPSED_MS)
+
+  it('still carries the iat that broke the old comparison', () => {
+    // Pinned, so the case cannot quietly stop being the case it was recorded
+    // as. If this line ever changes, the test below is testing something else.
+    expect(createdAtMs).toBe(Date.parse('2026-07-18T23:16:43Z'))
+    expect(IAT_SECONDS * 1000 - createdAtMs).toBe(-292_000)
+  })
+
+  it('resolves to signup', () => {
+    // The window: a 46.5s round trip landing 4.4s after the account was created,
+    // which is where captures/signup.json puts POST /common/createuser relative
+    // to the browser coming back.
+    const landedAt = createdAtMs + 4_400
+    expect(resolveAmbiguous(flow, createdAtMs, token, landedAt)).toMatchObject({
+      kind: 'matched',
+      flow: 'signup',
+    })
+  })
+
+  it('resolves to signup on the other reading of that capture too', () => {
+    // The HAR's last request is at 23:17:45Z, and the document lands before the
+    // /token call that ends it. Anchoring the window at the very end of the HAR
+    // instead puts the creation time 15.5s BEFORE the click rather than inside
+    // the window, and the tolerance is what carries it.
+    //
+    // Both readings have to land on signup, because the flow was a sign-up
+    // either way. Which anchor is right is what the diagnostic will settle on
+    // the next real sign-up; the verdict must not wait on that.
+    const landedAt = Date.parse('2026-07-18T23:17:45Z')
+    expect(resolveAmbiguous(flow, createdAtMs, token, landedAt)).toMatchObject({
+      kind: 'matched',
+      flow: 'signup',
+    })
   })
 })
 
@@ -535,28 +738,31 @@ describe('the branches that already knew are not up for revision', () => {
   // Each of these is deterministic or a bound, and a network answer arriving
   // late must not overwrite one. Returning the very same object is the check:
   // it proves the function did not so much as rebuild the match.
-  const CREATED = createdBeforeIssue(5_000)
+  // Deliberately a creation time that WOULD resolve to signup on the ambiguous
+  // pair, so these prove the branch was skipped rather than that the input was
+  // uninteresting.
+  const CREATED = createdBeforeLanding(5_000)
 
   it('leaves prompt=login alone', () => {
     const match = matchFlow('force-credentials', 12_000)
-    expect(resolveAmbiguous(match, CREATED, TOKEN)).toBe(match)
+    expect(resolve(CREATED, TOKEN, match)).toBe(match)
     expect(match).toMatchObject({ flow: 'sso-off' })
   })
 
   it('leaves the sign-out alone', () => {
     const match = matchFlow('sign-out', 900)
-    expect(resolveAmbiguous(match, CREATED, TOKEN)).toBe(match)
+    expect(resolve(CREATED, TOKEN, match)).toBe(match)
     expect(match).toMatchObject({ flow: 'signout' })
   })
 
   it('leaves the sub-human-floor SSO bound alone', () => {
     const match = matchFlow('default', HUMAN_FLOOR_MS - 1)
-    expect(resolveAmbiguous(match, CREATED, TOKEN)).toBe(match)
+    expect(resolve(CREATED, TOKEN, match)).toBe(match)
     expect(match).toMatchObject({ flow: 'sso-on' })
   })
 
   it('leaves nothing as nothing', () => {
-    expect(resolveAmbiguous(null, CREATED, TOKEN)).toBeNull()
+    expect(resolve(CREATED, TOKEN, null)).toBeNull()
   })
 })
 
@@ -568,7 +774,11 @@ describe('the settled answer replaces the frozen one, so a refresh keeps it', ()
     sessionStorage.setItem('tip.flow.start', startedBeforeLanding(20_000))
     expect(readLastFlow()).toMatchObject({ kind: 'ambiguous' })
 
-    const settled = settleLastFlow(createdBeforeIssue(5_000), TOKEN)
+    // settleLastFlow takes no window: it uses the real anchor, the same one
+    // roundTripMs measured the seeded elapsed time against. So the creation time
+    // has to be placed against that anchor too — five seconds before the browser
+    // landed, inside the twenty-second window seeded above.
+    const settled = settleLastFlow(performance.timeOrigin - 5_000, TOKEN)
     expect(settled).toMatchObject({ kind: 'matched', flow: 'signup' })
     // The badge has to survive a reload. Without the write-back it would appear
     // and then vanish on the next load, which reads as the page changing its
@@ -592,6 +802,6 @@ describe('the settled answer replaces the frozen one, so a refresh keeps it', ()
 
   it('says nothing on a cold load, settled or not', () => {
     // Nobody has signed in. There is no flow to resolve and none gets invented.
-    expect(settleLastFlow(createdBeforeIssue(5_000), TOKEN)).toBeNull()
+    expect(settleLastFlow(performance.timeOrigin - 5_000, TOKEN)).toBeNull()
   })
 })

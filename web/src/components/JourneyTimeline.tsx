@@ -4,6 +4,7 @@ import {
   buildJourney,
   FLOW_META,
   FLOW_ONLY,
+  TAB_FLOWS,
   codeUrl,
   spanMs,
   type Actor,
@@ -102,6 +103,37 @@ const SLICE_LABEL_FONT: CSSProperties = {
 }
 
 const TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1]
+
+/**
+ * The elapsed round trip, for the badge and nothing else.
+ *
+ * ── WHY THIS IS NOT JUST toFixed(1) ─────────────────────────────────────────
+ *
+ * It was. Under two minutes that is exactly right and nothing here changes it:
+ * a sign-in is seconds, and 20.8s is a number a reader can hold.
+ *
+ * Past that it stops being one. STALE_AFTER_MS allows fifteen minutes, because
+ * External ID mails a verification code and a sign-up genuinely waits on an
+ * inbox, so a thirteen-minute sign-up is a real flow that now gets a badge. In
+ * seconds to one decimal it reads "It took 786.3s." That is true, and it looks
+ * fabricated, which on this page costs more than being unreadable would: the
+ * comment the fifteen-minute change replaced named "your sign-in took 825.0s"
+ * as the exact thing that must never appear, and the anchor moved without the
+ * formatting moving with it.
+ *
+ * So the number stays the measurement and only its units change. Minutes and
+ * seconds are how anybody says a thirteen-minute wait out loud, and the decimal
+ * is dropped there because a tenth of a second is not information at that
+ * scale.
+ */
+export function formatElapsed(ms: number): string {
+  if (ms < 120_000) return `${(ms / 1000).toFixed(1)}s`
+
+  const minutes = Math.floor(ms / 60_000)
+  const seconds = Math.round((ms % 60_000) / 1000)
+  // A remainder above 59.5s rounds to 60. Carry it, rather than print "13m 60s".
+  return seconds === 60 ? `${minutes + 1}m 0s` : `${minutes}m ${seconds}s`
+}
 
 const actorOf = (n: ZoomNode, fallback: Actor = 'entra'): Actor =>
   (n as { actor?: Actor }).actor ?? fallback
@@ -404,7 +436,7 @@ export function JourneyTimeline({
             ) : (
               <>
                 <span className="font-medium">
-                  This one is yours. It took {(lastFlow.elapsedMs / 1000).toFixed(1)}s.
+                  This one is yours. It took {formatElapsed(lastFlow.elapsedMs)}.
                 </span>{' '}
                 Identified because {lastFlow.because}. The breakdown below is a recorded capture of
                 the same flow, not a trace of your session.
@@ -417,7 +449,7 @@ export function JourneyTimeline({
                   something basic rather than being careful. State the measurement,
                   name the limit in one clause, stop. */}
               <span className="font-medium">
-                Your sign-in took {(lastFlow.elapsedMs / 1000).toFixed(1)}s.
+                Your sign-in took {formatElapsed(lastFlow.elapsedMs)}.
               </span>{' '}
               A prompt was involved, so it wasn't SSO.
             </>
@@ -434,19 +466,19 @@ export function JourneyTimeline({
               is theirs: yours is badged, the rest are visibly demoted to what
               they are, which is reference recordings. */}
           {/* flex-wrap is the whole of the phone fix, and it was measured, not
-              chosen. This strip is 368px of tabs and it was the only thing on
-              the page overflowing a 375px viewport: 422 against 375, so 47px of
-              the page ran off the right edge on the width a recruiter opens it
-              at. Letting it scroll instead was tried and does not work — the
-              strip becomes internally scrollable and stays 368px wide, so the
-              page still overflows by the same 47px. Wrapping is also free on
-              desktop: at 1905 the tabs fit on one line, and every box on the
-              page measures identical to the byte. */}
+              chosen. The strip measured 368px of tabs when it carried six, and
+              it was the only thing on the page overflowing a 375px viewport:
+              422 against 375, so 47px of the page ran off the right edge on the
+              width a recruiter opens it at. Letting it scroll instead was tried
+              and does not work — the strip becomes internally scrollable and
+              stays 368px wide, so the page still overflows by the same 47px.
+              Wrapping is also free on desktop: at 1905 the tabs fit on one
+              line, and every box on the page measures identical to the byte. */}
           <span className="flex flex-wrap overflow-hidden rounded border border-slate-700">
-            {/* Sign-out sits last on purpose: it is the only one that ends a
-                session rather than starting one, and its value is the contrast
-                with the five to its left. */}
-            {(['signup', 'signin', 'sso-on', 'sso-off', 'sso-probe', 'signout'] as FlowId[]).map((f) => {
+            {/* Five, not every FlowId. The silent probe is a real capture and
+                its numbers are on the SSO flow; it is not a thing a visitor can
+                perform, so it is not offered as though it were. See TAB_FLOWS. */}
+            {TAB_FLOWS.map((f) => {
               const isYours = yours === f
               const selected = flow === f
               return (

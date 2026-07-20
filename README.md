@@ -1,57 +1,69 @@
 # The Identity Playground
 
-**Live site:** _(not yet deployed — Phase 0)_ · **Domain:** theidentityplayground.com
+Identity work is invisible in production. This site makes it visible: sign in against a
+real Microsoft Entra tenant, then read the token that came back and every request that
+produced it.
 
-Identity work is invisible in production. This site makes it visible.
+Built by Steven Flanagan.
 
-Visitors sign in for real — as a customer, a business guest, or an employee — and each
-module shows exactly what happened underneath: the tokens that were issued, the policies
-that applied, the provisioning calls that fired. Every module links to the Entra
-configuration and the source that produced it.
+## Status
 
-Built on Microsoft Entra by **Steven Flanagan**.
+Module 1, the token inspector, is built and deployed. It reads the visitor's own ID token
+and annotates every claim. The sign-in that produced it sits on a timeline built from real
+captures against this tenant. Nothing on it is estimated.
 
-> **Status: Phase 0 (scaffolding).** The site is never "unfinished," just growing — the
-> roadmap is on the homepage. See [the build spec](identity-playground-spec.md) for the
-> full module design and phase plan.
+The other six modules are not built. The roadmap is on the homepage.
 
-## Why the tenants are separated
+The site is deployed but not linked anywhere yet. It runs a live sign-up form, and the
+public-readiness checklist in [the build spec](identity-playground-spec.md) has not passed.
+The main gap is account lifecycle: the cleanup script in `scripts/` has never been run, so
+nothing expires on its own yet.
 
-Three tenants, and the separation is itself part of the demo:
+## Why there are three tenants
 
-| Tenant | Purpose |
+| Tenant | Role |
 |---|---|
-| **External ID tenant** | Customer/CIAM sign-ups. The main public entry point. |
-| **Demo workforce tenant** | Fake employees, B2B guests, SCIM provisioning source, sign-in logs. |
-| **Steve's real tenant** | **Never used for identity.** It only owns the Azure subscription that pays for hosting. |
+| External ID | Customer sign-up and sign-in. Everything a visitor touches. |
+| Demo workforce | Created, not yet used. Employees, B2B guests, and SCIM land here from Phase 2. |
+| Personal | Never issues a token to anyone. It owns the Azure subscription that pays for hosting. |
 
-No real account, credential, or record exists in either demo tenant. Every demo account
-self-destructs within 24 hours — that lifecycle job is itself Module 7.
+Visitors only ever authenticate against a throwaway demo tenant. Hosting lives in one
+resource group in a personal subscription. A DNS zone and a static file host hold no
+identity.
+
+No real account or record belongs in either demo tenant. Every demo account is assumed
+compromised.
 
 ## Architecture
 
-See [docs/architecture.md](docs/architecture.md). Short version: React SPA on Azure Static
-Web Apps, Azure Functions backend, Node throughout, Entra doing the actual identity work.
+React SPA on Azure Static Web Apps, deployed from `main` by GitHub Actions. Entra does the
+identity work. There is an Azure Functions project in `api/`, currently one health
+endpoint; the front end calls no backend yet.
 
 ```
-web/         React SPA (Vite + Tailwind)
-api/         Azure Functions backend
-scim-mock/   Containerized mock SaaS app with a SCIM 2.0 endpoint
-scripts/     PowerShell + Graph: tenant setup, lifecycle cleanup
-infra/       Bicep templates
-docs/        Architecture, tenant setup, and decision records
+web/       React SPA (Vite, Tailwind, TypeScript)
+api/       Azure Functions (TypeScript). One health endpoint so far
+scripts/   PowerShell and the Graph SDK for demo account cleanup, plus a HAR-to-timings helper
+docs/      Architecture, tenant setup, decision index
 ```
 
-## Running locally
+More in [docs/architecture.md](docs/architecture.md).
+
+## Running it
 
 ```bash
 npm install --prefix web
 npm run dev --prefix web      # http://localhost:5173
+npm test --prefix web
 ```
 
-Phase 0 needs no tenant configuration and no secrets — there is nothing to sign into yet.
+No configuration and no secrets. Sign-in works against the live tenant from localhost. The
+tenant ID and client ID are compiled in because neither is a secret: both travel in every
+authorize request and sit in the token. A client secret cannot appear here at all, since
+this is a public client using PKCE.
 
-## Decisions
+## Design and decisions
 
-Design decisions and their reasoning live in [docs/decisions/](docs/decisions/). They are
-the most interesting reading in this repo.
+[identity-playground-spec.md](identity-playground-spec.md) is the build spec: module
+designs, security rules, phase gates. [docs/decisions/](docs/decisions/) indexes the
+decisions taken so far. Two of them are open and load-bearing, and none are written up yet.

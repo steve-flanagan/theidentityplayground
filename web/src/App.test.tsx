@@ -77,11 +77,21 @@ const ISSUED_AT_SECONDS = 1_800_000_000
 
 /**
  * A token shaped like the one Entra issues here: an `iat`, and the mapped
- * creation claim placed relative to it. Both timestamps come from the same
- * authority in the real thing, so the fixture is written the same way.
+ * creation claim.
+ *
+ * The creation time is placed against `performance.timeOrigin`, the anchor
+ * seedAmbiguousFlow measures its round trip from, because that is what the
+ * reasoning now compares it against: did the account appear inside the window
+ * the flow ran in. It used to be placed against `iat`, and a real sign-up
+ * turned that premise over — see resolveAmbiguous.
+ *
+ * `iat` is left exactly where it was, which puts it months away from the
+ * creation time. That is the point: the decision does not read it.
  */
-function realToken(createdSecondsBeforeIssue: number): string {
-  const created = new Date((ISSUED_AT_SECONDS - createdSecondsBeforeIssue) * 1000).toISOString()
+function realToken(createdSecondsBeforeLanding: number): string {
+  const created = new Date(
+    performance.timeOrigin - createdSecondsBeforeLanding * 1000,
+  ).toISOString()
   const payload = { iat: ISSUED_AT_SECONDS, [ACCOUNT_CREATED_CLAIM]: created }
   return `${seg({ typ: 'JWT', alg: 'RS256' })}.${seg(payload)}.NOT_A_SIGNATURE`
 }

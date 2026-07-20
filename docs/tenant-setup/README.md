@@ -17,7 +17,7 @@ Record here as they're created:
 | Demo workforce tenant — org name | The Identity Playground (workforce) |
 | Demo workforce tenant — initial domain | `theidentityplaygroundgmail.onmicrosoft.com` |
 | Demo workforce tenant — tenant ID | `9e1372b0-e94f-40af-aef8-6a5fa2bfb2e4` |
-| Demo workforce tenant — subscription | `c436a5b3-ecc8-4075-ace6-ff05cc5560c1` (trial) |
+| Demo workforce tenant — subscription | Trial. ID recorded outside the repo. |
 | Azure subscription (hosting) | existing pay-as-you-go |
 | Resource group | `rg-theidentityplayground` |
 | DNS zone | `theidentityplayground.com` — delegated to Azure DNS, verified live |
@@ -87,9 +87,12 @@ To re-check after any tenant change:
 curl -s https://theidentityplayground.ciamlogin.com/7e8da8a9-67bc-4d53-bfc7-fe3e13128382/v2.0/.well-known/openid-configuration | jq
 ```
 
-**Never record secrets here.** App registration client IDs and tenant IDs are fine — they
-are not secrets. Client secrets, certificates, and tokens go in Key Vault and nowhere
-else.
+**Never record secrets here.** App registration client IDs and tenant IDs are fine. They
+are not secrets and they travel in every request the browser makes. Client secrets,
+certificates, and tokens go in Key Vault and nowhere else.
+
+Subscription IDs are a separate case. Not a credential, but not something to volunteer on
+a public repo either. They live in `notes/environment.md`, which is gitignored.
 
 ## Pages to write
 

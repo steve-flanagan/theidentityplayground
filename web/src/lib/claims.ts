@@ -86,7 +86,7 @@ export const CLAIMS: Record<string, ClaimAnnotation> = {
     what: 'A human-readable label for the account. What actually lands here depends entirely on how the account was created.',
     why: 'Emitted with the profile scope.',
     gotcha:
-      'Sign in with a local account and this is the email address you typed. Sign in with Google and it is a value Entra generated (<oid>@theidentityplayground.onmicrosoft.com), which that user has never seen, did not choose, and cannot sign in with. Both tokens carry the claim; only one of them carries a username. It reads like an identifier while being neither their identity nor, half the time, their username. Mutable, reassignable, and never safe to key on: use oid.',
+      'Sign in with a local account and this is the email address you typed. Sign in with Google and it is a value Entra generated (<oid>@theidentityplayground.onmicrosoft.com), which that user cannot sign in with and has never seen. Both tokens carry the claim; only one of them carries a username. Mutable, reassignable, and never safe to key on: use oid.',
   },
   email: {
     title: 'Email',
@@ -124,7 +124,7 @@ export const CLAIMS: Record<string, ClaimAnnotation> = {
     what: 'HOW the user proved who they are, as an array, e.g. pwd, mfa, otp, fido.',
     why: 'Reflects what actually happened at sign-in, not what policy asked for.',
     gotcha:
-      'This is the claim to watch across Module 3. Sign in with a password and it says pwd; complete MFA and mfa appears; use a passkey and you get fido. It is the audit trail of the sign-in you just did.',
+      'This is the claim to watch across Module 3. Sign in with a password and it says pwd; complete MFA and mfa appears; use a passkey and you get fido.',
   },
   acr: {
     title: 'Authentication context class',

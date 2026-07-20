@@ -2,15 +2,15 @@
 
 Operational PowerShell against the demo tenants, using the Microsoft Graph SDK.
 
-These run **interactively, as an admin**. That is a deliberate choice and not a
-placeholder for something better: an interactive admin already holds a token in the
-External ID tenant, so nothing here needs the cross-tenant Graph hop. Automating the
-same work from an Azure Function *does* — a managed identity is a service principal
-in the tenant that owns the subscription, which is not this tenant. That's
-[decision 003](../docs/decisions/README.md), and it's still open.
+These run **interactively, as an admin**, and the cleanup also runs unattended from
+GitHub Actions. An interactive admin already holds a token in the External ID tenant,
+so nothing here needs the cross-tenant Graph hop. Automating the same work does, and
+[decision 003](../docs/decisions/003-cross-tenant-graph.md) is how: an app registration
+in the External ID tenant, a federated credential trusting this repo, and no stored
+secret anywhere.
 
-So the sequence is: **script first, schedule second.** The script is what makes the
-site's promise true today; the timer Function is what makes it true without Steve.
+One file serves both. `-AccessToken` switches it to app-only; without it the script
+signs in interactively.
 
 ## Setup
 
@@ -35,12 +35,18 @@ tenant.
 
 # Keep the 30-day restore window, e.g. to inspect a run afterwards.
 ./Remove-ExpiredDemoAccounts.ps1 -SkipPurge
+
+# Raise the ceiling for a known backlog. Deliberately not something you set once
+# and forget: the run log should show a human decided this.
+./Remove-ExpiredDemoAccounts.ps1 -MaxDeletions 40 -Confirm:$false
 ```
 
 Scopes requested: `User.ReadWrite.All`, `Directory.Read.All`. The read scope exists
-only to resolve directory-role membership for the exclusion list.
+only to resolve directory-role membership for the exclusion list. Under `-AccessToken`
+the scopes are inert, since the token already carries the consented application
+permissions.
 
-### Two things in it worth knowing
+### Three things in it worth knowing
 
 **It allowlists rather than blocklists.** A user is a deletion candidate only if it
 can be *positively* identified as having arrived through the sign-up flow — it must
@@ -56,6 +62,30 @@ accounts self-destruct while leaving a month of restorable PII behind is lying i
 one place it claims authority, so this purges by default via
 `Remove-MgDirectoryDeletedItem`. `-SkipPurge` opts out.
 
+**There is a ceiling, and it aborts rather than truncates.** The scheduled run passes
+`-Confirm:$false`, which removes `ShouldProcess` as a guard. `-MaxDeletions` (default
+10) puts a cap back: if the candidate count exceeds it, the run stops and deletes
+**nothing**. A cap that deleted up to the limit and stopped would half-work silently,
+emptying the tenant over successive runs while every run looked fine.
+
+## Tests
+
+```powershell
+./Remove-ExpiredDemoAccounts.Tests.ps1
+```
+
+No Pester, no network, no tenant. Nineteen cases against synthetic users under
+`Set-StrictMode -Version Latest`, covering the four guards, the purge, `-WhatIf`, both
+auth paths, and the ceiling. Exits non-zero on failure.
+
+`-ScriptPath` points it at a different copy of the script, which is how a test gets
+checked for actually discriminating:
+
+```powershell
+git show HEAD~1:scripts/Remove-ExpiredDemoAccounts.ps1 > /tmp/old.ps1
+./Remove-ExpiredDemoAccounts.Tests.ps1 -ScriptPath /tmp/old.ps1
+```
+
 ## What's verified, and what isn't
 
 **Verified against Graph SDK 2.38.1** (16 July): every cmdlet, parameter and object
@@ -64,10 +94,14 @@ property the script touches resolves — `Connect-MgGraph`, `Get-MgUser`,
 `Remove-MgDirectoryDeletedItem`, and the `.Identities[].SignInType` /
 `.CreatedDateTime` reads.
 
-**Verified by test**: the guard logic, exercised against synthetic users under
-`Set-StrictMode -Version Latest`. A 999-hour-old role-holding admin is skipped; a
-user with no `identities` is skipped; a guest whose `signInType` is
-`userPrincipalName` is skipped; only the aged sign-up-flow accounts are selected.
+**Verified by test**: the guard logic and the ceiling, by the file above. A 999-hour-old
+role-holding admin is skipped; a user with no `identities` is skipped; a guest whose
+`signInType` is `userPrincipalName` is skipped; only the aged sign-up-flow accounts are
+selected; exceeding the ceiling deletes nothing.
+
+**NOT verified. The workflow has never run.** The token exchange, the federated
+credential subject, and the token endpoint host are all untested against the live
+tenant. See decision 003.
 
 **NOT verified — needs the tenant, and it is the assumption everything rests on:**
 the real `signInType` values. Confirm before the first unattended run:
@@ -83,9 +117,18 @@ If a real signup shows a `signInType` not in `$demoSignInTypes`, the script will
 skip it forever and the accounts will quietly accumulate — the failure is silent and
 in the safe direction, which is why it's worth checking rather than discovering.
 
+## Scheduled runs
+
+`.github/workflows/cleanup-demo-accounts.yml` runs this every six hours against the
+External ID tenant. No stored credential: GitHub mints an OIDC token for the workflow,
+Entra trades it for an app-only Graph token through a federated identity credential.
+
+**Manual runs are `-WhatIf` by default.** Actually deleting takes an explicit tick of
+the `delete` input on the Actions tab.
+
 ## Not here yet
 
-- Timer-triggered Function running this hourly — blocked on decision 003.
 - Publishing run stats (created / deleted / current count) to the front end, per
-  spec Module 7.
+  spec Module 7. Scoped in decision 003, not built. It is also the only monitor that
+  catches the workflow silently not running.
 - B2B guest cleanup and demo-employee password rotation — Phase 2, ship with Module 2.

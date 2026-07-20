@@ -90,6 +90,22 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
   /** Set only when this tab produced the token without leaving the page. */
   const silentSource = held && held.source !== 'redirect' ? held.source : null
 
+  /**
+   * Holding a token that the page has refused to show.
+   *
+   * A different question from `held`, and the button's label used to ask the
+   * wrong one. A token addressed to another client is still held, so a label
+   * keyed on `held` alone offered to show the token the panel refuses two
+   * blocks down.
+   *
+   * The button still belongs here, because pressing it does something. Nothing
+   * in `getToken` reads `held`: it goes to `acquireHeldToken`, which looks in
+   * MSAL's account cache and otherwise falls through to the redirect, and both
+   * routes end at a token issued to THIS client ID. The refusal is not sticky.
+   * Only the wording was wrong.
+   */
+  const refusedToken = acquisition?.kind === 'foreign-audience'
+
   // Decoding is for display only and never validates anything — see lib/jwt.
   // MSAL already validated the token it handed us; this is a viewer.
   const payload = (() => {
@@ -254,7 +270,7 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
             {held?.source === 'redirect' && acquisition?.kind === 'interactive' && (
               <>
                 <p className="text-lg font-medium text-amber-300">
-                  Token issued, but this page will not call it SSO.
+                  Token issued. The round trip does not prove SSO.
                 </p>
                 <p className="mt-2 text-sm leading-relaxed text-slate-300">
                   Round trip:{' '}
@@ -277,9 +293,8 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
                 <p className="text-lg font-medium text-slate-200">Token issued. Timing unknown.</p>
                 <p className="mt-2 text-sm leading-relaxed text-slate-400">
                   This browser blocked the session storage this page measures the round trip with,
-                  so it cannot tell you whether a prompt appeared. The token below is real; the
-                  claim about how it got here is the part that is missing, and it is not going to be
-                  guessed.
+                  so there is no timing for this token. The token below is real. How it got here is
+                  not recorded.
                 </p>
               </>
             )}
@@ -324,13 +339,18 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
                 disabled={busy}
                 className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-emerald-400 disabled:opacity-50"
               >
+                {/* `refusedToken` is tested before `held` on purpose: both are
+                    true at once, and offering to show a refused token is the
+                    branch that must not win. */}
                 {redirecting
                   ? 'Redirecting…'
                   : busy
                     ? 'Checking…'
-                    : held
-                      ? 'Show the token this app holds'
-                      : 'Get a token from the shared session'}
+                    : refusedToken
+                      ? 'Get a token for this app'
+                      : held
+                        ? 'Show the token this app holds'
+                        : 'Get a token from the shared session'}
               </button>
               <span className="text-xs leading-relaxed text-slate-500">
                 {held ? (
@@ -354,17 +374,16 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
             )}
 
             {onLocalhost && (
-              /* Dev-only, and it saves a confusing twenty minutes. Stated as a
-                 conditional rather than a prediction: the recorded redirect URI
-                 for this registration is the production one, and whether the
-                 localhost variant is also registered has not been confirmed. */
+              /* Dev-only, and it saves a confusing twenty minutes. Kept after the
+                 localhost URIs were registered because anyone cloning this repo
+                 runs against their own origin, which is not on the registration
+                 and never will be. Stated as a conditional, not a prediction. */
               <p className="mt-4 rounded-md border border-slate-700 bg-slate-800/40 p-3 text-xs leading-relaxed text-slate-400">
-                <span className="font-medium text-slate-300">Running on localhost.</span> The
-                redirect URI recorded for the CrossAppSSO app registration is{' '}
-                <span className="font-mono">https://theidentityplayground.com/app2</span>. If Entra
-                answers with AADSTS50011, then{' '}
-                <span className="font-mono">{window.location.origin}/app2</span> is not on that
-                registration yet. Add it there and this works.
+                <span className="font-medium text-slate-300">Running on localhost.</span> This
+                origin needs to be a redirect URI on the CrossAppSSO app registration, alongside{' '}
+                <span className="font-mono">/blank.html</span> for the silent path. If Entra answers
+                with AADSTS50011, add{' '}
+                <span className="font-mono">{window.location.origin}/app2</span> there.
               </p>
             )}
           </div>
