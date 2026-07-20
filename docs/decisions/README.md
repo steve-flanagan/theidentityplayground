@@ -16,18 +16,16 @@ Format: **Context** (what forced a choice) → **Decision** → **Rejected alter
 | 004 | Module 2's B2B invitation flow: how to avoid an open email relay | **open** — blocks Phase 2 |
 | 005 | On-demand provisioning instead of waiting for Entra's cycle | decided, not yet written up |
 | 006 | [Standalone Function App over SWA managed API (timer triggers vs. $9/mo)](006-standalone-function-app.md) | decided |
-| 007 | TypeScript over JavaScript across web/ and api/ | decided, not yet written up |
+| 007 | [TypeScript over JavaScript across web/ and api/](007-typescript-over-javascript.md) | decided |
 | 008 | Self-service account deletion: how a visitor deletes their own demo account | **open** — gated behind Phase 0.5 |
 
 Decision 004 is open and load-bearing. See the spec for the options under consideration.
 
-**005 and 007 are still unwritten, for different reasons.** 005's decision and its motive
-are both recorded in the spec, but no rejected alternative is written down anywhere beyond
-the implied "wait for Entra's 20 to 40 minute cycle", so the record would have a hole in
-the section that matters most. **007 cannot be written from the repo at all.** The only
-prose reasoning that exists is a commit message reading "TypeScript per Steve's call".
-What was weighed against JavaScript is not recorded, and inventing it would fabricate
-exactly the thing an ADR exists to capture. That one needs Steve.
+**005 is the last one unwritten.** Its decision and its motive are both recorded in the
+spec, but no rejected alternative is written down anywhere beyond the implied "wait for
+Entra's 20 to 40 minute cycle", so the record would have a hole in the section that
+matters most. It needs one sentence from Steve on what waiting for the cycle would have
+cost, and then it can be written.
 
 Decision 008 was raised 20 July. Scheduled cleanup is *meant* to remove accounts after 24
 hours, and as of 20 July it has run unattended without ever reaching a deletion, so treat
