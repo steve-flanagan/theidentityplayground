@@ -381,14 +381,16 @@ Not part of the decision. This is what has to be built, in order.
 
 ## 1. Steve, in the portal and the CLI
 
-**Steps 1 through 6 are DONE**, step 5 included as of 20 July. State is recorded under
-"Tenant-side state as built" above. Step 7 is withdrawn. **Step 8, branch protection on
-`main`, is the only one still open, and it is now the highest-risk item in this file:**
-the credential it guards exists, so an unprotected `main` is a working path to
-`User.ReadWrite.All` over the tenant. Confirmed still absent 20 July. **[M]**
-(`gh api repos/steve-flanagan/theidentityplayground/branches/main/protection` returns
-404 "Branch not protected". That rules out a classic branch-protection rule. It does not
-rule out a repository ruleset, which is a separate API and was not queried. **[A]**)
+**Steps 1 through 8 are DONE**, step 5 as of 20 July, step 8 late the same day. State is
+recorded under "Tenant-side state as built" above. Step 7 is withdrawn. Step 8, branch
+protection on `main`, was the last one open and the highest-risk: the credential it guards
+exists, so an unprotected `main` was a working path to `User.ReadWrite.All` over the
+tenant. It is now closed by a repository ruleset on `main` that requires a pull request and
+blocks force pushes and deletions. **[M]** (Steve created it 20 July. The classic
+`gh api .../branches/main/protection` endpoint still returns 404 because a ruleset is a
+separate feature, so verify it at Settings > Rules > Rulesets, not there. The proof it is
+live: the first direct push to `main` after it was rejected with GH013 "Changes must be
+made through a pull request".)
 
 <details>
 <summary>The original sequence, kept for the record</summary>
@@ -446,11 +448,13 @@ loop is: dispatch a dry run, read the printed subject, make the credential match
 tenant. See update 3. Nothing to check, nothing to budget. What replaces it is verifying
 step 8 of the verification list below, after the first few runs.
 
-### Step 8, GitHub, still open
+### Step 8, GitHub. Done 20 July via a ruleset
 
-**Settings > Branches > add a rule on `main`:** require a pull request, block force
-pushes. Push access to `main` is now user-delete in the CIAM tenant, and this is the
-access control on it.
+A repository ruleset on `main`: require a pull request before merging (0 approvals, so a
+solo maintainer is not locked out), block force pushes, restrict deletions. Push access to
+`main` is user-delete in the CIAM tenant, and this is the access control on it. Verified
+working: the first direct `git push` to `main` afterward was rejected with GH013. From
+here, changes to `main` go through a branch and a PR. **[M]**
 9. No repository secret is required. Tenant ID and client ID can sit in the workflow file.
 
 ## 2. Code, and where it lives

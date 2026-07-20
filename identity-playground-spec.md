@@ -396,50 +396,7 @@ one is the scope error that kills side projects.
 
 ---
 
-## 6. Claude Code starter prompt (Phase 0 → 1)
-
-Paste this into Claude Code from the repo root:
-
-```
-I'm building "Identity Playground" — a public portfolio site demonstrating
-Microsoft Entra IAM scenarios interactively. Full spec is in
-identity-playground-spec.md at the repo root — read it completely before
-doing anything.
-
-About me: I'm an experienced IAM engineer (Entra, Graph API, PowerShell)
-but NEW to web development, React, git, and this toolchain. Explain dev
-concepts briefly in plain language as we go. Do not explain IAM concepts
-to me. Work phase by phase; verify each step works before moving on, and
-tell me exactly what to check.
-
-Current state: I have an Azure pay-as-you-go subscription. I've created
-[UPDATE: which tenants exist yet]. Nothing else exists.
-
-Today we're doing Phase 0 and starting Phase 1 (see spec section 5):
-1. Walk me through creating the External ID tenant and demo workforce
-   tenant (I'll do portal steps; give me exact clicks and tell me what
-   to record — tenant IDs, domains).
-2. Scaffold the monorepo per spec section 2: Vite React SPA in web/,
-   Azure Functions project in api/, docs/ structure. Initialize git,
-   sensible .gitignore, README stub.
-3. Set up the SPA with MSAL (@azure/msal-react) configured for the
-   External ID tenant — sign-up/sign-in with email, sign-out, and
-   display of the raw ID token.
-4. Deploy to Azure Static Web Apps free tier and verify the live sign-in
-   flow works end to end.
-
-Constraints from the spec that apply today: no secrets in the repo,
-minimal Graph permissions, everything stays in free tiers for Phase 0-1.
-
-Before writing code, confirm current versions/docs for: MSAL.js with
-External ID external tenants (authority URL format changed from B2C —
-verify current format), and Static Web Apps deployment via GitHub
-Actions. Look these up rather than assuming.
-```
-
----
-
-## 7. Verify before building (things that change)
+## 6. Verify before building (things that change)
 
 **Settled since the first draft (July 2026) — don't re-research these:**
 
@@ -475,14 +432,3 @@ Other confirmed facts: `scopes_supported` is `openid profile email offline_acces
 - What the External ID tenant exposes of sign-in logs on the free tier (Module 6 licensing)
 - ~~**Whether SWA's managed Functions API can host this backend at all**~~ **Decided 16 July 2026: it cannot.** Managed Functions are HTTP-trigger only and Module 7's lifecycle job needs a timer. Standalone Function App on consumption, SWA Free for the static site. Written up as [decision 006](docs/decisions/006-standalone-function-app.md), which also records why it is currently deferred rather than reversed.
 
----
-
-## 8. Making it visible (distribution plan)
-
-The site does not market itself. The plan:
-
-1. **Resume:** One project block, 3 bullets max, with the URL prominent. Lead with what a visitor can DO ("live public demo — sign in and inspect your own token"), not the tech list.
-2. **LinkedIn:** One post per shipped phase (7 posts over the build). Short, one screenshot/GIF, one insight learned. Tag #EntraID #IAM. The Entra community on LinkedIn is small and active — module 5 (SCIM live feed) is the most shareable.
-3. **README as landing page:** Assume more people see the GitHub README than the site. Architecture diagram at top, GIF of the token inspector, link to live site above the fold.
-4. **Interviews:** The real payoff. "Can I share my screen?" → live demo beats every behavioral answer. Rehearse a 3-minute walkthrough.
-5. **Per-module writeups** in docs/ double as blog posts (dev.to or LinkedIn articles) — each one is a search-indexable artifact with your name on it.
