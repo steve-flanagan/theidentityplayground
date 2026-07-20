@@ -54,6 +54,67 @@ export function SignInPanel({ onLocalSignOut }: Props) {
 
   const busy = inProgress !== InteractionStatus.None
 
+  /**
+   * Is Entra's authorization response sitting in the fragment right now?
+   *
+   * MSAL returns the code and the error in the fragment and redeems the code
+   * against state and a PKCE verifier held in the same cache the recovery below
+   * wipes. Wiping it while a response is there IS the failure being fixed, so
+   * this is the one condition that stands the recovery down.
+   *
+   * Reads the fragment. Writes nothing to it, ever: it belongs to MSAL, and
+   * JourneyTimeline.test.tsx holds that line.
+   */
+  function authResponseInFragment(): boolean {
+    return /(?:^|[#&?])(?:code|error)=/.test(location.hash)
+  }
+
+  /**
+   * Drop the browser state that just failed a sign-in.
+   *
+   * ── Why ─────────────────────────────────────────────────────────────────────
+   *
+   * Measured on the live site: /authorize came back 302 with a code, and no
+   * /token request followed. Nothing. The page sat blank and clearing all site
+   * data by hand was the only way out, so the state that broke it was in the
+   * browser. Cached state that cannot complete a sign-in is worth less than no
+   * cached state at all.
+   *
+   * It is on a schedule, not an accident. Demo accounts are deleted 24 hours
+   * after they are created, so a returning visitor's browser holds an MSAL
+   * account for a user the directory no longer has.
+   *
+   * ── What it is allowed to touch, and when ───────────────────────────────────
+   *
+   * Only from the catch below, on an attempt that actually failed. Never on
+   * load, never on mount, never speculatively: clearing on load signs out
+   * visitors whose sessions were working. The button that reaches this only
+   * renders when nobody is signed in, so there is no live session here to lose.
+   *
+   * @returns whether the state was really dropped, so the message can say so
+   *          only when it happened
+   */
+  async function clearStateThatFailedSignIn(): Promise<boolean> {
+    if (authResponseInFragment()) return false
+    try {
+      // The same call the local sign-out makes. With no argument MSAL takes the
+      // branch that clears every account and token rather than one named account
+      // (msal-browser 5.17.1, clearCacheOnLogout in BaseInteractionClient), and
+      // the temporary cache goes with it, so a stranded interaction lock does too.
+      await instance.clearCache()
+      instance.setActiveAccount(null)
+      // The start stamp written moments ago for a redirect that never left. No
+      // navigation is coming back to read it, and left in place the next plain
+      // page load would turn the idle minutes since the failed click into a
+      // measured round trip. Same reasoning as signOutAppOnly below.
+      clearLastFlow()
+      return true
+    } catch {
+      // A recovery that fails must not replace the sign-in error with its own.
+      return false
+    }
+  }
+
   async function signIn() {
     setError(null)
     setNote(null)
@@ -66,9 +127,13 @@ export function SignInPanel({ onLocalSignOut }: Props) {
       await instance.loginRedirect(buildAuthRequest(mode))
     } catch (e) {
       // user_cancelled isn't an error worth shouting about — they changed
-      // their mind, which is allowed.
+      // their mind, which is allowed. Nothing is broken, so nothing is cleared.
       if (e instanceof BrowserAuthError && e.errorCode === 'user_cancelled') return
-      setError(e instanceof Error ? e.message : 'Sign-in failed.')
+      const cleared = await clearStateThatFailedSignIn()
+      const detail = e instanceof Error ? e.message : 'Sign-in failed.'
+      // MSAL's own message stays first: it is the useful half to anyone reading
+      // this, and the sentence after it is the part a visitor needs.
+      setError(cleared ? `${detail} Stored sign-in state was cleared, so try again.` : detail)
     }
   }
 

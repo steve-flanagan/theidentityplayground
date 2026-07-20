@@ -183,9 +183,9 @@ export function App2({ instance, idToken, elapsedMs, redirectError, sharedAccoun
           </h1>
           <p className="mt-6 text-lg leading-relaxed text-slate-400">
             This page is a different app registration in the same Entra tenant: its own client
-            ID, its own redirect URI, its own token cache. It has never seen your credentials and
-            it never will. If you are signed in on the main app, it can still get a token for you,
-            and you will not be asked for anything.
+            ID, its own redirect URI, its own token cache. It has never seen your credentials. If
+            you are signed in on the main app, it can still get a token for you, and you will not
+            be asked for anything.
           </p>
           {/* A real navigation, not a client-side route change: each app boots
               its own MSAL instance, and swapping instances in place is a good

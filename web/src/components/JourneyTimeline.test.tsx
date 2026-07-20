@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { JourneyTimeline, formatElapsed } from './JourneyTimeline'
 import { buildSampleToken } from '../lib/sampleToken'
 import signinCapture from '../lib/captures/signin.json'
@@ -136,9 +136,23 @@ describe('our own deep links', () => {
 // bottom values? The one's that hit end of branch."
 
 describe('getting back out', () => {
-  /** The control, whatever it ends up being called. There is only ever one. */
+  /**
+   * Every copy of the control, whatever it ends up being called. There are two
+   * once anything is selected: one in the breadcrumb row at the top of the
+   * timeline and one at the top of the node panel at the bottom of it. In
+   * document order the breadcrumb one comes first.
+   */
   const backControls = () => screen.queryAllByRole('button', { name: /back/i })
   const backControl = () => backControls()[0]
+
+  /**
+   * The node detail panel: the block the selected node's heading sits in, which
+   * is also the block that carries the child cards. Scoped off the heading
+   * rather than off a class name, because the heading is the thing the reader
+   * is actually looking at and the thing the panel is about.
+   */
+  const nodePanel = (heading: string) =>
+    screen.getByText(heading, { selector: 'h4' }).parentElement!
 
   /**
    * Two levels down a branch that ends. POST /login is a single-phase request,
@@ -166,7 +180,9 @@ describe('getting back out', () => {
     expect(screen.getByText(/steps · full scale/)).toBeDefined()
     expect(screen.getByText('Conditional Access evaluated', { selector: 'h4' })).toBeDefined()
 
-    expect(backControls()).toHaveLength(1)
+    // Two: the breadcrumb one at the top of the timeline and the panel one at
+    // the bottom. The test below is the one that cares which.
+    expect(backControls()).toHaveLength(2)
   })
 
   it('does exactly what Escape does, so the two cannot drift apart', () => {
@@ -197,8 +213,8 @@ describe('getting back out', () => {
 
     fireEvent.click(backControl())
     expect(location.hash).toBe('#step=login')
-    // Still one level in, so still offered.
-    expect(backControls()).toHaveLength(1)
+    // Still one level in, so still offered, and still in both places.
+    expect(backControls()).toHaveLength(2)
 
     fireEvent.click(backControl())
     expect(location.hash).toBe('')
@@ -219,6 +235,78 @@ describe('getting back out', () => {
 
     expect(location.hash).toBe('#step=authorize/authorize:wait')
     expect(screen.getByText('Waiting: Entra thinking', { selector: 'h4' })).toBeDefined()
+  })
+
+  // ── Reachable, which is not the same as rendered ──────────────────────────
+  //
+  // The previous fix made the control RENDER whenever the path is non-empty,
+  // and the test above asserts exactly that. It passed, and Steve reported the
+  // same complaint again on the same node: "Still no back buttons on these
+  // (tenant + app reg, etc)".
+  //
+  // Rendered is not the defect. PLACEMENT is. The breadcrumb copy lives at the
+  // top of the timeline and the reader is at the bottom of it, in the node
+  // panel, clicking child cards that each carry a → to go deeper. Descent is
+  // offered where the content is; ascent was a scroll away.
+  //
+  // Measured in the browser at 1280x800, descending into inside:tenant from
+  // the panel Steve named: the breadcrumb control sat 215px above the panel
+  // heading and 138px off the top of the viewport. jsdom has no layout, so
+  // these two assert the structural fact underneath that number — the way out
+  // is inside the panel, and it is above the content rather than under it.
+
+  it('puts a way out inside the node panel, where the reader is', () => {
+    // Descend the way the complaint did: by clicking a child card in the panel,
+    // not by deep link. That is the path that leaves the breadcrumb off screen.
+    setFragment('#step=authorize/authorize:wait')
+    mount()
+
+    fireEvent.click(
+      within(nodePanel('Waiting: Entra thinking')).getByRole('button', {
+        name: /Tenant \+ app registration resolved/,
+      }),
+    )
+
+    const panel = nodePanel('Tenant + app registration resolved')
+    // The assertion that bites. Before the placement fix this was 0: the panel
+    // held the heading, the prose and the child cards, and no way back out.
+    expect(within(panel).getAllByRole('button', { name: /back/i })).toHaveLength(1)
+  })
+
+  it('puts it above the panel heading, not below the content', () => {
+    setFragment('#step=authorize/authorize:wait/inside:tenant')
+    mount()
+
+    const heading = screen.getByText('Tenant + app registration resolved', { selector: 'h4' })
+    const inPanel = within(heading.parentElement!).getByRole('button', { name: /back/i })
+
+    // Reading downward, the way out comes before the thing it backs out of.
+    // DOCUMENT_POSITION_FOLLOWING === 4: the heading follows the control.
+    expect(inPanel.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(4)
+  })
+
+  it('the panel copy does exactly what the breadcrumb copy does', () => {
+    // Same guarantee as the Escape test above, one level up. Two controls that
+    // do nearly the same thing is how the button and Escape diverged the first
+    // time; both of these are one component calling one back().
+    const from = (pick: (all: HTMLElement[]) => HTMLElement) => {
+      setFragment('#step=authorize/authorize:wait/inside:tenant')
+      const { container } = mount()
+      const all = backControls()
+      // Or the two picks below resolve to the same element and this compares a
+      // thing with itself, which is what it looked like against the old code.
+      expect(all).toHaveLength(2)
+      fireEvent.click(pick(all))
+      const landed = { html: container.innerHTML, hash: location.hash }
+      cleanup()
+      return landed
+    }
+
+    const viaBreadcrumb = from((all) => all[0])
+    const viaPanel = from((all) => all[all.length - 1])
+
+    expect(viaPanel).toEqual(viaBreadcrumb)
+    expect(viaPanel.hash).toBe('#step=authorize/authorize:wait')
   })
 })
 

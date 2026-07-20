@@ -681,15 +681,11 @@ export function JourneyTimeline({
                 camera — there is nothing inside it to get closer to — so a leaf
                 produces no zoom container, so two levels down on a branch that
                 ends the way back out was an Escape key nothing on screen
-                mentions. A control the visitor cannot find does not exist. */}
-            {path.length > 0 && (
-              <button
-                onClick={back}
-                className="ml-1 rounded border border-slate-700 px-1.5 py-0.5 font-mono text-sm text-slate-300 hover:border-emerald-500/50 hover:text-emerald-300"
-              >
-                ↑ back <span className="text-slate-600">esc</span>
-              </button>
-            )}
+                mentions. A control the visitor cannot find does not exist.
+
+                This one is still not enough on its own, and the second copy in
+                the node panel is why. See the block above NodePanel. */}
+            {path.length > 0 && <BackControl onBack={back} className="ml-1" />}
           </span>
           <span className="font-mono text-sm tabular-nums text-slate-400">
             {zoomContainer ? (
@@ -843,10 +839,29 @@ export function JourneyTimeline({
             node={selected}
             hideChildren={timedChildren(selected).length > 0}
             onDescend={(child) => navigate([...path, child])}
+            onBack={back}
           />
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Up one level. ONE component, rendered in two places, and that is the whole
+ * point of it being a component: the button and the Escape key were written
+ * separately once and did different things, and this is the same failure mode
+ * one level up. Both copies call the same back(), and both are this markup, so
+ * neither the behaviour nor the label can drift from the other.
+ */
+function BackControl({ onBack, className = '' }: { onBack: () => void; className?: string }) {
+  return (
+    <button
+      onClick={onBack}
+      className={`rounded border border-slate-700 px-1.5 py-0.5 font-mono text-sm text-slate-300 hover:border-emerald-500/50 hover:text-emerald-300 ${className}`}
+    >
+      ↑ back <span className="text-slate-600">esc</span>
+    </button>
   )
 }
 
@@ -866,20 +881,42 @@ function CopyButton({ value }: { value: string }) {
   )
 }
 
+/**
+ * ── The way out has to be where the reader is ────────────────────────────────
+ *
+ * The breadcrumb copy of the back control renders correctly and is still not
+ * findable: it sits at the top of the timeline, and this panel is the bottom of
+ * it. Measured at 1280x800, on the node Steve was looking at, the breadcrumb
+ * control sat 215px ABOVE the panel heading and 138px off the top of the
+ * viewport — so at the moment a reader wants out, the only way out is off
+ * screen. Descent has no such problem: every child card below carries a → and
+ * offers itself right here.
+ *
+ * That asymmetry is the defect, not a missing control, which is why the fix is
+ * a second copy rather than a moved one. Both are BackControl and both call the
+ * same back(). Above the heading rather than beside it: on a 1265px-wide panel
+ * the right-hand edge is a thousand pixels from the words being read.
+ */
 function NodePanel({
   node,
   hideChildren,
   onDescend,
+  onBack,
 }: {
   node: ZoomNode
   hideChildren?: boolean
   onDescend: (child: ZoomNode) => void
+  onBack: () => void
 }) {
   const showChildren = Boolean(node.children?.length) && !hideChildren
 
   return (
     <div>
-      <h4 className="text-lg font-medium text-slate-100">{node.label}</h4>
+      {/* Unconditional: this panel only renders when something is selected, and
+          something is selected only when the path is non-empty, so there is
+          always a level to go back to. */}
+      <BackControl onBack={onBack} />
+      <h4 className="mt-2 text-lg font-medium text-slate-100">{node.label}</h4>
       {node.summary && <p className="mt-1 text-sm text-slate-500">{node.summary}</p>}
 
       {node.literal && (
@@ -911,8 +948,12 @@ function NodePanel({
           complete one. An empty node says why it's empty. */}
       {node.absent && (
         <div className="mt-3 rounded border border-dashed border-slate-700 bg-slate-950/50 px-3 py-2">
+          {/* Was "Nothing here. That's the finding". It fires on all four absent
+              nodes, and awarding the content its own significance is the page
+              talking about itself. The sign-out node is the one that earned it,
+              and its paragraph makes the case without the header claiming it. */}
           <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
-            Nothing here. That's the finding
+            Nothing here
           </p>
           <p className="mt-1 text-sm leading-relaxed text-slate-400">{node.absent}</p>
         </div>

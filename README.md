@@ -20,10 +20,10 @@ The link above is the only place the site is published. It runs a live sign-up f
 the public-readiness checklist in [the build spec](identity-playground-spec.md) has not
 passed.
 
-Demo accounts are deleted 24 hours after they are created, by a scheduled job that runs
-every six hours. It has authenticated against the tenant and reported correctly on a dry
-run. It has not yet completed an unattended run, so treat expiry as configured rather than
-proven.
+Demo accounts are deleted between 24 and 30 hours after they are created: a 24-hour TTL,
+swept by a scheduled job that runs every six hours. It has authenticated against the
+tenant and reported correctly on a dry run. It has not yet completed an unattended run, so
+treat expiry as configured rather than proven.
 
 ## Why there are three tenants
 

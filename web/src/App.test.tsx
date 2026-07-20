@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { InteractionStatus, type AccountInfo } from '@azure/msal-browser'
 import type { IMsalContext } from '@azure/msal-react'
 import App from './App'
@@ -34,14 +34,21 @@ import {
  */
 let signedIn: AccountInfo[] = []
 
+/**
+ * The MSAL instance SignInPanel reaches for inside its click handlers.
+ *
+ * Empty for the tests that only render, because nothing during a render touches
+ * it. The recovery tests at the bottom click, so they fill in the calls a click
+ * makes and nothing more.
+ */
+let instance: Record<string, unknown> = {}
+
 vi.mock('@azure/msal-react', () => ({
-  // Only the three fields this tree touches. `instance` is never called during
-  // a render — SignInPanel reaches for it inside click handlers, and nothing
-  // here clicks — so an empty object is honest about what is exercised.
+  // Only the three fields this tree touches.
   useMsal: () =>
     ({
       accounts: signedIn,
-      instance: {},
+      instance,
       inProgress: InteractionStatus.None,
     }) as unknown as IMsalContext,
   useIsAuthenticated: () => signedIn.length > 0,
@@ -123,6 +130,10 @@ function seedAmbiguousFlow() {
 beforeEach(() => {
   signedIn = []
   lastTimelineProps = null
+  instance = {}
+  // The fragment lives outside React, so a test that seeds one would otherwise
+  // decide what the next test's sign-in sees.
+  history.replaceState(null, '', '/')
   clearLastFlow()
 })
 afterEach(cleanup)
@@ -166,5 +177,87 @@ describe('a signed-out visitor is never badged with a flow that never happened',
     render(<App />)
 
     expect(timeline().resolvedFlow).toMatchObject({ kind: 'matched', flow: 'signup' })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A failed sign-in must not leave the state that failed it behind
+//
+// Measured on the live site: /authorize returned 302 with a code and no /token
+// request followed. The page sat blank, and clearing all site data by hand was
+// the only way back, so the state that broke it was in the browser. The demo
+// account cleanup deletes accounts 24 hours after they are created, so a
+// returning visitor holds an MSAL account for a user the directory no longer
+// has, and this arrives on a schedule rather than by accident.
+//
+// The two guards are the dangerous half. Clearing while Entra's response is in
+// the fragment destroys the state and verifier that response is redeemed
+// against, which is the failure itself; clearing on load signs out visitors
+// whose sessions were fine.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** An instance whose `loginRedirect` rejects, and spies on everything it clears. */
+function signInThatFails(reason: unknown) {
+  const clearCache = vi.fn().mockResolvedValue(undefined)
+  const setActiveAccount = vi.fn()
+  const loginRedirect = vi.fn().mockRejectedValue(reason)
+  instance = { clearCache, setActiveAccount, loginRedirect }
+  return { clearCache, loginRedirect }
+}
+
+const clickSignIn = () => fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+describe('a sign-in that fails clears what it failed on', () => {
+  it('drops the cached state the next attempt would otherwise replay', async () => {
+    const { clearCache, loginRedirect } = signInThatFails(new Error('interaction_in_progress'))
+
+    render(<App />)
+    clickSignIn()
+
+    // Awaited, not asserted after the fact: the handler is async, so without
+    // waiting for what it renders the assertions below would race it. The
+    // message is also the whole point — a visitor should never need devtools.
+    expect(await screen.findByText(/Stored sign-in state was cleared/)).toBeDefined()
+    expect(loginRedirect).toHaveBeenCalledTimes(1)
+    expect(clearCache).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears nothing while Entra’s code is still in the fragment', async () => {
+    const authResponse = '#code=FAKE_CODE_abc123&client_info=xyz&state=st1'
+    history.replaceState(null, '', `/${authResponse}`)
+    const { clearCache } = signInThatFails(new Error('interaction_in_progress'))
+
+    render(<App />)
+    clickSignIn()
+
+    // The failure is still reported. Only the clearing stands down.
+    expect(await screen.findByText(/interaction_in_progress/)).toBeDefined()
+    expect(clearCache).not.toHaveBeenCalled()
+    expect(screen.queryByText(/cleared/)).toBeNull()
+    // And the response is still there for MSAL to redeem.
+    expect(location.hash).toBe(authResponse)
+  })
+
+  it('clears nothing while Entra’s error is still in the fragment', async () => {
+    const errorResponse = '#error=access_denied&error_description=user_cancelled'
+    history.replaceState(null, '', `/${errorResponse}`)
+    const { clearCache } = signInThatFails(new Error('interaction_in_progress'))
+
+    render(<App />)
+    clickSignIn()
+
+    expect(await screen.findByText(/interaction_in_progress/)).toBeDefined()
+    expect(clearCache).not.toHaveBeenCalled()
+    expect(location.hash).toBe(errorResponse)
+  })
+
+  it('clears nothing on a load where no one has attempted anything', () => {
+    // Signed out, signed in, either way: a mount is not a failed attempt.
+    const { clearCache, loginRedirect } = signInThatFails(new Error('never reached'))
+
+    render(<App />)
+
+    expect(loginRedirect).not.toHaveBeenCalled()
+    expect(clearCache).not.toHaveBeenCalled()
   })
 })

@@ -299,7 +299,7 @@ export const FLOW_META: Record<
   signout: {
     label: 'Sign-out',
     summary:
-      'Global sign-out. Two requests end the session at Entra. The local variant makes none at all, and that gap is the whole point.',
+      'Global sign-out. Two requests end the session at Entra. The local variant makes none at all.',
     outcome: { label: 'Session ended', ok: true },
   },
 }
@@ -500,7 +500,7 @@ const CA_MFA_INSIDE: ZoomNode[] = [
     id: 'inside:mfa',
     label: 'MFA: not required',
     absent:
-      'Nothing required it. When something does, this opens into the auth-methods timeline: challenge issued, method used, satisfied or not (Module 3). The token carries no amr to prove any of it either way, which is its own finding.',
+      'Nothing required it. When something does, this opens into the auth-methods timeline (Module 3). This tenant issues no amr either way, so the token cannot show it.',
   },
 ]
 
