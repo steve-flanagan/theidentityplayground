@@ -4,8 +4,7 @@
 > memory afterward.
 
 Step-by-step Entra configuration, one page per module. Screenshots are fine and
-encouraged — these double as the per-module blog posts in the distribution plan
-(spec section 8).
+encouraged, and double as per-module writeups.
 
 Record here as they're created:
 
