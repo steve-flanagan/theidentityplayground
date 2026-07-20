@@ -99,12 +99,19 @@ role-holding admin is skipped; a user with no `identities` is skipped; a guest w
 `signInType` is `userPrincipalName` is skipped; only the aged sign-up-flow accounts are
 selected; exceeding the ceiling deletes nothing.
 
-**NOT verified. The workflow has never run.** The token exchange, the federated
-credential subject, and the token endpoint host are all untested against the live
-tenant. See decision 003.
+**Verified against the live tenant, 20 July 2026.** The token exchange, the federated
+credential subject, and the token endpoint host all worked first time, across a dispatch
+dry run and a scheduled run. See decision 003.
 
-**NOT verified — needs the tenant, and it is the assumption everything rests on:**
-the real `signInType` values. Confirm before the first unattended run:
+**NOT verified: the delete path.** Both runs found zero expired accounts, so
+`Remove-MgUser` and `Remove-MgDirectoryDeletedItem` have never been reached outside the
+tests. Auth, the permission read path, the role guard and the "nothing to do" branch are
+proven. Deletion is not.
+
+**NOT verified, needs the tenant, and it is the assumption everything rests on:**
+the real `signInType` values. The two runs cannot settle this. With a 24-hour cutoff and
+only young accounts, "no aged accounts" and "signInType never matched" print the same
+zero. Confirm directly:
 
 ```powershell
 Connect-MgGraph -TenantId 7e8da8a9-67bc-4d53-bfc7-fe3e13128382 -Scopes 'User.Read.All'

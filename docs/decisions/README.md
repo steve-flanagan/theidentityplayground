@@ -10,19 +10,29 @@ Format: **Context** (what forced a choice) → **Decision** → **Rejected alter
 
 | # | Decision | Status |
 |---|---|---|
-| 001 | Container Apps over Container Instances for the SCIM mock | decided, not yet written up |
-| 002 | Azure DNS over Cloudflare for the domain | decided, not yet written up |
+| 001 | [Container Apps over Container Instances for the SCIM mock](001-container-apps-over-container-instances.md) | decided |
+| 002 | [Azure DNS over Cloudflare for the domain](002-azure-dns-over-cloudflare.md) | decided |
 | 003 | [Cross-tenant Graph for the demo-account cleanup](003-cross-tenant-graph.md) | decided |
 | 004 | Module 2's B2B invitation flow: how to avoid an open email relay | **open** — blocks Phase 2 |
 | 005 | On-demand provisioning instead of waiting for Entra's cycle | decided, not yet written up |
-| 006 | Standalone Function App over SWA managed API (timer triggers vs. $9/mo) | decided, not yet written up |
+| 006 | [Standalone Function App over SWA managed API (timer triggers vs. $9/mo)](006-standalone-function-app.md) | decided |
 | 007 | TypeScript over JavaScript across web/ and api/ | decided, not yet written up |
 | 008 | Self-service account deletion: how a visitor deletes their own demo account | **open** — gated behind Phase 0.5 |
 
 Decision 004 is open and load-bearing. See the spec for the options under consideration.
 
-Decision 008 was raised 20 July. Scheduled cleanup removes accounts after 24 hours, so
-this is about immediacy and about the principle rather than necessity. It needs a decision
+**005 and 007 are still unwritten, for different reasons.** 005's decision and its motive
+are both recorded in the spec, but no rejected alternative is written down anywhere beyond
+the implied "wait for Entra's 20 to 40 minute cycle", so the record would have a hole in
+the section that matters most. **007 cannot be written from the repo at all.** The only
+prose reasoning that exists is a commit message reading "TypeScript per Steve's call".
+What was weighed against JavaScript is not recorded, and inventing it would fabricate
+exactly the thing an ADR exists to capture. That one needs Steve.
+
+Decision 008 was raised 20 July. Scheduled cleanup is *meant* to remove accounts after 24
+hours, and as of 20 July it has run unattended without ever reaching a deletion, so treat
+that premise as configured rather than proven. On the assumption it holds, this is about
+immediacy and about the principle rather than necessity. It needs a decision
 because the obvious implementation is a public endpoint that deletes users, which is the
 highest-risk surface on the site. The shape that is safe: the SPA sends its ID token, the
 backend validates it and reads `oid` from the validated token, and deletes only that user.

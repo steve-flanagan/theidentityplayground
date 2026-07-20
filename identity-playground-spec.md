@@ -32,13 +32,16 @@ The differentiator: identity work is invisible in production. This makes it visi
 
 Document the tenant-separation rationale in the README — it demonstrates correct security architecture thinking.
 
-**Status (July 2026):** External ID tenant created — `theidentityplayground.onmicrosoft.com`, org name "The Identity Playground". Resource group and Azure DNS zone created; delegation to Azure DNS verified live on public resolvers. Demo workforce tenant **not yet created — blocked, see below**.
+**Status (July 2026):** External ID tenant created — `theidentityplayground.onmicrosoft.com`, org name "The Identity Playground". Resource group and Azure DNS zone created; delegation to Azure DNS verified live on public resolvers. Demo workforce tenant **created 17 July 2026**; the blocker below is resolved. It carries the custom domain, which is why External ID cannot and a branded CIAM login needs a subdomain. Two risks on it are open and tracked in the environment notes: it sits on a trial subscription with an unknown expiry, and the project's budget alert is scoped to the other subscription, so nothing guards spend there.
 
-> ### ⚠️ The demo workforce tenant can no longer be created for free
+> ### ✅ Resolved 17 July 2026. Kept because the constraint is real and would apply again
+>
+> The tenant exists. Everything below is why it was hard, retained for the next time a
+> workforce tenant is needed. It is no longer a live blocker on any phase.
 >
 > **Microsoft now requires a *paid* Entra ID P1 or higher to create a workforce tenant from within an existing tenant. Trial P1/P2 licences explicitly do not qualify** — this was tightened deliberately after their security team found free trial-tenant creation being used for fraud and abuse. The result is a chicken-and-egg: you need a paid licence in a tenant to create the tenant you'd put the licence in.
 >
-> **This blocks Phase 2, not Phase 0 or 1.** Modules 1, 3, and 4 run entirely on the External ID tenant, which already exists. The workforce tenant is first needed by Module 2. Do not rabbit-hole on tenant procurement while the resume-worthy artifact (Phase 1) only needs what's already built.
+> **It blocked Phase 2, never Phase 0 or 1.** Modules 1, 3, and 4 run entirely on the External ID tenant. The workforce tenant is first needed by Module 2.
 >
 > **The escape hatch: don't create it from inside the existing tenant.** The restriction applies to the Entra admin center's "Manage tenants → Create" path. Signing up as a *new customer* provisions a tenant through the ordinary onboarding flow, which that restriction doesn't cover. Ranked:
 >
@@ -644,9 +647,9 @@ reason."
 
 | Phase | Ships | Definition of done |
 |---|---|---|
-| **0** | Tenants + scaffolding | ✅ **Complete.** External ID tenant created; repo initialized and public; Static Web App deployed with placeholder SPA; Azure DNS delegated and apex bound via alias record; budget alert live. **Demo workforce tenant deferred to Phase 2** — creating one now requires a paid P1 (trials excluded), and modules 1, 3, 4 don't need it. Do not link the site publicly until the 0.5 gate passes. |
+| **0** | Tenants + scaffolding | ✅ **Complete.** External ID tenant created; repo initialized and public; Static Web App deployed with placeholder SPA; Azure DNS delegated and apex bound via alias record; budget alert live. **Demo workforce tenant created 17 July**, ahead of need; modules 1, 3, 4 don't use it. The 0.5 gate passed on 20 July and the site is linked. |
 | **0.5** | **Public-readiness gate** | ✅ **Passed 20 July 2026.** Not a build phase — a checklist that must pass before the site is *linked anywhere* (resume, LinkedIn, README), because Phase 1 puts a live sign-up form on the internet. **Rate limiting on every Function that reaches Graph:** not applicable, no Function is deployed (`api_location: ""`) and none reaches Graph. Becomes live the moment [decision 008](docs/decisions/README.md) ships, which is exactly that shape of endpoint. **Default user permissions in the External ID tenant:** satisfied structurally rather than by a setting. External-tenant apps are limited to `openid`, `offline_access`, `User.Read` and their own APIs, and customers cannot self-consent, so a demo account has no route to a token that would let it read other users or register an app. Verified from the other end too: a customer account cannot sign in to the Azure portal. **No admin roles on any demo account:** the only non-customer principal is a B2B Member invited from the parent tenant, MFA enforced. Standing GA rather than PIM is a deliberate call given how often the account is used and what the tenant holds. **Budget alert live and RG-scoped** (✅ cannot be fired at $0 spend, so existence is the check). **Secret scanning + push protection** (✅). **No endpoint that emails a third party is reachable** (Module 2 is not in this phase — keep it that way until its blocker is resolved). Note the tenant's security now rests on that one admin account rather than on customer restrictions. |
-| **1** | Module 1 + basic CIAM sign-in | ✅ **Live at https://theidentityplayground.com (16 July 2026).** Sign-up and sign-in both verified in production; the inspector reads the visitor's own ID token and annotates every claim. Google social login is live, so a federated token carries `idp` and runs 18 claims against a local account's 17. Sign-up and sign-in are told apart by a `createddatetime` claim compared against the window the flow ran in, not inferred. Lifecycle now exists: demo accounts are swept 24 to 30 hours after creation by a scheduled job. **The 0.5 gate passed 20 July and the site is linked from the README.** The job has authenticated and dry-run clean but has not completed an unattended run, so expiry is configured rather than proven. Phase 2 holds the higher bar. |
+| **1** | Module 1 + basic CIAM sign-in | ✅ **Live at https://theidentityplayground.com (16 July 2026).** Sign-up and sign-in both verified in production; the inspector reads the visitor's own ID token and annotates every claim. Google social login is live, so a federated token carries `idp` and runs 18 claims against a local account's 17. Sign-up and sign-in are told apart by a `createddatetime` claim compared against the window the flow ran in, not inferred. Lifecycle now exists: demo accounts are swept 24 to 30 hours after creation by a scheduled job. **The 0.5 gate passed 20 July and the site is linked from the README.** The job has authenticated, dry-run clean, and completed an unattended scheduled run on 20 July. It has never deleted anything, because nothing has yet been old enough, so expiry is proven up to the deletion itself and no further. Phase 2 holds the higher bar. |
 | **2** | Module 7 + Module 2 | Lifecycle cleanup running **and verified by watching a real account expire**; three doors live with comparison table; **Module 2's invitation blocker resolved and the decision written to `docs/decisions/`** — this phase does not ship with an open email relay |
 | **3** | Module 3 | Auth arena incl. passkey. **Custom domain is a prerequisite, not a deliverable of this phase** — it must already be live from Phase 0, since a passkey binds to the domain it was registered against |
 | **4** | Module 6 | Admin's view dashboard |
@@ -677,8 +680,8 @@ real work in the way federating LinkedIn via custom OIDC is real work and toggli
 isn't — **the version worth building is the federation, not the second console.**
 
 **Why it is not now, and the reason is not doubt about the idea:** modules 2–7 do not exist,
-and Module 7's cleanup script has never been executed. Adding a platform before finishing one
-is the scope error that kills side projects.
+and Module 7's cleanup script has never deleted an account. Adding a platform before finishing
+one is the scope error that kills side projects.
 
 **What it would cost, honestly — none of this is verified:**
 - A **second billing surface.** The $10/mo budget is Azure-scoped to one resource group. AWS
@@ -769,7 +772,7 @@ Other confirmed facts: `scopes_supported` is `openid profile email offline_acces
 - External ID free MAU limit (50k as of July 2026) and SMS add-on pricing
 - On-demand provisioning API surface for custom SCIM apps
 - What the External ID tenant exposes of sign-in logs on the free tier (Module 6 licensing)
-- **Whether SWA's managed Functions API can host this backend at all** — it does not support timer triggers, and Module 7's lifecycle job needs one. Likely answer: standalone Function App linked to SWA as a "bring your own" backend. Decide before the Phase 0 deploy.
+- ~~**Whether SWA's managed Functions API can host this backend at all**~~ **Decided 16 July 2026: it cannot.** Managed Functions are HTTP-trigger only and Module 7's lifecycle job needs a timer. Standalone Function App on consumption, SWA Free for the static site. Written up as [decision 006](docs/decisions/006-standalone-function-app.md), which also records why it is currently deferred rather than reversed.
 
 ---
 

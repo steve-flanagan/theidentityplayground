@@ -1,7 +1,11 @@
 # 003. Cross-tenant Graph for the demo-account cleanup
 
 **Status:** decided 20 July 2026. Tenant side built and consented; code side built and
-merged; **not yet run against the tenant.**
+merged. **Run against the tenant twice on 20 July:** a dispatch dry run at 18:06Z and a
+scheduled run at 19:58Z that was armed to delete. Both authenticated and both found zero
+expired accounts, so **the delete path itself has still never executed.** The
+verification list in section 3 is not satisfied. Item 9 requires items 5 through 8, and
+6 and 8 are open.
 
 Every factual claim below is marked **[M]** if it was read in current documentation
 (source and date given) or **[A]** if it is assumed and still needs testing. The **[A]**
@@ -49,8 +53,11 @@ only directory application permissions, is **still unstated anywhere in Microsof
 docs**. **[A]**
 
 So the corrected position: nothing about billing blocks the setup, and consent proved
-it. Whether the first token issues is a question the first run answers. It fails loudly
-and cheaply if it does not.
+it. **Settled 20 July: the token issues.** **[M]** Both runs got a Graph token from
+`login.microsoftonline.com`, so issuance is not gated on the M2M Premium add-on.
+
+Whether a charge lands for it is a different question and is still open. That is item 8
+of the verification list, and no billing data is reachable from the repo or from `gh`.
 
 ### 4. The federated credential subject in this document is probably wrong for this repo
 
@@ -78,10 +85,14 @@ So the subject to register is almost certainly:
 repo:steve-flanagan@234824944/theidentityplayground@1302989710:ref:refs/heads/main
 ```
 
-**Almost certainly, not certainly.** `use_immutable_subject` reads `false` while the
-prefix reads immutable, and GitHub documents neither field. **[A]** This is the classic
-version of this failure: a wrong subject saves without complaint and only fails at token
-exchange, with an AADSTS error that does not name the mismatch.
+**Settled 20 July: the immutable format was right.** **[M]** Two clean exchanges against
+it, and the run prints the subject it presented:
+`repo:steve-flanagan@234824944/theidentityplayground@1302989710:ref:refs/heads/main`.
+
+`use_immutable_subject` still reads `false` while the prefix reads immutable, so the
+field is as misleading as it was. The failure this guarded against did not happen: a
+wrong subject saves without complaint and fails only at exchange, with an AADSTS error
+that does not name the mismatch.
 
 Rather than guess, the workflow decodes the token it is about to present and prints the
 issuer, subject and audience before exchanging it. The first dispatch run prints the
@@ -215,8 +226,8 @@ Client ID             2d0fb6bd-4e37-463c-9a9a-4b78bde66803
 The API refuses to delete a holder of a privileged administrator role unless the caller
 holds one too, so this is enforced at Graph and not only by the script's own guard.
 
-Still to do in the tenant: the federated credential, and only that. Fields are in update
-4 above.
+Nothing is still to do in the tenant. The federated credential exists and works: two
+token exchanges succeeded on 20 July against the subject in update 4 above. **[M]**
 
 ## Rejected alternatives
 
@@ -370,8 +381,14 @@ Not part of the decision. This is what has to be built, in order.
 
 ## 1. Steve, in the portal and the CLI
 
-**Steps 1 through 4 and 6 are DONE.** State is recorded under "Tenant-side state as
-built" above. Steps 5, 7 and 8 remain, and 5 is the only one blocking a first run.
+**Steps 1 through 6 are DONE**, step 5 included as of 20 July. State is recorded under
+"Tenant-side state as built" above. Step 7 is withdrawn. **Step 8, branch protection on
+`main`, is the only one still open, and it is now the highest-risk item in this file:**
+the credential it guards exists, so an unprotected `main` is a working path to
+`User.ReadWrite.All` over the tenant. Confirmed still absent 20 July. **[M]**
+(`gh api repos/steve-flanagan/theidentityplayground/branches/main/protection` returns
+404 "Branch not protected". That rules out a classic branch-protection rule. It does not
+rule out a repository ruleset, which is a separate API and was not queried. **[A]**)
 
 <details>
 <summary>The original sequence, kept for the record</summary>
@@ -401,7 +418,7 @@ returned *"does not have a subscription (or service principal)"*. This did:
 az ad app permission admin-consent --id 2d0fb6bd-4e37-463c-9a9a-4b78bde66803
 ```
 
-### Step 5, the federated credential. The one thing still blocking a first run
+### Step 5, the federated credential. Done 20 July, and it worked first time
 
 **Entra ID > App registrations > `demo-account-cleanup` > Certificates & secrets >
 Federated credentials > Add credential.** Scenario **"Other issuer"** if the GitHub
@@ -455,13 +472,17 @@ verified against current documentation rather than assumed.
   | Exchange at Entra | POST `https://{host}/{tenant}/oauth2/v2.0/token`, form-encoded: `client_id`, `scope=https://graph.microsoft.com/.default`, `grant_type=client_credentials`, `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`, `client_assertion={the GitHub token}` | [v2-oauth2-client-creds-grant-flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow), third case, ms.date 2026-01-30 **[M]** |
   | Into the SDK | `Connect-MgGraph -AccessToken` takes a **`SecureString`** | Verified against the installed SDK, not the docs: `(Get-Command Connect-MgGraph).Parameters['AccessToken'].ParameterType` is `System.Security.SecureString` in 2.38.1 **[M]** |
 
-  **The token host is still the open question.** Both Microsoft pages that document
+  **The token host is settled: `login.microsoftonline.com`. [M]** Both runs got a token
+  from it on 20 July and the `ciamlogin.com` fallback was never needed. The reasoning
+  that picked it, kept because it is why the default was right:
+
+  Both Microsoft pages that document
   app-only Graph give `login.microsoftonline.com`, and neither mentions CIAM. **[M]**
   ([auth-v2-service](https://learn.microsoft.com/en-us/graph/auth-v2-service), ms.date
   2025-08-29.) `ciamlogin.com` is documented for user-facing flows in external tenants,
   which is not this. So `login.microsoftonline.com` is the default, and the host is a
   workflow input rather than a hard-coded string, so flipping it is a dropdown on a
-  dispatch run and not a commit. **[A]** until the first run.
+  dispatch run and not a commit. **[M]** as of 20 July.
 
   **`Connect-MgGraph -AccessToken` does not accept `-TenantId`.** The AccessToken
   parameter set takes `AccessToken`, `Environment`, `ClientTimeout`, `NoWelcome` and
@@ -502,39 +523,69 @@ verified against current documentation rather than assumed.
 The whole point is not repeating a promise the system does not keep, so this list is the
 gate, not a formality.
 
+**Status as of 20 July: 3, 4 and 5 are met. 6 and 8 are not, so item 9 is not met and
+the sentence on the site is not yet earned.**
+
 1. Sign up a throwaway account through the live site. Record the UPN and the
-   `createdDateTime`.
+   `createdDateTime`. **OPEN.** An account created 20 July is named in the session notes,
+   but no record of its UPN or creation time exists in this repo. **[A]**
 2. Confirm the real `signInType` values in the tenant. `scripts/README.md` flags this as
    the unverified assumption everything rests on, and it is still unverified. A value
    outside `$demoSignInTypes` means the script skips those accounts forever, silently, in
    the safe direction.
+
+   **STILL OPEN, and the two runs cannot close it.** With a 24-hour cutoff and only young
+   accounts in the tenant, "no aged accounts" and "signInType never matched" produce
+   identical output. Zero candidates is not evidence either way.
 3. Run the workflow via `workflow_dispatch` with **delete unticked**, which is the
    default. It must authenticate, report the tenant ID, and find zero candidates because
    the account is under 24 hours old.
 
-   If it fails at the exchange, read the subject the run printed before the failure and
-   make the federated credential match it exactly. That is the expected first failure,
-   not a surprise: see update 4.
+   **MET 20 July, run 29766363116. [M]** Printed `DRY RUN.`, the tenant ID, and
+   `Expired demo accounts : 0`.
 
-   If it fails with `AADSTS700016` or "application not found", re-run with `tokenHost`
-   set to `theidentityplayground.ciamlogin.com`. That settles the open host question one
-   way or the other, and the answer belongs back in this file.
+   If it fails at the exchange, read the subject the run printed before the failure and
+   make the federated credential match it exactly. That was the expected first failure.
+   It did not happen: see update 4.
+
+   The `AADSTS700016` fallback to `theidentityplayground.ciamlogin.com` was never needed.
+   The host question is settled above.
 4. Check the protected-principal count in that run. It must be non-zero. Zero means
    `Get-MgDirectoryRole` returned nothing and the role guard is not guarding. This is the
    single most important number in the first run, because the app holds
    `User.ReadWrite.All` over the whole tenant.
+
+   **MET. [M]** Both runs printed `Protected by directory role: 1 principal(s)`.
 5. Wait past 24 hours and let the schedule fire on its own. A manually triggered success
    proves the credential, not the schedule, and the schedule is what the promise depends
    on.
+
+   **MET 20 July, run 29774156901, `event: schedule`, 19:58Z, success. [M]** It fired
+   unattended. It had nothing to act on, which is item 6.
 6. Confirm the account is gone from **Users** and from **Deleted users**. Present in
    Deleted users means the purge permission did not take, and a month of restorable PII is
    sitting behind a page that says otherwise.
+
+   **NOT MET, and this is the one that matters.** The scheduled run was armed to delete,
+   `WHAT_IF: false`, and found zero candidates, so `Remove-MgUser` and
+   `Remove-MgDirectoryDeletedItem` have never been reached. What is proven is auth, the
+   permission read path, the role guard, and the "nothing to do" branch.
 7. Confirm the Global Admin still exists and still holds its role.
+
+   **PARTIAL. [A]** `Users in tenant: 4` and one protected principal are consistent with
+   it, but this asks for a portal check and nothing here can perform one.
 8. Check for an M2M charge after the first few runs. Not on a linked subscription, since
    the External ID tenant has none, but wherever a charge would land if the premium
    add-on note in update 3 is enforced at issuance. If tokens are issuing and nothing is
    being billed, say so here and close the **[A]**.
+
+   **OPEN.** Tokens are issuing. No billing data is reachable from the repo or from `gh`,
+   so whether anything is billed for them is unknown.
 9. Only after 5 through 8 does the sentence on the site become true.
+
+   **NOT MET.** 5 is met; 6 and 8 are not. Item 5 alone is a scheduled run that deleted
+   nothing, which is half the bar, and reading this item as satisfied by it is exactly
+   the mistake this list exists to prevent.
 
 ---
 
