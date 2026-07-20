@@ -3,6 +3,19 @@
    source files actually use. */
 @import "tailwindcss";
 
+/* The dark ground has to be on the ROOT, not just on <main>.
+   Both apps put bg-slate-950 on their outermost <main>, which paints that
+   element and nothing behind it. html and body computed to rgba(0,0,0,0) —
+   fully transparent — so anything that scrolled outside <main>'s box showed
+   the browser's default white. On a 390px phone that meant a screen split
+   down the middle: dark on the left, white on the right.
+   var(--color-slate-950) is Tailwind v4's own theme value, the same one
+   bg-slate-950 compiles to, so this cannot drift from the class. */
+html,
+body {
+  background-color: var(--color-slate-950);
+}
+
 /* The zoom transition.
    ~160ms: long enough to register which direction you moved through the scale,
    short enough that you never wait for it. Powers of Ten IS a zoom — cutting

@@ -1115,7 +1115,14 @@ function CodeSection({ node }: { node: ZoomNode }) {
     // This is the strongest thing on the page — the actual file that ran, one
     // click from the request it produced. It was styled like a footnote.
     <details className="mt-5 rounded-lg border border-emerald-500/25 bg-slate-950/70">
-      <summary className="flex cursor-pointer items-center gap-2 px-3 py-2.5 text-sm text-emerald-300 hover:bg-emerald-500/5">
+      {/* flex-wrap, because this row overflowed the page on a phone.
+          Three flex children, and a flex item will not shrink below its own
+          content by default. The file path is one unbroken mono string, so on
+          the nodes carrying the longest path the row needed 385px inside a
+          282px box and pushed "source ↓" to 429 on a 390px screen. Wrapping
+          keeps every string; truncating would have cut the filename off the
+          end of the path, which is the only part worth reading. */}
+      <summary className="flex flex-wrap cursor-pointer items-center gap-2 px-3 py-2.5 text-sm text-emerald-300 hover:bg-emerald-500/5">
         <span className="font-medium">How this is actually done</span>
         <span className="font-mono text-sm text-slate-500">{code.file}</span>
         <span className="ml-auto font-mono text-sm text-slate-600">source ↓</span>

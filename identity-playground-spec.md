@@ -44,9 +44,8 @@ Document the tenant-separation rationale in the README — it demonstrates corre
 >
 > 1. **M365 Developer Program** — free, renewable E5 sandbox (includes Entra ID P2). Requires a Visual Studio Professional/Enterprise *standard* subscription, or eligibility via ISV Success / AI Cloud Partner / Premier or Unified Support. **Check this first — if Steve qualifies through work, the licensing problem disappears entirely and costs $0.**
 > 2. **Fresh Azure account signup** with a different email → provisions a new tenant → activate the Entra ID P2 trial *inside* it (the restriction is on tenant *creation*, not on trial activation) → buy one P1 (~$6/mo) when the trial lapses.
-> 3. **M365 E5 trial signup** with a fresh account → new tenant with P2 for 30 days. **Requires a credit card and auto-converts to paid E5 (~$57/user/mo) if not cancelled.** Only take this path with a calendar reminder set.
 >
-> **Billing trap:** Azure Cost Management budget alerts **do not cover M365/Entra licence billing** — that's a separate billing system. The budget alerts in section 4 will not catch a runaway E5 auto-renewal. Licence spend needs its own calendar reminder; there is no automated backstop.
+> **Billing trap:** Azure Cost Management budget alerts **do not cover M365/Entra licence billing** — that's a separate billing system. The budget alerts in section 4 will not catch a licence charge or a trial converting to paid. Licence spend needs its own calendar reminder; there is no automated backstop.
 
 ### Hosting (all on existing Azure pay-as-you-go subscription)
 
