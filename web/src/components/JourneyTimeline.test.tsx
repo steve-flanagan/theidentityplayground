@@ -126,6 +126,67 @@ describe('our own deep links', () => {
   })
 })
 
+// ── A link pasted into a tab that is already open ───────────────────────────
+//
+// Changing the fragment on a mounted page is a same-document navigation: the
+// browser fires `hashchange` and does not reload. The fragment is read once
+// during the first render, so before this the page sat still while the address
+// bar said otherwise.
+//
+// setFragment uses history.replaceState, which fires nothing — the same reason
+// the component cannot feed back on its own writes. So these dispatch the event
+// the browser would have dispatched.
+
+describe('a deep link pasted into an already-open tab', () => {
+  const paste = (fragment: string) => {
+    setFragment(fragment)
+    fireEvent(window, new Event('hashchange'))
+  }
+
+  it('moves to the pasted step without a reload', () => {
+    mount()
+    expect(screen.getByText(/steps · full scale/)).toBeDefined()
+
+    paste('#step=authorize/authorize:ssl')
+
+    expect(screen.getByText('TLS handshake', { selector: 'h4' })).toBeDefined()
+  })
+
+  it('carries the flow across, not just the step', () => {
+    mount()
+
+    // /createuser exists only in sign-up. Landing on it from the sign-in the
+    // page opens on is the case the flow-in-the-fragment work was for.
+    paste('#flow=signup&step=createuser')
+
+    // Same string the flow-carrying block below builds with its own helper,
+    // which is out of scope here.
+    expect(screen.queryByText(`The whole ${FLOW_META.signup.label.toLowerCase()}`)).not.toBeNull()
+  })
+
+  it('leaves an Entra response alone if one lands in the fragment', () => {
+    mount()
+    const authResponse = '#code=FAKE_CODE_abc123&state=st1'
+
+    paste(authResponse)
+
+    // Untouched, and the reader has not been moved anywhere by it.
+    expect(location.hash).toBe(authResponse)
+    expect(screen.getByText(/steps · full scale/)).toBeDefined()
+  })
+
+  it('does not move the reader when the fragment is cleared', () => {
+    setFragment('#step=authorize/authorize:ssl')
+    mount()
+
+    paste('')
+
+    // Still where they were. Clearing the fragment is not an instruction to
+    // navigate, and treating it as one would fire on MSAL clearing its own.
+    expect(screen.getByText('TLS handshake', { selector: 'h4' })).toBeDefined()
+  })
+})
+
 // ── A deep link has to carry its flow ───────────────────────────────────────
 //
 // Step ids are only unique WITHIN a flow, and the fragment named the step

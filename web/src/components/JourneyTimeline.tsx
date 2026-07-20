@@ -358,6 +358,47 @@ export function JourneyTimeline({
   const [path, setPath] = useState<ZoomNode[]>(() => resolvePath(link.ids, journey.events))
 
   /**
+   * The same deep link, pasted into a tab that ALREADY has the site open.
+   *
+   * The fragment above is read once during the first render, which covers the
+   * ordinary case: someone follows a link and the page loads fresh. It does not
+   * cover the fragment changing on a page that is already mounted. That is a
+   * same-document navigation — the browser fires `hashchange` and never
+   * reloads — so without this the address bar says one node and the page shows
+   * another, and the reader is looking at a link that appears to do nothing.
+   *
+   * Safe against the outage at the top of this file, on both of its rules:
+   *
+   *   1. NAMESPACE. readStepHash returns an empty link for any fragment that is
+   *      not ours, and an empty link returns early below. An MSAL response
+   *      arriving here is never acted on.
+   *   2. NEVER WRITE ON MOUNT. This only reads, and `hashchange` cannot fire
+   *      during mount.
+   *
+   * It also cannot feed back on our own writes: writeStepHash uses
+   * history.replaceState, and replaceState fires neither hashchange nor
+   * popstate. Only a real fragment change — address bar, or a link — gets here.
+   */
+  useEffect(() => {
+    const onHashChange = () => {
+      const next = readStepHash()
+
+      // Not ours, or cleared outright. Both arrive as an empty link and neither
+      // is an instruction to move the reader somewhere, so both are ignored.
+      if (!next.flow && !next.ids.length) return
+
+      const eventsFor = (f: FlowId) => buildJourney(f, token, tokenLabel).events
+      const nextFlow = landingFlow(next, flow, eventsFor)
+
+      setFlow(nextFlow)
+      setPath(resolvePath(next.ids, eventsFor(nextFlow)))
+    }
+
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [flow, token, tokenLabel])
+
+  /**
    * Brushing and linking (Becker/Cleveland, late 1980s — canonical, not
    * invented). The bar and the rows are one dataset in two renderings, and
    * without this you're left eyeballing a stripe against a table and guessing
