@@ -33,8 +33,11 @@
     Remove-MgUser soft-deletes: the object sits in deletedItems for 30 days, fully
     restorable, with its attributes intact. A site promising accounts self-destruct
     while leaving a month of restorable PII behind would be lying in the exact place
-    it claims authority. So this purges by default. Use -SkipPurge to keep the
-    30-day window (useful when you want to inspect what a run actually removed).
+    it claims authority. So this purges by default, and because the purge can briefly
+    outrun the directory replicating the soft delete into deletedItems, it retries the
+    Request_ResourceNotFound that race produces rather than leaving the object behind.
+    Use -SkipPurge to keep the 30-day window (useful when you want to inspect what a
+    run actually removed).
 
 .PARAMETER TenantId
     The External ID tenant. Defaults to The Identity Playground.
@@ -48,6 +51,14 @@
 
 .PARAMETER SkipPurge
     Soft-delete only. Leaves objects in deletedItems for 30 days.
+
+.PARAMETER PurgeRetryDelaySeconds
+    Seconds to wait between purge attempts. The soft delete and the purge are two
+    writes against an eventually consistent directory: the object the soft delete
+    puts in deletedItems may not have replicated to the node the purge lands on yet,
+    and a purge that outruns it comes back Request_ResourceNotFound. That 404 is
+    retried, up to six attempts, waiting this long between each. Tests pass 0 so they
+    do not sleep. Default 10.
 
 .PARAMETER MaxDeletions
     Ceiling on candidates per run. Exceeding it aborts and deletes nothing.
@@ -94,6 +105,9 @@ param(
   [string[]] $ProtectedUserPrincipalName = @(),
 
   [switch] $SkipPurge,
+
+  [ValidateRange(0, 300)]
+  [int] $PurgeRetryDelaySeconds = 10,
 
   [ValidateRange(1, 10000)]
   [int] $MaxDeletions = 10,
@@ -221,9 +235,19 @@ if ($expired.Count -gt $MaxDeletions) {
 }
 
 # ── Delete, then actually destroy ─────────────────────────────────────────────
-$deleted = 0
-$purged = 0
-$failed = 0
+# Soft delete and purge are two writes against an eventually consistent directory.
+# The object a soft delete puts in deletedItems may not have replicated to the node
+# the purge lands on yet, and a purge that outruns that replication gets
+# Request_ResourceNotFound -- a 404 on an object that exists but is not visible here
+# yet, not a wrong id and not a missing permission (either of those is a 403). The
+# documented remedy for this 404 is wait-and-retry, so the purge retries on that one
+# error, bounded. See scripts/README.md.
+$purgeMaxAttempts = 6
+
+$deleted  = 0   # soft-deleted, whatever happened next
+$purged   = 0   # and destroyed out of deletedItems
+$unpurged = 0   # soft-deleted, but the purge did not complete -- still restorable
+$failed   = 0   # the soft delete itself failed -- the account is untouched
 
 foreach ($user in $expired) {
   $age = [math]::Round(((Get-Date).ToUniversalTime() - $user.CreatedDateTime.ToUniversalTime()).TotalHours, 1)
@@ -231,26 +255,65 @@ foreach ($user in $expired) {
 
   if (-not $PSCmdlet.ShouldProcess($target, 'Delete and purge demo account')) { continue }
 
+  # Soft delete. If this throws the account is untouched, which is a real failure
+  # and the only thing that belongs in $failed.
   try {
     Remove-MgUser -UserId $user.Id -ErrorAction Stop
     $deleted++
-
-    if (-not $SkipPurge) {
-      # The object is now in deletedItems, restorable for 30 days. Destroy it.
-      Remove-MgDirectoryDeletedItem -DirectoryObjectId $user.Id -ErrorAction Stop
-      $purged++
-    }
-
-    Write-Host "  removed  $target"
   }
   catch {
     $failed++
-    Write-Warning "  FAILED   $target -- $($_.Exception.Message)"
+    Write-Warning "  FAILED   $target -- soft delete failed: $($_.Exception.Message)"
+    continue
+  }
+
+  if ($SkipPurge) {
+    Write-Host "  removed  $target (soft delete only)"
+    continue
+  }
+
+  # Purge, tolerating replication lag. Only Request_ResourceNotFound is retried; any
+  # other error is genuine and is reported at once without burning the attempts.
+  $purgedThis = $false
+  for ($attempt = 1; $attempt -le $purgeMaxAttempts; $attempt++) {
+    try {
+      Remove-MgDirectoryDeletedItem -DirectoryObjectId $user.Id -ErrorAction Stop
+      $purgedThis = $true
+      break
+    }
+    catch {
+      $isLag = $_.Exception.Message -match 'Request_ResourceNotFound'
+      if ($isLag -and $attempt -lt $purgeMaxAttempts) {
+        Start-Sleep -Seconds $PurgeRetryDelaySeconds
+        continue
+      }
+      $why = if ($isLag) { "still 404 after $purgeMaxAttempts attempts, replication lag" }
+             else { $_.Exception.Message }
+      Write-Warning "  PARTIAL  $target -- soft-deleted but NOT purged: $why"
+      break
+    }
+  }
+
+  if ($purgedThis) {
+    $purged++
+    Write-Host "  removed  $target"
+  }
+  else {
+    $unpurged++
   }
 }
 
 Write-Host "`nDeleted : $deleted"
 Write-Host "Purged  : $purged$(if ($SkipPurge) { ' (skipped -- 30-day restore window left open)' })"
-if ($failed -gt 0) { Write-Host "Failed  : $failed" }
+if ($unpurged -gt 0) { Write-Host "Not purged, still restorable : $unpurged" }
+if ($failed -gt 0) { Write-Host "Soft-delete failures         : $failed" }
 
 Disconnect-MgGraph | Out-Null
+
+# A purge that did not complete leaves restorable PII behind a page that says the
+# account is gone; a soft-delete failure leaves a live expired account. Either one
+# has to make the run fail loudly instead of exiting 0. A silent green run is how the
+# first real purge failure reached a handoff that called it "unconfirmed".
+if ($unpurged -gt 0 -or $failed -gt 0) {
+  throw "Completed with problems: $failed soft-delete failure(s), $unpurged soft-deleted but not purged (still restorable). See the warnings above."
+}
