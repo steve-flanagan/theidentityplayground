@@ -266,11 +266,13 @@ Graph does free.
 
 ## Consequences
 
-**No Function App is deployed, and none is needed for this.** `api/` still holds one
-health endpoint and `.github/workflows/deploy-web.yml` still sets `api_location: ""`.
-Neither changes. Decision 006 (standalone Function App over the SWA managed API) is not
-reversed, it is deferred: the first thing that actually needs a Function App is Module 7's
-stats endpoint or Module 3's log correlation, not the cleanup.
+**The cleanup needs no Function App, and does not use the one that now exists.** A standalone
+Function App was deployed 21 July for Module 2's rate-limiting foundation
+([decision 006](006-standalone-function-app.md)), but the cleanup still runs entirely on
+GitHub Actions and reaches Graph with the federated credential above, not through it.
+`deploy-web.yml` still sets `api_location: ""`: SWA stays static-only and the Function App
+deploys separately. So decision 006 is now implemented, and none of it changes how the
+cleanup authenticates.
 
 **Push access to `main` becomes equivalent to deleting users in the External ID tenant.**
 The federated credential trusts a repo ref. Branch protection on `main` stops being
