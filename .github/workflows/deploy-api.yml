@@ -1,0 +1,75 @@
+# Deploys the standalone Function App backend (decision 006).
+#
+# Separate from deploy-web.yml on purpose: SWA Free hosts the static site only
+# and the SPA calls this Function App cross-origin. That is the whole point of
+# decision 006, so the two deployments stay independent and deploy-web keeps
+# api_location: "".
+#
+# KEYLESS, like the cleanup workflow. There is no publish profile and no client
+# secret. The job proves who it is with a GitHub OIDC token that Entra trusts
+# through a federated credential on a deploy app registration in the AlinaPAYGO
+# tenant (the one that owns the hosting subscription). Nothing to rotate.
+#
+# The three vars below are IDENTIFIERS, not secrets, so they are repo Actions
+# variables rather than secrets — same stance the project takes on tenant and
+# client IDs everywhere else. The provisioning script sets them with `gh variable set`.
+
+name: Deploy api
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - '.github/workflows/deploy-api.yml'
+  workflow_dispatch:
+
+# id-token: write is what lets the job request an OIDC token to log in to Azure.
+# contents: read is what lets checkout fetch the source. Nothing else is needed.
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+env:
+  AZURE_FUNCTIONAPP_NAME: func-theidentityplayground
+  NODE_VERSION: '22'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Build in CI, then drop dev dependencies so the deployed package carries
+      # only what runs. tsc lives in devDependencies, so prune must come AFTER
+      # the build, never before.
+      - name: Build
+        working-directory: api
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+          npm prune --omit=dev
+
+      - name: Azure login (OIDC, keyless)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to the Function App
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+          package: api
