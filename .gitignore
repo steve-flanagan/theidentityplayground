@@ -53,6 +53,9 @@ func-cli.log
 *.zip
 .deployment
 swa-cli.config.json.local
+# Local one-shot provisioning scratch — public IDs only, but the author's
+# disposable copy. The reviewed version lives in the PR and docs, not tracked.
+DeleteAfter.ps1
 
 # ---------------------------------------------------------------------------
 # Bicep / infra
