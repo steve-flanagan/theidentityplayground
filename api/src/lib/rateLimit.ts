@@ -38,6 +38,26 @@ function table(): TableClient {
   return client
 }
 
+// The counter table is created on first use rather than by the provisioning
+// script, so the app owns its own storage and a recreated storage account
+// self-heals. createTable() returns 409 if the table already exists, which is
+// success here. A failed attempt clears the memo so a later call retries,
+// rather than wedging the limiter closed forever on a transient blip.
+let ensured: Promise<void> | undefined
+function ensureTable(t: TableClient): Promise<void> {
+  if (!ensured) {
+    ensured = t.createTable().then(
+      () => undefined,
+      (err: any) => {
+        if (err?.statusCode === 409) return // already exists
+        ensured = undefined // let a later call retry
+        throw err
+      },
+    )
+  }
+  return ensured
+}
+
 // Table keys forbid \ / # ? and control characters. IPv6 uses ':', which is
 // allowed, but encode defensively so no address can ever produce an invalid key.
 function ipKey(ip: string): string {
@@ -68,6 +88,7 @@ async function hit(ip: string, limit: number, windowSeconds: number): Promise<Ra
   const partitionKey = ipKey(ip)
   const rowKey = String(windowStart)
   const t = table()
+  await ensureTable(t) // create the counter table on first use; 409 = already there
 
   // A small optimistic-concurrency loop: read the counter, write the increment
   // guarded by its ETag, and retry if another instance beat us to it.
