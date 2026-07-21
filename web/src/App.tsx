@@ -3,6 +3,7 @@ import { useMsal } from '@azure/msal-react'
 import { TokenInspector } from './components/TokenInspector'
 import { JourneyTimeline } from './components/JourneyTimeline'
 import { SignInPanel } from './components/SignInPanel'
+import { AccountTypes } from './components/AccountTypes'
 import { buildSampleToken } from './lib/sampleToken'
 import {
   accountCreatedAtMs,
@@ -241,6 +242,17 @@ function App() {
               resolvedFlow={resolvedFlow}
             />
           </section>
+        </div>
+
+        {/* ── Module 2 · account types ─────────────────────────────────────
+            A separate product from the token inspector above (design.md §6),
+            so it sits in its own section below it, marked off by a full-width
+            rule. The component owns its map, picker, copy, and the
+            illustrative-vs-real-type selection; App only places it. It reads
+            the signed-in state through the shared MSAL instance's hooks, never
+            a second instance. */}
+        <div className="mt-20 border-t border-slate-800 pt-14">
+          <AccountTypes />
         </div>
 
         <section className="mt-16 max-w-3xl" aria-labelledby="roadmap">
