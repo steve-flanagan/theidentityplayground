@@ -135,21 +135,19 @@ function App() {
           </p>
         </header>
 
-        {/* Timeline left, claims right — the token you got and how you got it,
-            side by side. Both columns flow with the page. The claims panel was a
-            sticky, internally-scrolling reference column (the second-monitor
-            shape); it now scrolls with everything else, so the section below sits
-            under the content rather than under a pinned panel. Claims are first in
-            the DOM, placed right by the grid, so a phone shows the payoff first and
-            stacks the timeline after it.
-
-            Column widths: claims are a fixed 27rem, so every pixel a wider window
-            adds goes to the timeline's 1fr, and the claims panel sits against the
-            right edge. Both collapse below lg into a single stacked column. */}
+        {/* Claims right, everything else left. The claims panel is a sticky,
+            internally-scrolling reference column pinned to the right: top-6,
+            capped at the viewport, and it scrolls inside itself. It stays put
+            while the left column scrolls past it. The LEFT column holds the
+            timeline AND Module 2, so the pinned claims stay in view as you scroll
+            from the token flow down into the account-types map. Claims are first
+            in the DOM, placed right by the grid, so a phone shows the payoff first
+            and then stacks the left column. Below lg the grid is one stacked
+            column and nothing is pinned. */}
         <div className="mt-12 grid gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_27rem]">
           <section
             aria-labelledby="inspector"
-            className="lg:col-start-2 lg:row-start-1 lg:self-start"
+            className="lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto lg:overflow-x-hidden"
           >
             <div className="mb-4">
               <h2 id="inspector" className="text-sm font-medium uppercase tracking-widest text-slate-500">
@@ -203,7 +201,8 @@ function App() {
             )}
           </section>
 
-          <section aria-labelledby="journey" className="min-w-0 lg:col-start-1 lg:row-start-1">
+          <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+            <section aria-labelledby="journey">
             <div className="mb-5">
               <h2 id="journey" className="text-sm font-medium uppercase tracking-widest text-slate-500">
                 How those claims got there
@@ -239,17 +238,18 @@ function App() {
               resolvedFlow={resolvedFlow}
             />
           </section>
-        </div>
 
-        {/* ── Module 2 · account types ─────────────────────────────────────
-            A separate product from the token inspector above (design.md §6),
-            so it sits in its own section below it, marked off by a full-width
-            rule. The component owns its map, picker, copy, and the
-            illustrative-vs-real-type selection; App only places it. It reads
-            the signed-in state through the shared MSAL instance's hooks, never
-            a second instance. */}
-        <div className="mt-14 border-t border-slate-800 pt-12">
-          <AccountTypes />
+            {/* ── Module 2 · account types ───────────────────────────────
+                In the same (left) column as the timeline, so the pinned claims
+                panel on the right stays in view as you scroll from the token
+                flow down into the account-types map. A separate product from
+                the inspector (design.md §6), set off by a top rule. It reads
+                the signed-in state through the shared MSAL instance's hooks,
+                never a second instance. */}
+            <div className="mt-14 border-t border-slate-800 pt-12">
+              <AccountTypes />
+            </div>
+          </div>
         </div>
 
         <section className="mt-16 max-w-3xl" aria-labelledby="roadmap">
