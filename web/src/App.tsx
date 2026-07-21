@@ -136,23 +136,20 @@ function App() {
         </header>
 
         {/* Timeline left, claims right — the token you got and how you got it,
-            side by side. The claims are a tall column of long values (GUIDs), so
-            rather than fight them flat they scroll inside a sticky reference panel
-            on the right, which is the second-monitor shape. Timeline gets the wide
-            column for the axis. Claims are first in the DOM, placed right by the
-            grid, so a phone shows the payoff first and then stacks the timeline —
-            mobile just needs to work.
+            side by side. Both columns flow with the page. The claims panel was a
+            sticky, internally-scrolling reference column (the second-monitor
+            shape); it now scrolls with everything else, so the section below sits
+            under the content rather than under a pinned panel. Claims are first in
+            the DOM, placed right by the grid, so a phone shows the payoff first and
+            stacks the timeline after it.
 
-            The column widths are what makes a wide monitor pay off, now that
-            nothing caps the page: claims are a fixed 27rem, so every pixel a
-            wider window adds goes to the timeline's 1fr. Being the second grid
-            column also puts the claims panel against the right edge rather than
-            floating somewhere near the middle. Both of those collapse below lg,
-            where the grid is a single stacked column. */}
+            Column widths: claims are a fixed 27rem, so every pixel a wider window
+            adds goes to the timeline's 1fr, and the claims panel sits against the
+            right edge. Both collapse below lg into a single stacked column. */}
         <div className="mt-12 grid gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_27rem]">
           <section
             aria-labelledby="inspector"
-            className="lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto lg:overflow-x-hidden"
+            className="lg:col-start-2 lg:row-start-1 lg:self-start"
           >
             <div className="mb-4">
               <h2 id="inspector" className="text-sm font-medium uppercase tracking-widest text-slate-500">
@@ -251,7 +248,7 @@ function App() {
             illustrative-vs-real-type selection; App only places it. It reads
             the signed-in state through the shared MSAL instance's hooks, never
             a second instance. */}
-        <div className="mt-20 border-t border-slate-800 pt-14">
+        <div className="mt-14 border-t border-slate-800 pt-12">
           <AccountTypes />
         </div>
 
