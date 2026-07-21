@@ -42,6 +42,33 @@ compromised.
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    visitor(["Visitor"])
+
+    subgraph hosting["Hosting, personal subscription"]
+        spa["React SPA<br/>Azure Static Web Apps"]
+    end
+
+    subgraph identity["Identity, throwaway demo tenant"]
+        direction TB
+        ciam["External ID CIAM<br/>sign-up, sign-in, PKCE"]
+        google["Google social login"]
+    end
+
+    gha["GitHub Actions<br/>scheduled cleanup"]
+
+    visitor -->|"loads the SPA"| spa
+    spa <-->|"MSAL, ID token only"| ciam
+    google -.->|"federated"| ciam
+    spa -->|"your token and every request behind it"| visitor
+    gha -->|"OIDC federated credential, keyless"| ciam
+    gha -->|"removes demo users older than 24h"| ciam
+```
+
+Identity and hosting stay separate on purpose. The scheduled cleanup is the one thing that
+crosses tenants, and it holds no secret to do it.
+
 React SPA on Azure Static Web Apps, deployed from `main` by GitHub Actions. Entra does the
 identity work. There is an Azure Functions project in `api/`, currently one health
 endpoint; the front end calls no backend yet.
@@ -71,5 +98,5 @@ this is a public client using PKCE.
 ## Design and decisions
 
 [identity-playground-spec.md](identity-playground-spec.md) is the build spec: module
-designs, security rules, phase gates. [docs/decisions/](docs/decisions/) indexes the
-decisions taken so far. Two of them are open and load-bearing, and none are written up yet.
+designs, security rules, phase gates. [docs/decisions/](docs/decisions/) indexes them,
+each a short ADR of what was chosen and what was rejected. None remain open.
