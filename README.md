@@ -46,24 +46,23 @@ compromised.
 flowchart LR
     visitor(["Visitor"])
 
-    subgraph hosting["Hosting, personal subscription"]
-        spa["React SPA<br/>Azure Static Web Apps"]
+    subgraph hosting ["Hosting, personal subscription"]
+        spa["React SPA on Static Web Apps"]
     end
 
-    subgraph identity["Identity, throwaway demo tenant"]
-        direction TB
-        ciam["External ID CIAM<br/>sign-up, sign-in, PKCE"]
+    subgraph identity ["Identity, throwaway demo tenant"]
+        ciam["External ID sign-in, PKCE"]
         google["Google social login"]
     end
 
-    gha["GitHub Actions<br/>scheduled cleanup"]
+    gha["GitHub Actions cleanup"]
 
     visitor -->|"loads the SPA"| spa
     spa <-->|"MSAL, ID token only"| ciam
     google -.->|"federated"| ciam
-    spa -->|"your token and every request behind it"| visitor
-    gha -->|"OIDC federated credential, keyless"| ciam
-    gha -->|"removes demo users older than 24h"| ciam
+    spa -->|"your token, and every request behind it"| visitor
+    gha -->|"OIDC, keyless"| ciam
+    gha -->|"removes demo users over 24h"| ciam
 ```
 
 Identity and hosting stay separate on purpose. The scheduled cleanup is the one thing that
