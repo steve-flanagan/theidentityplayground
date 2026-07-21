@@ -51,12 +51,13 @@ returns the token. The scheduled cleanup is the one path that crosses into that 
 it holds no secret to do it.
 
 React SPA on Azure Static Web Apps, deployed from `main` by GitHub Actions. Entra does the
-identity work. There is an Azure Functions project in `api/`, currently one health
-endpoint; the front end calls no backend yet.
+identity work. The backend in `api/` is a standalone Azure Functions app, deployed keyless
+from `main`, with per-IP rate limiting in place ahead of the Graph-backed endpoints; the
+front end does not call it yet.
 
 ```
 web/       React SPA (Vite, Tailwind, TypeScript)
-api/       Azure Functions (TypeScript). One health endpoint so far
+api/       Azure Functions (TypeScript), deployed standalone. Health + a rate-limited probe
 scripts/   PowerShell and the Graph SDK for demo account cleanup, plus a HAR-to-timings helper
 docs/      Architecture, tenant setup, decision index
 ```

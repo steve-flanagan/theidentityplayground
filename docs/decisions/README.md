@@ -15,7 +15,7 @@ Format: **Context** (what forced a choice) → **Decision** → **Rejected alter
 | 003 | [Cross-tenant Graph for the demo-account cleanup](003-cross-tenant-graph.md) | decided |
 | 004 | [Proof of control before a B2B invitation is sent](004-b2b-invitation-proof-of-control.md) | decided |
 | 005 | ~~On-demand provisioning instead of waiting for Entra's cycle~~ | **withdrawn** — not a decision |
-| 006 | [Standalone Function App over SWA managed API (timer triggers vs. $9/mo)](006-standalone-function-app.md) | decided |
+| 006 | [Standalone Function App over SWA managed API (timer triggers vs. $9/mo)](006-standalone-function-app.md) | decided · implemented |
 | 007 | [TypeScript over JavaScript across web/ and api/](007-typescript-over-javascript.md) | decided |
 | 008 | Self-service account deletion: how a visitor deletes their own demo account | **deferred** — build only if requested |
 

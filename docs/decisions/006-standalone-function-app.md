@@ -1,14 +1,18 @@
 # 006. Standalone Function App over SWA's managed API
 
-**Status:** decided 16 July 2026 (commit `a4605b4`). **Not implemented, and currently
-deferred rather than reversed.** No Function App is deployed. `api/` holds one health
-endpoint and `.github/workflows/deploy-web.yml` sets `api_location: ""`. The decision
-stands for the first backend that ships.
+**Status:** decided 16 July 2026 (commit `a4605b4`); **implemented 21 July 2026.** The
+standalone Function App is deployed on consumption (`func-theidentityplayground`) via a
+keyless OIDC workflow, `.github/workflows/deploy-api.yml`. `deploy-web.yml` still sets
+`api_location: ""` — SWA stays static-only and the Function App deploys separately, the
+two-deployment split this decision chose. What shipped it first was not the cleanup (that
+stayed on GitHub Actions per decision 003) but Module 2's rate-limiting foundation: a
+per-IP limiter, live and verified ahead of any Graph endpoint.
 
 Every factual claim below is marked **[M]** if it was read in current project documentation
-(source given) or **[A]** if it is assumed and still needs testing. Nothing here has been
-deployed, so the platform and pricing claims are **[A]**. They were researched in July 2026
-and have not been re-read against Microsoft's docs since.
+(source given) or **[A]** if it is assumed and still needs testing. As of 21 July the core platform claims
+(a consumption Function App reached cross-origin, CORS on the site origin, keyless OIDC
+deploy) are **[M]**, verified by deploying it. The pricing specifics remain **[A]**,
+researched in July 2026 and not re-read against Microsoft's docs since.
 
 Sources are cited by section rather than line number, because the spec moves.
 
@@ -73,6 +77,10 @@ Recorded in the spec at the time of the decision, including what it makes harder
 - **Cost: about $0 instead of about $9 a month.**
 
 ### Why it is deferred, and what would reopen it
+
+**Superseded 21 July 2026 — implemented.** What ultimately shipped the Function App was
+neither candidate below but Module 2's rate-limiting foundation, and the rate-limiting
+requirement went live with it. The reasoning is kept for the record.
 
 Decision 003 solved the demo-account cleanup with a GitHub Actions scheduled workflow and a
 federated identity credential, running the PowerShell script that already works. **[M]**
