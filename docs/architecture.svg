@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Architecture diagram">
+  <title>The Identity Playground architecture</title>
+  <desc>A visitor opens the React SPA, which signs in at Microsoft Entra External ID. External ID redirects out to a federated identity provider and receives an assertion back, then returns an ID token to the SPA. Separately, GitHub Actions runs a keyless scheduled cleanup against External ID.</desc>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <marker id="ahE" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#34d399"/>
+    </marker>
+    <marker id="ahB" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7dd3fc"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="798" height="398" rx="14" fill="#0b1220" stroke="#1e293b"/>
+
+  <!-- nodes -->
+  <rect x="40" y="176" width="118" height="50" rx="9" fill="#1e293b" stroke="#334155"/>
+  <text x="99" y="206" text-anchor="middle" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif" font-size="14" fill="#e2e8f0">Visitor</text>
+
+  <rect x="248" y="176" width="150" height="50" rx="9" fill="#1e293b" stroke="#334155"/>
+  <text x="323" y="197" text-anchor="middle" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif" font-size="14" fill="#e2e8f0">React SPA</text>
+  <text x="323" y="214" text-anchor="middle" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif" font-size="11" fill="#94a3b8">Static Web Apps</text>
+
+  <rect x="520" y="176" width="168" height="50" rx="9" fill="#132a45" stroke="#3b6ea5"/>
+  <text x="604" y="197" text-anchor="middle" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif" font-size="14" fill="#dbeafe">External ID</text>
+  <text x="604" y="214" text-anchor="middle" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif" font-size="11" fill="#93b4d8">Entra CIAM</text>
+
+  <rect x="520" y="72" width="168" height="48" rx="9" fill="#1e293b" stroke="#334155"/>
+  <text x="604" y="101" text-anchor="middle" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif" font-size="14" fill="#e2e8f0">Federated IdP</text>
+
+  <rect x="502" y="300" width="186" height="50" rx="9" fill="#1e293b" stroke="#334155"/>
+  <text x="595" y="321" text-anchor="middle" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif" font-size="14" fill="#e2e8f0">GitHub Actions</text>
+  <text x="595" y="338" text-anchor="middle" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif" font-size="11" fill="#94a3b8">scheduled</text>
+
+  <!-- arrows -->
+  <g font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif" font-size="11.5">
+    <line x1="160" y1="201" x2="245" y2="201" stroke="#64748b" stroke-width="1.6" marker-end="url(#ah)"/>
+    <text x="202" y="191" text-anchor="middle" fill="#94a3b8">opens the site</text>
+
+    <line x1="400" y1="195" x2="517" y2="195" stroke="#64748b" stroke-width="1.6" marker-end="url(#ah)"/>
+    <text x="458" y="169" text-anchor="middle" fill="#94a3b8">sign-in (MSAL, PKCE)</text>
+
+    <line x1="517" y1="209" x2="401" y2="209" stroke="#34d399" stroke-width="1.8" marker-end="url(#ahE)"/>
+    <text x="458" y="243" text-anchor="middle" fill="#6ee7b7">ID token</text>
+
+    <line x1="596" y1="174" x2="596" y2="122" stroke="#7dd3fc" stroke-width="1.6" marker-end="url(#ahB)"/>
+    <text x="588" y="151" text-anchor="end" fill="#93b4d8">redirect</text>
+
+    <line x1="612" y1="122" x2="612" y2="174" stroke="#64748b" stroke-width="1.6" marker-end="url(#ah)"/>
+    <text x="620" y="151" text-anchor="start" fill="#94a3b8">assertion</text>
+
+    <line x1="596" y1="298" x2="601" y2="228" stroke="#64748b" stroke-width="1.6" marker-end="url(#ah)"/>
+    <text x="656" y="257" text-anchor="start" fill="#94a3b8">deletes demo users</text>
+    <text x="656" y="272" text-anchor="start" fill="#64748b">keyless, OIDC</text>
+  </g>
+</svg>

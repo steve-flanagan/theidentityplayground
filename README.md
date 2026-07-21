@@ -42,24 +42,14 @@ compromised.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    visitor(["Visitor"])
-    spa["React SPA<br/>Static Web Apps"]
-    ciam["External ID<br/>sign-in, PKCE"]
-    google["Google login"]
-    gha["GitHub Actions<br/>cleanup"]
-
-    visitor --> spa
-    spa -->|"MSAL sign-in"| ciam
-    google -.->|"federated"| ciam
-    spa -->|"your token + every request"| visitor
-    gha -->|"keyless, 24h TTL"| ciam
-```
+<p align="center">
+  <img src="docs/architecture.svg" alt="A visitor opens the React SPA, which signs in at External ID. External ID redirects out to a federated identity provider and gets an assertion back, then returns an ID token to the SPA. Separately, GitHub Actions runs a keyless scheduled cleanup against External ID." width="760">
+</p>
 
 The SPA (hosted in a personal subscription) is the only thing a visitor touches. Identity
-lives in a throwaway demo tenant. The scheduled cleanup is the one path that crosses into
-that tenant, and it holds no secret to do it.
+lives in a throwaway demo tenant. External ID reaches out to the federated provider and
+returns the token. The scheduled cleanup is the one path that crosses into that tenant, and
+it holds no secret to do it.
 
 React SPA on Azure Static Web Apps, deployed from `main` by GitHub Actions. Entra does the
 identity work. There is an Azure Functions project in `api/`, currently one health
