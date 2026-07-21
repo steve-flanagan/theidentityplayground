@@ -45,28 +45,21 @@ compromised.
 ```mermaid
 flowchart LR
     visitor(["Visitor"])
+    spa["React SPA<br/>Static Web Apps"]
+    ciam["External ID<br/>sign-in, PKCE"]
+    google["Google login"]
+    gha["GitHub Actions<br/>cleanup"]
 
-    subgraph hosting ["Hosting, personal subscription"]
-        spa["React SPA on Static Web Apps"]
-    end
-
-    subgraph identity ["Identity, throwaway demo tenant"]
-        ciam["External ID sign-in, PKCE"]
-        google["Google social login"]
-    end
-
-    gha["GitHub Actions cleanup"]
-
-    visitor -->|"loads the SPA"| spa
-    spa <-->|"MSAL, ID token only"| ciam
+    visitor --> spa
+    spa -->|"MSAL sign-in"| ciam
     google -.->|"federated"| ciam
-    spa -->|"your token, and every request behind it"| visitor
-    gha -->|"OIDC, keyless"| ciam
-    gha -->|"removes demo users over 24h"| ciam
+    spa -->|"your token + every request"| visitor
+    gha -->|"keyless, 24h TTL"| ciam
 ```
 
-Identity and hosting stay separate on purpose. The scheduled cleanup is the one thing that
-crosses tenants, and it holds no secret to do it.
+The SPA (hosted in a personal subscription) is the only thing a visitor touches. Identity
+lives in a throwaway demo tenant. The scheduled cleanup is the one path that crosses into
+that tenant, and it holds no secret to do it.
 
 React SPA on Azure Static Web Apps, deployed from `main` by GitHub Actions. Entra does the
 identity work. There is an Azure Functions project in `api/`, currently one health
