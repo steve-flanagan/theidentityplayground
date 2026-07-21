@@ -16,9 +16,8 @@ captures against this tenant. Nothing on it is estimated.
 
 The other six modules are not built. The roadmap is on the homepage.
 
-The link above is the only place the site is published. It runs a live sign-up form. The
-public-readiness checklist in [the build spec](identity-playground-spec.md) passed on
-20 July 2026.
+It runs a live sign-up form. Nothing linked to it until the public-readiness checklist in
+[the build spec](identity-playground-spec.md) passed, on 20 July 2026.
 
 Demo accounts are deleted between 24 and 30 hours after they are created: a 24-hour TTL,
 swept by a scheduled job every six hours. The job has run unattended and reported
