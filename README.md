@@ -20,9 +20,8 @@ It runs a live sign-up form. Nothing linked to it until the public-readiness che
 [the build spec](identity-playground-spec.md) passed, on 20 July 2026.
 
 Demo accounts are deleted between 24 and 30 hours after they are created: a 24-hour TTL,
-swept by a scheduled job every six hours. The job has run unattended and reported
-correctly. It has not yet deleted anything, because no account has been old enough, so the
-deletion path itself is the one part still unproven.
+swept by a scheduled job every six hours. The job runs unattended, and the delete-and-purge
+path is proven: a run removed and permanently purged three expired accounts.
 
 ## Why there are three tenants
 

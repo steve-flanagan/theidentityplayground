@@ -104,10 +104,11 @@ selected; exceeding the ceiling deletes nothing.
 credential subject, and the token endpoint host all worked first time, across a dispatch
 dry run and a scheduled run. See decision 003.
 
-**NOT verified: the delete path.** Both runs found zero expired accounts, so
-`Remove-MgUser` and `Remove-MgDirectoryDeletedItem` have never been reached outside the
-tests. Auth, the permission read path, the role guard and the "nothing to do" branch are
-proven. Deletion is not.
+**Verified against the tenant, 22 July 2026.** An app-only scheduled/dispatch run removed
+and purged 3 expired accounts end-to-end (`Deleted: 3`, `Purged: 3`, run 29880436817). The
+first run to reach this path soft-deleted but failed to purge on an Entra replication-lag
+404 (`Request_ResourceNotFound`); the purge now retries that transient 404 and fails the
+run loudly if anything is left unpurged. See decision 003's 22 July update.
 
 **NOT verified, needs the tenant, and it is the assumption everything rests on:**
 the real `signInType` values. The two runs cannot settle this. With a 24-hour cutoff and
