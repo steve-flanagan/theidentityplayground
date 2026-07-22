@@ -1,0 +1,88 @@
+# The quality gate. Runs on every PR and on pushes to main.
+#
+# Deliberately separate from deploy-web.yml. That workflow builds AND deploys, so
+# it can go red for reasons that have nothing to do with the code, like hitting the
+# Static Web Apps free-tier cap on preview environments. A merge gate must only fail
+# on things the author can fix in the PR, so this job never deploys. It just checks.
+#
+# Once this is on main, it is the check to mark "required" in the protect-main
+# ruleset. Requiring it before it lands would block every open PR that predates it.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Read-only. This gate builds nothing external and touches no secret.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: web checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # `npm ci` installs exactly the lockfile and fails if it has drifted from
+      # package.json, which is itself a check worth having.
+      - name: Install
+        run: npm ci
+        working-directory: web
+
+      # Split out from the build so a failure names itself: a type error, a failing
+      # test, and a lint violation are three different red checks, not one opaque one.
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: web
+
+      - name: Test
+        run: npm run test
+        working-directory: web
+
+      - name: Lint
+        run: npm run lint
+        working-directory: web
+
+  scripts:
+    name: script tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # The cleanup script carries `#Requires -Modules`, and its tests import the
+      # real Graph modules before shadowing them with stubs, so the modules have to
+      # be present even though nothing here reaches the network. Pinned to 2.38.1 to
+      # match the version the script is verified against (see cleanup-demo-accounts.yml).
+      - name: Install the Graph modules the tests import
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $modules = @(
+            'Microsoft.Graph.Authentication'
+            'Microsoft.Graph.Users'
+            'Microsoft.Graph.Identity.DirectoryManagement'
+          )
+          foreach ($m in $modules) {
+            Install-Module $m -RequiredVersion 2.38.1 -Scope CurrentUser -Force -AllowClobber
+          }
+
+      # Deletes users in the real tenant when it runs for real, so its guard tests
+      # are the safety argument. They run against synthetic users, no network, no
+      # tenant. Exits non-zero on any failure.
+      - name: Run the cleanup guard tests
+        shell: pwsh
+        run: ./scripts/Remove-ExpiredDemoAccounts.Tests.ps1
