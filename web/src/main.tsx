@@ -8,6 +8,7 @@ import { msalConfig } from './auth/msalConfig.ts'
 import { clearForeignInteractionLock } from './auth/interactionLock.ts'
 import { completeRedirect } from './auth/redirectBoot.ts'
 import { isApp2Path } from './app2/route.ts'
+import { isGuestPath } from './guest/route.ts'
 
 // getElementById returns HTMLElement | null, and createRoot won't accept null.
 // Vite's template silences this with a `!` non-null assertion; an explicit
@@ -39,6 +40,13 @@ if (!rootElement) {
 if (isApp2Path(window.location.pathname)) {
   const { mountApp2 } = await import('./app2/mountApp2.tsx')
   await mountApp2(rootElement)
+} else if (isGuestPath(window.location.pathname)) {
+  // The third page, third client: the workforce app, for a live B2B guest
+  // sign-up. Same rule as /app2 — a different client ID means a different page,
+  // never a second instance here. Dynamically imported so the main site never
+  // downloads it; Vite splits it into its own chunk, fetched only on /guest.
+  const { mountGuest } = await import('./guest/mountGuest.tsx')
+  await mountGuest(rootElement)
 } else {
   // MSAL keys its interaction lock per ORIGIN, not per client, so an abandoned
   // /app2 redirect leaves a lock that blocks sign-in and sign-out here. Because

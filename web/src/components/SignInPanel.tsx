@@ -230,6 +230,27 @@ export function SignInPanel({
         )}
       </div>
 
+      {/* ── Sign in as Guest (Module 2, live) ──────────────────────────────
+          A real self-service B2B guest sign-up. It authenticates as the
+          WORKFORCE app, a different client ID, so it cannot run on this page: an
+          href navigation to /guest boots that instance on its own page (the same
+          reason /app2 is a link, not a button). Live, so it is grouped with the
+          real customer sign-in above, not the sample below. */}
+      {!isAuthenticated && (
+        <div className="mt-3">
+          <a
+            href="/guest"
+            className="inline-block rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500"
+          >
+            Sign in as Guest (live)
+          </a>
+          <p className="mt-2 text-xs leading-relaxed text-slate-600">
+            Creates a real B2B guest via Google on its own page, then shows your token. It
+            self-destructs on the cleanup.
+          </p>
+        </div>
+      )}
+
       {/* ── Sample identities (Module 2) ───────────────────────────────────
           A visitor can never really be a workforce member, so this is a
           client-side sample: App swaps the inspector, the timeline and the
