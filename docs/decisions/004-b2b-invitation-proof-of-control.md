@@ -65,9 +65,11 @@ happens live, and the module exists to show the flow.
 
 - **The invite flow gains a step:** request, code to the target, verify, invite. That step
   *is* the security demonstration, so it is content, not overhead.
-- **It needs the backend.** Sending the code and holding the short-lived pending-invite state
-  requires a Function App, which reopens [006](006-standalone-function-app.md) exactly as
-  decision 008 would. `api/` deploys nothing today. **[M]** (`deploy-web.yml`, `api_location: ""`.)
+- **It needs the backend, which now exists.** Sending the code and holding the short-lived
+  pending-invite state requires a Function App. [Decision 006](006-standalone-function-app.md)
+  is implemented as of 21 July, so the invite/OTP endpoint has a home. Still unbuilt: that
+  endpoint itself, its cross-tenant Graph auth into the workforce tenant, and an email channel
+  for the code. **[M]**
 - **No personal-domain blocklist**, per the decision above.
 - **The pending code is short-lived and per-address.** Do not persist target addresses beyond
   the verification window; they are third-party PII, which is the whole sensitivity here.

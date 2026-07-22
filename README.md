@@ -20,9 +20,8 @@ It runs a live sign-up form. Nothing linked to it until the public-readiness che
 [the build spec](identity-playground-spec.md) passed, on 20 July 2026.
 
 Demo accounts are deleted between 24 and 30 hours after they are created: a 24-hour TTL,
-swept by a scheduled job every six hours. The job has run unattended and reported
-correctly. It has not yet deleted anything, because no account has been old enough, so the
-deletion path itself is the one part still unproven.
+swept by a scheduled job every six hours. The job runs unattended, and the delete-and-purge
+path is proven: a run removed and permanently purged three expired accounts.
 
 ## Why there are three tenants
 
@@ -51,12 +50,13 @@ returns the token. The scheduled cleanup is the one path that crosses into that 
 it holds no secret to do it.
 
 React SPA on Azure Static Web Apps, deployed from `main` by GitHub Actions. Entra does the
-identity work. There is an Azure Functions project in `api/`, currently one health
-endpoint; the front end calls no backend yet.
+identity work. The backend in `api/` is a standalone Azure Functions app, deployed keyless
+from `main`, with per-IP rate limiting in place ahead of the Graph-backed endpoints; the
+front end does not call it yet.
 
 ```
 web/       React SPA (Vite, Tailwind, TypeScript)
-api/       Azure Functions (TypeScript). One health endpoint so far
+api/       Azure Functions (TypeScript), deployed standalone. Health + a rate-limited probe
 scripts/   PowerShell and the Graph SDK for demo account cleanup, plus a HAR-to-timings helper
 docs/      Architecture, tenant setup, decision index
 ```

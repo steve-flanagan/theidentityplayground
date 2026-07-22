@@ -48,6 +48,13 @@ $global:deletedIds = [System.Collections.Generic.List[string]]::new()
 $global:purgedIds = [System.Collections.Generic.List[string]]::new()
 $global:connectArgs = $null
 
+# Purge simulator state. purgeThrowCount is how many times the purge stub 404s for a
+# given id before it succeeds; purgeThrowMessage is what it throws. Attempts are
+# tracked per id so a multi-user run stays per-user. These let a test prove the retry.
+$global:purgeAttemptsById = @{}
+$global:purgeThrowCount = 0
+$global:purgeThrowMessage = "[Request_ResourceNotFound] : Resource does not exist or one of its queried reference-property objects are not present."
+
 # ── Graph stubs ───────────────────────────────────────────────────────────────
 # Import first, stub second. See the note in the header: these have to be global
 # and they have to be defined after the import, or the SDK's own functions win.
@@ -115,6 +122,17 @@ function global:Remove-MgUser {
 function global:Remove-MgDirectoryDeletedItem {
   [CmdletBinding()]
   param([string] $DirectoryObjectId, [Parameter(ValueFromRemainingArguments)] $Rest)
+
+  if (-not $global:purgeAttemptsById.ContainsKey($DirectoryObjectId)) {
+    $global:purgeAttemptsById[$DirectoryObjectId] = 0
+  }
+  $global:purgeAttemptsById[$DirectoryObjectId]++
+
+  # 404 for the first purgeThrowCount attempts on this id, then succeed. A count
+  # higher than the script's attempt budget models an object that never appears.
+  if ($global:purgeAttemptsById[$DirectoryObjectId] -le $global:purgeThrowCount) {
+    throw $global:purgeThrowMessage
+  }
   $global:purgedIds.Add($DirectoryObjectId)
 }
 
@@ -177,7 +195,9 @@ function Invoke-Cleanup {
   param(
     [object[]] $Users,
     [hashtable] $Roles = @{},
-    [hashtable] $Parameters = @{}
+    [hashtable] $Parameters = @{},
+    [int] $PurgeThrowCount = 0,
+    [string] $PurgeThrowMessage = "[Request_ResourceNotFound] : Resource does not exist or one of its queried reference-property objects are not present."
   )
 
   $global:tenantUsers = @($Users)
@@ -185,6 +205,9 @@ function Invoke-Cleanup {
   $global:deletedIds = [System.Collections.Generic.List[string]]::new()
   $global:purgedIds = [System.Collections.Generic.List[string]]::new()
   $global:connectArgs = $null
+  $global:purgeAttemptsById = @{}
+  $global:purgeThrowCount = $PurgeThrowCount
+  $global:purgeThrowMessage = $PurgeThrowMessage
 
   # -Confirm:$false everywhere. These tests are about the other guards; the
   # ShouldProcess prompt would just hang an unattended run.
@@ -311,6 +334,48 @@ Test-Case 'SkipPurge leaves the restore window open' {
   Assert-Equal $null $err 'should not have thrown'
   Assert-Equal 2 $global:deletedIds.Count 'still soft-deletes'
   Assert-Equal 0 $global:purgedIds.Count 'but does not purge'
+}
+
+Write-Host "`nPurge under replication lag"
+
+Test-Case 'A transient 404 on purge is retried, and the account is then purged' {
+  # The bug this fixes: the purge can outrun the directory replicating the soft
+  # delete into deletedItems and 404 on an object that does exist. One transient
+  # 404, then it succeeds on the retry.
+  $err = Invoke-Cleanup -Users (Get-AgedSignups -Count 1) `
+    -PurgeThrowCount 1 -Parameters @{ PurgeRetryDelaySeconds = 0 }
+  Assert-Equal $null $err 'a purge that succeeds on retry is not a failed run'
+  Assert-Equal 1 $global:purgedIds.Count 'the account should end up purged'
+  Assert-Equal 2 $global:purgeAttemptsById['aged-1@demo'] 'it should take exactly one retry'
+}
+
+Test-Case 'A purge that keeps 404ing gives up, keeps the soft delete, and fails the run' {
+  # Bounded: it must not retry forever, and when it gives up the account is
+  # soft-deleted but not purged. That is restorable PII behind a page that says
+  # otherwise, so the run must fail loudly rather than exit 0.
+  $err = Invoke-Cleanup -Users (Get-AgedSignups -Count 1) `
+    -PurgeThrowCount 99 -Parameters @{ PurgeRetryDelaySeconds = 0 }
+  if ($null -eq $err) { throw 'a run that left an account unpurged must not exit clean' }
+  if ($err.Exception.Message -notmatch 'not purged') {
+    throw "expected an unpurged-account failure, got: $($err.Exception.Message)"
+  }
+  Assert-Collection @('aged-1@demo') $global:deletedIds 'the soft delete still happened'
+  Assert-Equal 0 $global:purgedIds.Count 'nothing was purged'
+  if ($global:purgeAttemptsById['aged-1@demo'] -le 1) {
+    throw 'it should have retried, not given up after the first 404'
+  }
+}
+
+Test-Case 'A purge error that is not a 404 is not retried' {
+  # The retry is scoped to the replication-lag 404. A different Graph error is a
+  # real problem and should surface on the first attempt, not after six.
+  $err = Invoke-Cleanup -Users (Get-AgedSignups -Count 1) `
+    -PurgeThrowCount 99 `
+    -PurgeThrowMessage '[Authorization_RequestDenied] : Insufficient privileges to complete the operation.' `
+    -Parameters @{ PurgeRetryDelaySeconds = 0 }
+  if ($null -eq $err) { throw 'an unpurged account must fail the run' }
+  Assert-Equal 1 $global:purgeAttemptsById['aged-1@demo'] 'a non-404 error must not be retried'
+  Assert-Equal 0 $global:purgedIds.Count 'nothing was purged'
 }
 
 Write-Host "`nWhatIf"

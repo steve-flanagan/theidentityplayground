@@ -7,6 +7,11 @@ expired accounts, so **the delete path itself has still never executed.** The
 verification list in section 3 is not satisfied. Item 9 requires items 5 through 8, and
 6 and 8 are open.
 
+**[Superseded 22 July 2026.** The delete path has since executed and the purge is proven
+end-to-end under app-only auth. The first real purge failed on a replication-lag 404,
+which is now fixed and retried. Item 6 is met; only item 8 (billing) is still open. See
+the 22 July update below and section 3.**]**
+
 Every factual claim below is marked **[M]** if it was read in current documentation
 (source and date given) or **[A]** if it is assumed and still needs testing. The **[A]**
 items are the ones that can fail on day one.
@@ -98,6 +103,36 @@ Rather than guess, the workflow decodes the token it is about to present and pri
 issuer, subject and audience before exchanging it. The first dispatch run prints the
 exact string to paste into the credential, whichever format GitHub actually used. That
 turns the one-shot trap into a two-minute loop.
+
+---
+
+## Update, 22 July 2026: the delete path ran, and the purge is now proven
+
+The gate that was open all along is closed. The delete-and-purge path executed against
+the tenant, end-to-end, under app-only auth.
+
+**What happened, in order.** The 21 July 19:53Z scheduled run was the first to find aged
+accounts. It soft-deleted 3, but every purge failed with `Request_ResourceNotFound` and
+the run still exited 0 (`Purged: 0`, `Failed: 3`). The cause was not a wrong endpoint, id,
+or permission, any of which is a 403. It was eventual consistency: the purge outran the
+directory replicating the soft delete into `deletedItems`, and 404'd on an object that
+existed but was not yet visible on that node. Microsoft's remedy for that specific 404 is
+wait-and-retry.
+
+**The fix (PR #10, merged 22 July).** `Remove-MgDirectoryDeletedItem` now retries
+`Request_ResourceNotFound` only, bounded, with a `-PurgeRetryDelaySeconds` wait. A soft
+delete that then fails to purge is reported as unpurged and makes the run throw, so a purge
+failure can no longer exit 0 and read as clean, which is exactly how the 19:53Z failure
+first slipped past. Three tests were added; the suite is 22/22.
+
+**Proven.** A 22 July app-only `workflow_dispatch` run (`29880436817`) removed and purged 3
+expired accounts: `Deleted: 3`, `Purged: 3`, no failures. That is item 6 met, on the same
+app-only path the schedule uses. Restoring the accounts first confirmed a side point:
+restore preserves the original `createdDateTime`, so restored accounts still age normally.
+
+**Still open: item 8.** Whether an M2M token charge lands is unaltered by any of this and
+remains the only open item on the section 3 list. The delete path is proven; the site
+sentence in item 9 now waits on the billing check alone.
 
 ---
 
@@ -266,11 +301,13 @@ Graph does free.
 
 ## Consequences
 
-**No Function App is deployed, and none is needed for this.** `api/` still holds one
-health endpoint and `.github/workflows/deploy-web.yml` still sets `api_location: ""`.
-Neither changes. Decision 006 (standalone Function App over the SWA managed API) is not
-reversed, it is deferred: the first thing that actually needs a Function App is Module 7's
-stats endpoint or Module 3's log correlation, not the cleanup.
+**The cleanup needs no Function App, and does not use the one that now exists.** A standalone
+Function App was deployed 21 July for Module 2's rate-limiting foundation
+([decision 006](006-standalone-function-app.md)), but the cleanup still runs entirely on
+GitHub Actions and reaches Graph with the federated credential above, not through it.
+`deploy-web.yml` still sets `api_location: ""`: SWA stays static-only and the Function App
+deploys separately. So decision 006 is now implemented, and none of it changes how the
+cleanup authenticates.
 
 **Push access to `main` becomes equivalent to deleting users in the External ID tenant.**
 The federated credential trusts a repo ref. Branch protection on `main` stops being
@@ -530,6 +567,10 @@ gate, not a formality.
 **Status as of 20 July: 3, 4 and 5 are met. 6 and 8 are not, so item 9 is not met and
 the sentence on the site is not yet earned.**
 
+**Update 22 July: 6 is now met (the delete-and-purge path is proven, run 29880436817).
+Only 8 remains, so item 9 is still not fully earned. It now waits on the billing check
+alone, not on the deletion proof.**
+
 1. Sign up a throwaway account through the live site. Record the UPN and the
    `createdDateTime`. **OPEN.** An account created 20 July is named in the session notes,
    but no record of its UPN or creation time exists in this repo. **[A]**
@@ -570,10 +611,10 @@ the sentence on the site is not yet earned.**
    Deleted users means the purge permission did not take, and a month of restorable PII is
    sitting behind a page that says otherwise.
 
-   **NOT MET, and this is the one that matters.** The scheduled run was armed to delete,
-   `WHAT_IF: false`, and found zero candidates, so `Remove-MgUser` and
-   `Remove-MgDirectoryDeletedItem` have never been reached. What is proven is auth, the
-   permission read path, the role guard, and the "nothing to do" branch.
+   **MET 22 July, run 29880436817. [M]** An app-only `workflow_dispatch` run removed and
+   purged 3 expired accounts: `Deleted: 3`, `Purged: 3`, no failures. The first run to
+   reach this path (21 July 19:53Z) soft-deleted 3 but failed every purge on a
+   replication-lag 404; that is fixed and retried (PR #10). See the 22 July update above.
 7. Confirm the Global Admin still exists and still holds its role.
 
    **PARTIAL. [A]** `Users in tenant: 4` and one protected principal are consistent with
@@ -587,9 +628,9 @@ the sentence on the site is not yet earned.**
    so whether anything is billed for them is unknown.
 9. Only after 5 through 8 does the sentence on the site become true.
 
-   **NOT MET.** 5 is met; 6 and 8 are not. Item 5 alone is a scheduled run that deleted
-   nothing, which is half the bar, and reading this item as satisfied by it is exactly
-   the mistake this list exists to prevent.
+   **NOT MET, but now gated on item 8 alone.** 5 and 6 are met (the delete-and-purge path
+   is proven, run 29880436817); 8 (billing) is the only open item. The functional claim is
+   earned; whether the sentence stands unqualified waits on the billing check.
 
 ---
 
