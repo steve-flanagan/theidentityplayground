@@ -123,9 +123,10 @@ export type FlowId =
   // customer flows above — see MEMBER_FLOWS.
   | 'member-signin'
   | 'member-sso'
-  // Module 2's live guest: a real B2B self-service sign-up, measured off a real
-  // capture. See GUEST_FLOWS.
+  // Module 2's live guest: real B2B self-service flows, measured. See GUEST_FLOWS.
   | 'guest-signup'
+  | 'guest-signin'
+  | 'guest-sso'
 
 export type Journey = {
   id: FlowId
@@ -225,6 +226,8 @@ import signoutCapture from './captures/signout.json'
 import memberSigninCapture from './captures/member-signin.json'
 import memberSsoCapture from './captures/member-sso.json'
 import guestSignupCapture from './captures/guest-signup.json'
+import guestSigninCapture from './captures/guest-signin.json'
+import guestSsoCapture from './captures/guest-sso.json'
 
 type CapturedRequest = {
   path: string
@@ -265,6 +268,8 @@ const CAPTURES: Record<FlowId, Capture> = {
   'member-signin': memberSigninCapture as Capture,
   'member-sso': memberSsoCapture as Capture,
   'guest-signup': guestSignupCapture as Capture,
+  'guest-signin': guestSigninCapture as Capture,
+  'guest-sso': guestSsoCapture as Capture,
 }
 
 /**
@@ -340,6 +345,18 @@ export const FLOW_META: Record<
       'A first-time B2B guest. Into the sign-up user flow, out to an external provider, back to create the account.',
     outcome: { label: 'Token issued', ok: true },
   },
+  'guest-signin': {
+    label: 'Sign-in',
+    summary:
+      'A returning B2B guest. Home-realm discovery routes the email back to its provider, and no account is created.',
+    outcome: { label: 'Token issued', ok: true },
+  },
+  'guest-sso': {
+    label: 'SSO',
+    summary:
+      'The same guest with a live session. Pick the account and /reprocess continues, with no trip out to the provider.',
+    outcome: { label: 'Token issued', ok: true },
+  },
 }
 
 /**
@@ -381,13 +398,13 @@ export const TAB_FLOWS: readonly FlowId[] = [
 export const MEMBER_FLOWS: readonly FlowId[] = ['member-signin', 'member-sso']
 
 /**
- * Module 2's guest tab set. Just the sign-up for now; the returning-guest
- * sign-in joins it when that capture lands (sign-up = sign-in + the
- * create-account step). Driven by the live /guest hand-off, so it renders
- * `simulated` like the member — a recorded flow beside the visitor's own real
- * token.
+ * Module 2's guest tab set. Sign-up creates the account (and posts SelfAsserted);
+ * sign-in is the returning guest (home-realm discovery on the email, no create);
+ * SSO reuses a live session and just picks the account. Driven by the live /guest
+ * hand-off, so they render `simulated` like the member — recorded flows beside
+ * the visitor's own real token.
  */
-export const GUEST_FLOWS: readonly FlowId[] = ['guest-signup']
+export const GUEST_FLOWS: readonly FlowId[] = ['guest-signup', 'guest-signin', 'guest-sso']
 
 /**
  * Requests unique to a flow, marked with ◆ so switching makes the diff visible.
@@ -409,6 +426,10 @@ export const FLOW_ONLY: Record<FlowId, readonly string[]> = {
   'member-sso': ['reprocess'],
   // The create-account half of a sign-up. A returning guest posts neither.
   'guest-signup': ['selfasserted', 'confirmed'],
+  // The returning guest types an email, so it alone does home-realm discovery.
+  'guest-signin': ['credtype'],
+  // Session reused: the account picker, in place of the whole federated leg.
+  'guest-sso': ['reprocess'],
 }
 
 type Measured = {
@@ -641,7 +662,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
       what: 'The provider the guest chose (Google, in this capture) redirects back to Entra, which ingests its assertion at the authresp endpoint.',
       why: 'A guest is homed in an external realm, so authentication happened there. This is where the result comes home.',
       gotcha:
-        'The whole trip out to the provider is the human gap before this. This request is where it lands, and the two seconds of it are Entra mapping the assertion to a guest object, not our side.',
+        'The whole trip out to the provider is the human gap before this. This request is where it lands: Entra mapping the provider\'s assertion to a guest object. That is server work on Entra\'s side, not ours, and it is the most expensive machine step in the flow.',
     },
   },
   '/{tid}/B2X_1_B2B/SelfAsserted': {
@@ -1020,6 +1041,49 @@ const FLOW_ANNOTATIONS: Partial<Record<FlowId, Record<string, AnnotationOverride
       detail: {
         what: 'The browser leaves for the workforce tenant carrying client_id, redirect_uri, scope, state, nonce and the PKCE challenge.',
         why: 'The workforce authority this app registration is configured with.',
+      },
+    },
+    '/{tid}/oauth2/v2.0/token': {
+      code: undefined,
+    },
+  },
+  'guest-signin': {
+    '/{tid}/oauth2/v2.0/authorize': {
+      code: undefined,
+      summary: 'The browser leaves for the workforce tenant to start the sign-in.',
+      detail: {
+        what: 'The browser leaves for the workforce tenant carrying client_id, redirect_uri, scope, state, nonce and the PKCE challenge.',
+        why: 'The workforce authority this app registration is configured with.',
+      },
+    },
+    '/tfp/{tid}/B2X_1_B2B/oauth2/v2.0/authorize': {
+      // A returning guest reaches the user flow after home-realm discovery on the
+      // email they typed, not by picking a provider on a create-account screen.
+      // Drop the sign-up-flavoured human label; the gap here is the redirect, and
+      // it is not clearly a person.
+      humanDoing: undefined,
+      summary: 'Routed into the B2X_1_B2B user flow, this time to sign in.',
+    },
+    '/{tid}/oauth2/v2.0/token': {
+      code: undefined,
+    },
+  },
+  'guest-sso': {
+    '/{tid}/oauth2/v2.0/authorize': {
+      code: undefined,
+      summary: 'The browser leaves for the workforce tenant, session in hand.',
+      detail: {
+        what: 'The browser leaves for the workforce tenant carrying client_id, redirect_uri, scope, state, nonce and the PKCE challenge.',
+        why: 'The workforce authority this app registration is configured with.',
+      },
+    },
+    '/{tid}/reprocess': {
+      // The shared gotcha compares reprocess against GetCredentialType and /login,
+      // which is the MEMBER's fresh sign-in. A guest's fresh sign-in is home-realm
+      // discovery and the whole trip out to the provider instead.
+      detail: {
+        gotcha:
+          'SSO with a prompt, not silent SSO. The session is reused so nothing is entered, but an account chooser still appears. Force a fresh sign-in instead and you pay the home-realm discovery and the whole trip out to the provider that this skips.',
       },
     },
     '/{tid}/oauth2/v2.0/token': {

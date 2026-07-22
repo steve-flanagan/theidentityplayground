@@ -1,0 +1,119 @@
+{
+  "flow": "guest-signin",
+  "capturedAt": "2026-07-22T19:09:26.379-04:00",
+  "note": "Derived from a real HAR by scripts/har-to-timings.mjs. Timings only — no headers, cookies, bodies or query strings. The HAR itself is gitignored and must stay that way.",
+  "requestCount": 6,
+  "machineMs": 3613,
+  "wallMs": 24977,
+  "humanMs": 21364,
+  "requests": [
+    {
+      "path": "/{tid}/oauth2/v2.0/authorize",
+      "host": "login.microsoftonline.com",
+      "method": "GET",
+      "status": 200,
+      "startedAt": 0,
+      "total": 529,
+      "idleBefore": 0,
+      "timings": {
+        "blocked": 0,
+        "dns": 26,
+        "connect": 71,
+        "ssl": 81,
+        "send": 0,
+        "wait": 275,
+        "receive": 76
+      }
+    },
+    {
+      "path": "/common/GetCredentialType",
+      "host": "login.microsoftonline.com",
+      "method": "POST",
+      "status": 200,
+      "startedAt": 9417,
+      "total": 221,
+      "idleBefore": 8888,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 221,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/tfp/{tid}/B2X_1_B2B/oauth2/v2.0/authorize",
+      "host": "login.microsoftonline.com",
+      "method": "GET",
+      "status": 302,
+      "startedAt": 11992,
+      "total": 760,
+      "idleBefore": 2354,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 760,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/te/{tid}/oauth2/authresp",
+      "host": "login.microsoftonline.com",
+      "method": "GET",
+      "status": 200,
+      "startedAt": 20308,
+      "total": 1283,
+      "idleBefore": 7556,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 1283,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/common/federation/oauth2ief",
+      "host": "login.microsoftonline.com",
+      "method": "POST",
+      "status": 302,
+      "startedAt": 21729,
+      "total": 619,
+      "idleBefore": 138,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 619,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/{tid}/oauth2/v2.0/token",
+      "host": "login.microsoftonline.com",
+      "method": "POST",
+      "status": 0,
+      "startedAt": 24776,
+      "total": 201,
+      "idleBefore": 2428,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 20,
+        "ssl": 22,
+        "send": 0,
+        "wait": 159,
+        "receive": 0
+      }
+    }
+  ]
+}
