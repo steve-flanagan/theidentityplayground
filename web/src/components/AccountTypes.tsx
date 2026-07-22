@@ -233,8 +233,11 @@ export function AccountTypes({ activeKey }: { activeKey?: string } = {}) {
   const [seenActiveKey, setSeenActiveKey] = useState(activeKey)
   if (activeKey !== seenActiveKey) {
     setSeenActiveKey(activeKey)
-    const next = activeKey ? IDENTITIES.find((id) => id.key === activeKey) : undefined
-    if (next) setSel(next)
+    // Follow the active identity, and fall back to the default (customer) when it
+    // clears. Exiting a member or guest view has to move the map off the type it
+    // was showing, not leave it stuck there.
+    const forced = activeKey ? IDENTITIES.find((id) => id.key === activeKey) : undefined
+    setSel(forced ?? CUSTOMER_IDENTITY)
   }
 
   const wrapRef = useRef<HTMLDivElement>(null)
