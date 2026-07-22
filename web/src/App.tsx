@@ -4,7 +4,8 @@ import { TokenInspector } from './components/TokenInspector'
 import { JourneyTimeline } from './components/JourneyTimeline'
 import { SignInPanel } from './components/SignInPanel'
 import { AccountTypes } from './components/AccountTypes'
-import { buildSampleToken } from './lib/sampleToken'
+import { buildSampleToken, buildMemberSampleToken } from './lib/sampleToken'
+import { MEMBER_FLOWS } from './lib/journey'
 import {
   accountCreatedAtMs,
   readLastFlow,
@@ -31,7 +32,7 @@ type Module = {
 // growing." Update `status` as phases land.
 const MODULES: Module[] = [
   { phase: 1, name: 'Token Inspector', blurb: 'Sign in, then read your own ID token. Every claim annotated.', status: 'live' },
-  { phase: 2, name: 'Three Doors, One App', blurb: 'Customer, business guest, or employee. Compare what each token says.', status: 'building' },
+  { phase: 2, name: 'Member, Guest, Customer', blurb: 'Customer, business guest, or employee. Compare what each token says.', status: 'building' },
   { phase: 3, name: 'Auth Methods Arena', blurb: 'Password, email OTP, social, passkey. Watch each flow execute.', status: 'planned' },
   { phase: 4, name: "The Admin's View", blurb: 'A live sign-in log. Yours shows up in it.', status: 'planned' },
   { phase: 5, name: 'Conditional Access, Live', blurb: 'Trip a real CA policy and read the policy that caught you.', status: 'planned' },
@@ -104,6 +105,33 @@ function App() {
    */
   const [localSignOutCount, setLocalSignOutCount] = useState(0)
 
+  /**
+   * Module 2's member simulation. A visitor can never really be a workforce
+   * member, so "Sign in as Member" flips this on and App swaps three surfaces
+   * onto the member sample: the inspector token, the timeline's flows, and the
+   * account-types map. Client-side only, no MSAL and no network. Null is
+   * signed-out or the real customer, exactly as before.
+   */
+  const [activeSim, setActiveSim] = useState<'member' | null>(null)
+  // A real sign-in always wins over the sample. The button that sets this is
+  // hidden once you are signed in (see SignInPanel), and this is the belt to that
+  // suspenders: even if activeSim were somehow still set, a real token overrides
+  // it, so the two identities can never fight over the three surfaces.
+  const simMember = activeSim === 'member' && !realIdToken
+  // Built once, like the customer sample beside it.
+  const memberToken = useMemo(() => buildMemberSampleToken(), [])
+
+  // What the inspector shows: the member sample while simulating, otherwise the
+  // real token or the customer sample. `live` stays false for a sample, so the
+  // inspector keeps its "not your real token" framing.
+  const inspectorToken = simMember ? memberToken : (realIdToken ?? sampleToken)
+  const inspectorLabel = simMember
+    ? 'Member sample token'
+    : realIdToken
+      ? 'Your ID token'
+      : 'Sample ID token'
+  const inspectorLive = simMember ? false : Boolean(realIdToken)
+
   return (
     // No max-width. There was one — 112rem, 1792px — and on a full-screen
     // window wider than that it stopped the page dead in the middle of the
@@ -151,23 +179,30 @@ function App() {
           >
             <div className="mb-4">
               <h2 id="inspector" className="text-sm font-medium uppercase tracking-widest text-slate-500">
-                {realIdToken ? 'Your claims' : 'The claims you’d get'}
+                {simMember ? 'Member’s claims (sample)' : realIdToken ? 'Your claims' : 'The claims you’d get'}
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-slate-400">
-                {realIdToken
-                  ? 'The real token you were just issued, every claim annotated: what it is, why it’s in your token, and which tenant configuration produced it.'
-                  : 'A sample, until you sign in. Then this reads your own real token: same claims, your values.'}
+                {simMember
+                  ? 'A workforce member’s captured token, shown as a sample. Every claim annotated, with the member’s values.'
+                  : realIdToken
+                    ? 'The real token you were just issued, every claim annotated: what it is, why it’s in your token, and which tenant configuration produced it.'
+                    : 'A sample, until you sign in. Then this reads your own real token: same claims, your values.'}
               </p>
             </div>
 
             <div className="mb-4">
-              <SignInPanel onLocalSignOut={() => setLocalSignOutCount((n) => n + 1)} />
+              <SignInPanel
+                onLocalSignOut={() => setLocalSignOutCount((n) => n + 1)}
+                onSimulateMember={() => setActiveSim('member')}
+                simActive={simMember}
+                onExitSim={() => setActiveSim(null)}
+              />
             </div>
 
             <TokenInspector
-              token={realIdToken ?? sampleToken}
-              label={realIdToken ? 'Your ID token' : 'Sample ID token'}
-              live={Boolean(realIdToken)}
+              token={inspectorToken}
+              label={inspectorLabel}
+              live={inspectorLive}
             />
 
             {/* ── The way to /app2, which was reachable only by typing the URL ──
@@ -224,19 +259,41 @@ function App() {
                 claim about the data's provenance; this is a temporary state note
                 that stops applying the moment someone signs in. Folding a
                 transient into a permanent statement made both read as hedging. */}
-            {!realIdToken && (
+            {!realIdToken && !simMember && (
               <p className="mb-4 max-w-3xl rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-200/70">
                 <span className="font-medium text-amber-300">Recorded sample flows.</span> Sign in
                 and the one you actually performed gets called out.
               </p>
             )}
 
-            <JourneyTimeline
-              token={realIdToken ?? sampleToken}
-              tokenLabel={realIdToken ? 'Your ID token' : 'Sample ID token'}
-              localSignOutCount={localSignOutCount}
-              resolvedFlow={resolvedFlow}
-            />
+            {simMember && (
+              <p className="mb-4 max-w-3xl rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-200/70">
+                <span className="font-medium text-amber-300">Member sample.</span> A real workforce
+                member’s captured sign-in, replayed. Switch tabs to compare SSO against a full sign-in.
+              </p>
+            )}
+
+            {/* One timeline, the identity is the variable. The member sim is a
+                separate mount (its own key) so it opens fresh on the member flows
+                with no customer lastFlow, badge or deep link carried across. */}
+            {simMember ? (
+              <JourneyTimeline
+                key="sim-member"
+                token={memberToken}
+                tokenLabel="Member sample token"
+                flows={MEMBER_FLOWS}
+                defaultFlow="member-signin"
+                simulated
+              />
+            ) : (
+              <JourneyTimeline
+                key="customer"
+                token={realIdToken ?? sampleToken}
+                tokenLabel={realIdToken ? 'Your ID token' : 'Sample ID token'}
+                localSignOutCount={localSignOutCount}
+                resolvedFlow={resolvedFlow}
+              />
+            )}
           </section>
 
             {/* ── Module 2 · account types ───────────────────────────────
@@ -247,7 +304,7 @@ function App() {
                 the signed-in state through the shared MSAL instance's hooks,
                 never a second instance. */}
             <div className="mt-14 border-t border-slate-800 pt-12">
-              <AccountTypes />
+              <AccountTypes activeKey={simMember ? 'member' : undefined} />
             </div>
           </div>
         </div>

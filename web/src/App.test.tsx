@@ -292,3 +292,25 @@ describe('a sign-in that fails clears what it failed on', () => {
     expect(clearCache).not.toHaveBeenCalled()
   })
 })
+
+// ── The member sample is a signed-out affordance ────────────────────────────
+// Clicking "Sign in as Member" while signed in as a real account put the panel in
+// two states at once — "signed in as X" above, a member sample below — and read
+// as broken. The sample is client-side and a real token overrides it anyway, so
+// the control is simply removed once someone is signed in.
+
+describe('the member sample is only offered signed out', () => {
+  const memberButton = () =>
+    screen.queryByRole('button', { name: 'Sign in as Member (sample data)' })
+
+  it('offers it to a signed-out visitor', () => {
+    render(<App />)
+    expect(memberButton()).not.toBeNull()
+  })
+
+  it('removes it once a real account is signed in', () => {
+    signedIn = [accountHolding(realToken(5))]
+    render(<App />)
+    expect(memberButton()).toBeNull()
+  })
+})

@@ -1,5 +1,4 @@
 import { useState, useRef, useLayoutEffect, useCallback } from 'react'
-import { useIsAuthenticated } from '@azure/msal-react'
 
 /*
  * Module 2: account types. Same person shown as three directory objects
@@ -49,6 +48,25 @@ type Identity = {
 
 const IDENTITIES: Identity[] = [
   {
+    key: 'customer',
+    label: 'CIAM Customer',
+    what: 'An end user of the app. Never in the company’s workforce directory at all.',
+    summary:
+      'The app only, and that is by design. A compromised customer can misuse the app as a customer and nothing more. No directory, no subscription, no workforce tenant.',
+    home: 'ciam',
+    exposure: {
+      A: { tenant: 'none', top: 'none' },
+      B: { tenant: 'none', top: 'none' },
+      ciam: { tenant: 'none', top: 'low' },
+    },
+    claims: {
+      idp: 'N/A  local · google.com social',
+      tid: 'External ID  7e8da8a9',
+      identifier: 'their email · generated @…onmicrosoft.com',
+      email: 'present',
+    },
+  },
+  {
     key: 'member',
     label: 'Workforce member',
     what: 'Has an account in your Entra directory and member-level access in your organization. Employees.',
@@ -86,29 +104,12 @@ const IDENTITIES: Identity[] = [
       email: 'present',
     },
   },
-  {
-    key: 'customer',
-    label: 'CIAM Customer',
-    what: 'An end user of the app. Never in the company’s workforce directory at all.',
-    summary:
-      'The app only, and that is by design. A compromised customer can misuse the app as a customer and nothing more. No directory, no subscription, no workforce tenant.',
-    home: 'ciam',
-    exposure: {
-      A: { tenant: 'none', top: 'none' },
-      B: { tenant: 'none', top: 'none' },
-      ciam: { tenant: 'none', top: 'low' },
-    },
-    claims: {
-      idp: 'N/A  local · google.com social',
-      tid: 'External ID  7e8da8a9',
-      identifier: 'their email · generated @…onmicrosoft.com',
-      email: 'present',
-    },
-  },
 ]
 
-// Signed in leads with this one today (see AccountTypes). Found by key so the
-// array order stays free to change.
+// The default selection, and the first cell in the picker and the diff. The
+// customer leads because it is the one live sign-in on the site and the account
+// type most often misread as a workforce identity. Found by key so the array
+// order stays free to change.
 const CUSTOMER_IDENTITY = IDENTITIES.find((id) => id.key === 'customer')!
 
 // Heat = blast radius if compromised. high = biggest attack surface (a trusted
@@ -210,23 +211,31 @@ function Legend() {
   )
 }
 
-export function AccountTypes() {
+export function AccountTypes({ activeKey }: { activeKey?: string } = {}) {
   // The picker is illustrative: any of the three types can be selected and its
-  // blast radius read, signed in or not. The one live thing is which type the
-  // visitor actually is. Today the only real sign-in on this site is the
-  // External ID (CIAM) customer, so any authenticated visitor is the customer,
-  // and the map leads with that selection. Member and guest real-type detection
-  // (reading idp / tid off the account via useMsal) arrives when those sign-ins
-  // exist; they do not yet, so there is nothing else to branch on.
+  // blast radius read. It leads with the customer, the one live sign-in on the
+  // site and the type most often misread as a workforce identity.
   //
-  // Read through the shared MSAL instance's hook, the same way SignInPanel does.
-  // It never constructs its own PublicClientApplication: exactly one instance
-  // boots per page (see main.tsx), and a second would fight it for the redirect
-  // response.
-  const isAuthenticated = useIsAuthenticated()
-  const [sel, setSel] = useState<Identity>(() =>
-    isAuthenticated ? CUSTOMER_IDENTITY : IDENTITIES[0],
-  )
+  // Which identity is "active" is App's call, passed as activeKey: it flips to
+  // member while the member sample is on, and will follow the member and guest
+  // live flows when they land. App owns the MSAL read, so this component never
+  // touches a PublicClientApplication and cannot fight the one instance per page
+  // (see main.tsx). The buttons still let a visitor explore any type.
+  const [sel, setSel] = useState<Identity>(() => {
+    const forced = activeKey ? IDENTITIES.find((id) => id.key === activeKey) : undefined
+    return forced ?? CUSTOMER_IDENTITY
+  })
+
+  // Follow the active identity when App changes it — "Sign in as Member" moves
+  // the map to member — while leaving the picker buttons free to choose any type
+  // afterward. Compared during render, the same shape the timeline uses for its
+  // late answers, so it lands in the same paint rather than a frame later.
+  const [seenActiveKey, setSeenActiveKey] = useState(activeKey)
+  if (activeKey !== seenActiveKey) {
+    setSeenActiveKey(activeKey)
+    const next = activeKey ? IDENTITIES.find((id) => id.key === activeKey) : undefined
+    if (next) setSel(next)
+  }
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const triRefs = useRef<Partial<Record<ScopeKey, HTMLDivElement | null>>>({})

@@ -8,6 +8,8 @@ import signupCapture from '../lib/captures/signup.json'
 import ssoOnCapture from '../lib/captures/sso-on.json'
 import ssoOffCapture from '../lib/captures/sso-off.json'
 import ssoProbeCapture from '../lib/captures/sso-probe.json'
+import memberSigninCapture from '../lib/captures/member-signin.json'
+import memberSsoCapture from '../lib/captures/member-sso.json'
 import {
   ACTOR_LABELS,
   buildJourney,
@@ -27,7 +29,18 @@ import { clearLastFlow, markFlowStart, STALE_AFTER_MS, type FlowMatch } from '..
  * to hold for it. Anything that reaches a flow by clicking its tab uses
  * TAB_FLOWS instead.
  */
-const FLOWS: FlowId[] = ['signup', 'signin', 'sso-on', 'sso-off', 'sso-probe', 'signout']
+const FLOWS: FlowId[] = [
+  'signup',
+  'signin',
+  'sso-on',
+  'sso-off',
+  'sso-probe',
+  'signout',
+  // Module 2's member simulation builds like any other flow, so every guard in
+  // this file runs over it too.
+  'member-signin',
+  'member-sso',
+]
 
 // These exist because of a real outage, not for coverage.
 //
@@ -746,6 +759,8 @@ const CAPTURE: Record<FlowId, CaptureShape> = {
   'sso-off': ssoOffCapture as CaptureShape,
   'sso-probe': ssoProbeCapture as CaptureShape,
   signout: signoutCapture as CaptureShape,
+  'member-signin': memberSigninCapture as CaptureShape,
+  'member-sso': memberSsoCapture as CaptureShape,
 }
 
 describe('per-capture prose stays inside the capture it was measured from', () => {

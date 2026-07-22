@@ -111,7 +111,18 @@ export type JourneyEvent = ZoomNode & {
   idleDoing?: string
 }
 
-export type FlowId = 'signup' | 'signin' | 'sso-on' | 'sso-off' | 'sso-probe' | 'signout'
+export type FlowId =
+  | 'signup'
+  | 'signin'
+  | 'sso-on'
+  | 'sso-off'
+  | 'sso-probe'
+  | 'signout'
+  // Module 2's member simulation: the workforce equivalents of signin / sso-on,
+  // measured off Member@ through the workforce app. A separate tab set from the
+  // customer flows above — see MEMBER_FLOWS.
+  | 'member-signin'
+  | 'member-sso'
 
 export type Journey = {
   id: FlowId
@@ -208,6 +219,8 @@ import ssoOnCapture from './captures/sso-on.json'
 import ssoOffCapture from './captures/sso-off.json'
 import ssoProbeCapture from './captures/sso-probe.json'
 import signoutCapture from './captures/signout.json'
+import memberSigninCapture from './captures/member-signin.json'
+import memberSsoCapture from './captures/member-sso.json'
 
 type CapturedRequest = {
   path: string
@@ -245,6 +258,8 @@ const CAPTURES: Record<FlowId, Capture> = {
   'sso-off': ssoOffCapture as Capture,
   'sso-probe': ssoProbeCapture as Capture,
   signout: signoutCapture as Capture,
+  'member-signin': memberSigninCapture as Capture,
+  'member-sso': memberSsoCapture as Capture,
 }
 
 /**
@@ -302,6 +317,18 @@ export const FLOW_META: Record<
       'Global sign-out. Two requests end the session at Entra. The local variant makes none at all.',
     outcome: { label: 'Session ended', ok: true },
   },
+  'member-signin': {
+    label: 'Sign-in',
+    summary:
+      'A workforce member, signing in with a password. Home-realm discovery, the credential, the token.',
+    outcome: { label: 'Token issued', ok: true },
+  },
+  'member-sso': {
+    label: 'SSO',
+    summary:
+      'The same member with a live session. No password: after the account is picked, /reprocess continues off the session.',
+    outcome: { label: 'Token issued', ok: true },
+  },
 }
 
 /**
@@ -333,6 +360,16 @@ export const TAB_FLOWS: readonly FlowId[] = [
 ]
 
 /**
+ * Module 2's member simulation has its own tab set, entirely separate from the
+ * customer flows above. A visitor never really signs in as a member, so this is
+ * driven by the "Sign in as Member" control, not by a lastFlow marker: the
+ * timeline renders it with `simulated`, which turns off the "yours" badge and
+ * the deep-link fragment. Two flows, the same signin-vs-SSO contrast the
+ * customer strip makes, one tenant over.
+ */
+export const MEMBER_FLOWS: readonly FlowId[] = ['member-signin', 'member-sso']
+
+/**
  * Requests unique to a flow, marked with ◆ so switching makes the diff visible.
  * Nothing here is cosmetic: each entry is a request that exists in one flow and
  * genuinely does not exist in its counterpart.
@@ -345,6 +382,11 @@ export const FLOW_ONLY: Record<FlowId, readonly string[]> = {
   'sso-probe': [],
   // The only two requests on the site that end a session rather than start one.
   signout: ['logout', 'logoutsession'],
+  // The member pair's diff, the same shape as the customer SSO pair: signing in
+  // pays home-realm discovery and the credential; reusing the session pays
+  // neither and hits /reprocess instead.
+  'member-signin': ['credtype', 'login'],
+  'member-sso': ['reprocess'],
 }
 
 type Measured = {
@@ -577,6 +619,21 @@ const ANNOTATIONS: Record<string, Annotation> = {
       why: 'Email + password, per the SUSI_Email flow.',
       gotcha:
         'Conditional Access and MFA evaluation both happen inside this one request. Neither triggered here, and neither is separately timed. A browser sees a single TTFB and nothing can decompose it.',
+    },
+  },
+  '/{tid}/reprocess': {
+    match: '/{tid}/reprocess',
+    id: 'reprocess',
+    short: '/reprocess',
+    label: 'GET /reprocess',
+    actor: 'entra',
+    humanDoing: 'picking an account',
+    summary: 'The session is reused. No password, just a choice of account.',
+    detail: {
+      what: 'Entra reprocesses the existing sign-in session for the account that was picked.',
+      why: 'A live session already existed, so there was nothing to authenticate. Picking an account is enough to continue the authorize.',
+      gotcha:
+        'SSO with a prompt, not silent SSO. The session is reused so no credential is entered, but an account chooser still appears, which is why /reprocess stands where GetCredentialType and /login are in the sign-in. Force a fresh sign-in instead and you pay the home-realm discovery and the credential check this skips.',
     },
   },
   '/{tid}/federation/oauth2': {
@@ -832,6 +889,33 @@ const FLOW_ANNOTATIONS: Partial<Record<FlowId, Record<string, AnnotationOverride
       },
     },
   },
+  'member-signin': {
+    '/{tid}/oauth2/v2.0/authorize': {
+      // The shared entry points at the CIAM msalConfig and promises four inside
+      // steps to open. The workforce member goes through a different app, and this
+      // sample does not expose that app's internals, so both are dropped. The
+      // connection-setup gotcha underneath is generic and stays.
+      code: undefined,
+      summary: 'The browser leaves for the workforce tenant to start the sign-in.',
+      detail: {
+        what: 'The browser leaves for the workforce tenant carrying client_id, redirect_uri, scope, state, nonce and the PKCE challenge.',
+        why: 'The workforce authority this app registration is configured with.',
+      },
+    },
+    '/{tid}/login': {
+      detail: {
+        why: 'A native workforce credential, checked against the directory.',
+        gotcha:
+          'Conditional Access and MFA are evaluated inside this one request when a policy applies. Neither did here, and a browser sees a single TTFB either way, so nothing inside it is separately timed.',
+      },
+    },
+    '/{tid}/oauth2/v2.0/token': {
+      // Same as authorize: the shared code reference is the CIAM sign-in panel,
+      // not this flow. The PKCE / no-secret point in the shared detail still
+      // holds, the member app being a SPA too.
+      code: undefined,
+    },
+  },
 }
 
 // ── The phases: a real level down ───────────────────────────────────────────
@@ -948,6 +1032,13 @@ function toEvents(
 ): JourneyEvent[] {
   let clock = 0
 
+  /**
+   * The member simulation reuses the shared request annotations, which are
+   * mostly generic OAuth mechanics, but its authorize must not open into the
+   * CIAM-specific inside steps below. See the insideWait assignment.
+   */
+  const memberFlow = flow.startsWith('member-')
+
   /** This flow's overrides, if it has any. Falls through to the shared map. */
   const overrides = FLOW_ANNOTATIONS[flow] ?? {}
 
@@ -1010,10 +1101,15 @@ function toEvents(
     const span = { start: clock, end: clock + m.total }
     clock = span.end
 
-    // What hangs off the `wait` phase — the part Entra won't itemise.
+    // What hangs off the `wait` phase — the part Entra won't itemise. The member
+    // sample deliberately does NOT open the authorize internals: those steps (the
+    // SUSI_Email user flow, the msalConfig redirect) are CIAM-specific and untrue
+    // of a workforce app, so a member authorize shows its real phases and stops.
     const insideWait: ZoomNode[] =
       m.id === 'authorize'
-        ? AUTHORIZE_INSIDE
+        ? memberFlow
+          ? []
+          : AUTHORIZE_INSIDE
         : m.id === 'login'
           ? CA_MFA_INSIDE
           : m.id === 'logout'
@@ -1037,7 +1133,7 @@ function toEvents(
         // Static Web Apps handing back HTML, and Entra is nowhere near it.
         label:
           key === 'wait'
-            ? r.host.includes('ciamlogin')
+            ? /ciamlogin|login\.microsoftonline\.com/.test(r.host)
               ? 'Waiting: Entra thinking'
               : 'Waiting: our host responding'
             : copy.label,

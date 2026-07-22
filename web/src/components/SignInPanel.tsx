@@ -14,6 +14,15 @@ type Props = {
    * standalone.
    */
   onLocalSignOut?: () => void
+  /**
+   * Module 2's member simulation. A visitor can never really be a workforce
+   * member, so these drive a client-side sample: onSimulateMember turns it on,
+   * simActive reports it is on, onExitSim turns it back off. App owns the state
+   * and swaps the inspector, the timeline and the account-types map with it.
+   */
+  onSimulateMember?: () => void
+  simActive?: boolean
+  onExitSim?: () => void
 }
 
 /**
@@ -44,7 +53,12 @@ type Props = {
  * clearCache(), drops the local tokens and leaves the Entra session standing, so
  * the next sign-in demonstrates SSO instead of hiding it.
  */
-export function SignInPanel({ onLocalSignOut }: Props) {
+export function SignInPanel({
+  onLocalSignOut,
+  onSimulateMember,
+  simActive = false,
+  onExitSim,
+}: Props) {
   const { instance, inProgress, accounts } = useMsal()
   const isAuthenticated = useIsAuthenticated()
   const [error, setError] = useState<string | null>(null)
@@ -215,6 +229,49 @@ export function SignInPanel({ onLocalSignOut }: Props) {
           </button>
         )}
       </div>
+
+      {/* ── Sample identities (Module 2) ───────────────────────────────────
+          A visitor can never really be a workforce member, so this is a
+          client-side sample: App swaps the inspector, the timeline and the
+          account-types map onto the member's captured token and flows, all
+          clearly labelled sample. Guest joins this when its live flow lands.
+
+          Hidden once you are really signed in. Overlaying a sample on a live
+          session put the panel in two states at once — "signed in as X" up top,
+          a member sample below — which read as broken. A real account takes the
+          panel; the sample is only offered signed-out. */}
+      {!isAuthenticated && (
+        <div className="mt-4 border-t border-slate-800 pt-3">
+          <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
+            Sample identities
+          </p>
+          {simActive ? (
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-slate-300">
+                Viewing a sample: <span className="text-emerald-300">workforce member</span>
+              </p>
+              <button
+                onClick={onExitSim}
+                className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500"
+              >
+                Exit sample
+              </button>
+            </div>
+          ) : (
+            <>
+              <button
+                onClick={onSimulateMember}
+                className="mt-2 rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500"
+              >
+                Sign in as Member (sample data)
+              </button>
+              <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                No account needed. Loads a real member's captured token and sign-in, to compare against the customer above.
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* ── The SSO switches ─────────────────────────────────────────────── */}
       <div className="mt-4 border-t border-slate-800 pt-3">

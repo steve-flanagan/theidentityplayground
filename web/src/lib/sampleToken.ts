@@ -89,3 +89,57 @@ export function buildSampleToken(): string {
 
   return `${base64UrlEncode(header)}.${base64UrlEncode(payload)}.SAMPLE_SIGNATURE_THIS_TOKEN_IS_NOT_REAL_AND_WAS_NEVER_SIGNED`
 }
+
+// The workforce tenant and the Module 2 app, both public identifiers. See
+// notes/environment.md.
+const WORKFORCE_TENANT_ID = '9e1372b0-e94f-40af-aef8-6a5fa2bfb2e4'
+const MODULE2_APP_ID = '1cb2c7c3-2f2d-499a-8dea-da847280262a'
+
+/**
+ * A member sample token, for Module 2's "Sign in as Member" simulation.
+ *
+ * A visitor can never actually be a workforce member, so this stands in. The
+ * claim SET and the diff-relevant VALUES are the real ones, measured off
+ * Member@theidentityplayground.com's own token (notes/module2-captures.md); the
+ * opaque values are invented and the signature is visibly not one, exactly like
+ * buildSampleToken above. Timestamps are fresh for the same reason that one's
+ * are: a baked token reads as expired months later, which is not what "sample"
+ * should look like.
+ *
+ * What makes it a MEMBER rather than the customer sample, and it is the whole
+ * point of the account-types diff:
+ *   - it is issued by the WORKFORCE tenant (login.microsoftonline.com), so `tid`
+ *     is the workforce tenant, not External ID;
+ *   - there is no `idp`, because a native member's issuer IS its identity
+ *     provider, the same reason a local account has none;
+ *   - there is no `email` and no `createddatetime`, neither of which a native
+ *     workforce sign-in carries.
+ */
+export function buildMemberSampleToken(): string {
+  const now = Math.floor(Date.now() / 1000)
+
+  const header = { typ: 'JWT', alg: 'RS256', kid: 'sample-key-not-real' }
+
+  // 15 claims — the set a native workforce member sign-in issues here. No email,
+  // no createddatetime, no idp: the three the customer and guest carry and the
+  // member does not.
+  const payload = {
+    aud: MODULE2_APP_ID,
+    iss: `https://login.microsoftonline.com/${WORKFORCE_TENANT_ID}/v2.0`,
+    iat: now,
+    nbf: now,
+    exp: now + 3600,
+    name: 'Member User',
+    nonce: 'sample-nonce-value',
+    oid: '11111111-2222-3333-4444-555555555555',
+    preferred_username: 'Member@theidentityplayground.com',
+    rh: '1.SAMPLE_OPAQUE_REFRESH_HINT_NOT_REAL.',
+    sid: '00000000-0000-0000-0000-000000000000',
+    sub: 'sample-member-subject',
+    tid: WORKFORCE_TENANT_ID,
+    uti: 'SAMPLE_UTI_NOT_REAL',
+    ver: '2.0',
+  }
+
+  return `${base64UrlEncode(header)}.${base64UrlEncode(payload)}.SAMPLE_SIGNATURE_THIS_TOKEN_IS_NOT_REAL_AND_WAS_NEVER_SIGNED`
+}

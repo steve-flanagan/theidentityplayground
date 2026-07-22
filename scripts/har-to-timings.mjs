@@ -88,14 +88,32 @@ if (!har.log?.entries?.length) {
   process.exit(1)
 }
 
-/** Only the hosts this journey is about. Everything else is noise. */
+/**
+ * Only the hosts this journey is about. Everything else is noise.
+ *
+ * Three kinds of host matter: the CIAM tenant (ciamlogin), the workforce tenant
+ * (login.microsoftonline.com, where Module 2's member and guest sign in), and our
+ * own origin on the real site (the redirect landing). The localhost dev server is
+ * deliberately NOT one of them. The member capture is taken through capture.html
+ * on it, and a dev server's own timings — Vite compiling a module, the HMR
+ * socket — are not representative of anything that ships. Entra's timings are the
+ * same wherever the client runs, so dropping the localhost rows loses nothing real
+ * and keeps a member sample from carrying a two-second bar that is pure dev noise.
+ */
 const isRelevant = (url) => {
   const u = new URL(url)
-  if (!/ciamlogin|theidentityplayground/.test(u.host)) return false
+  const path = u.pathname
   // Static assets aren't steps in an auth flow. The bundle in particular is
   // named with a content hash that changes on every build, so keeping it would
   // bake a filename into the timeline that is wrong by the next deploy.
-  return !/favicon|\.css$|\.svg$|\.ico$|\.js$|\.woff2?$/.test(u.pathname)
+  if (/favicon|\.css$|\.svg$|\.ico$|\.js$|\.mjs$|\.woff2?$|\.map$/.test(path)) return false
+  // Vite dev-server machinery: module requests, its client, the refresh runtime.
+  // Present only in a localhost capture and never a step in the flow.
+  if (/^\/@|^\/src\/|^\/node_modules\//.test(path)) return false
+  // Entra, either tenant.
+  if (/ciamlogin|login\.microsoftonline\.com/.test(u.host)) return true
+  // Our own origin, but only on the real site. Localhost is a capture harness.
+  return /theidentityplayground/.test(u.host)
 }
 
 /**
@@ -151,8 +169,9 @@ for (const e of entries) {
   const oauthError = location?.match(/[#&?]error=([^&]+)/)?.[1]
 
   requests.push({
-    // Tenant GUID is public, but collapsing it keeps the labels readable.
-    path: u.host.includes('ciamlogin')
+    // Tenant GUID is public, but collapsing it keeps the labels readable. Both
+    // Entra hosts carry it; our own origin does not, and is labelled SPA.
+    path: /ciamlogin|login\.microsoftonline\.com/.test(u.host)
       ? u.pathname.replace(/\/[0-9a-f-]{36}(?=\/|$)/i, '/{tid}')
       : `SPA ${u.pathname}`,
     host: u.host,
