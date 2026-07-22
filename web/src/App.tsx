@@ -30,8 +30,8 @@ type Module = {
 // Homepage roadmap, per spec section 5: "The site is never 'unfinished,' just
 // growing." Update `status` as phases land.
 const MODULES: Module[] = [
-  { phase: 1, name: 'Token Inspector', blurb: 'Sign in, then read your own ID token. Every claim annotated.', status: 'building' },
-  { phase: 2, name: 'Three Doors, One App', blurb: 'Customer, business guest, or employee. Compare what each token says.', status: 'planned' },
+  { phase: 1, name: 'Token Inspector', blurb: 'Sign in, then read your own ID token. Every claim annotated.', status: 'live' },
+  { phase: 2, name: 'Three Doors, One App', blurb: 'Customer, business guest, or employee. Compare what each token says.', status: 'building' },
   { phase: 3, name: 'Auth Methods Arena', blurb: 'Password, email OTP, social, passkey. Watch each flow execute.', status: 'planned' },
   { phase: 4, name: "The Admin's View", blurb: 'A live sign-in log. Yours shows up in it.', status: 'planned' },
   { phase: 5, name: 'Conditional Access, Live', blurb: 'Trip a real CA policy and read the policy that caught you.', status: 'planned' },
