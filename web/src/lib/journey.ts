@@ -123,6 +123,9 @@ export type FlowId =
   // customer flows above — see MEMBER_FLOWS.
   | 'member-signin'
   | 'member-sso'
+  // Module 2's live guest: a real B2B self-service sign-up, measured off a real
+  // capture. See GUEST_FLOWS.
+  | 'guest-signup'
 
 export type Journey = {
   id: FlowId
@@ -221,6 +224,7 @@ import ssoProbeCapture from './captures/sso-probe.json'
 import signoutCapture from './captures/signout.json'
 import memberSigninCapture from './captures/member-signin.json'
 import memberSsoCapture from './captures/member-sso.json'
+import guestSignupCapture from './captures/guest-signup.json'
 
 type CapturedRequest = {
   path: string
@@ -260,6 +264,7 @@ const CAPTURES: Record<FlowId, Capture> = {
   signout: signoutCapture as Capture,
   'member-signin': memberSigninCapture as Capture,
   'member-sso': memberSsoCapture as Capture,
+  'guest-signup': guestSignupCapture as Capture,
 }
 
 /**
@@ -329,6 +334,12 @@ export const FLOW_META: Record<
       'The same member with a live session. No password: after the account is picked, /reprocess continues off the session.',
     outcome: { label: 'Token issued', ok: true },
   },
+  'guest-signup': {
+    label: 'Sign-up',
+    summary:
+      'A first-time B2B guest. Into the sign-up user flow, out to an external provider, back to create the account.',
+    outcome: { label: 'Token issued', ok: true },
+  },
 }
 
 /**
@@ -370,6 +381,15 @@ export const TAB_FLOWS: readonly FlowId[] = [
 export const MEMBER_FLOWS: readonly FlowId[] = ['member-signin', 'member-sso']
 
 /**
+ * Module 2's guest tab set. Just the sign-up for now; the returning-guest
+ * sign-in joins it when that capture lands (sign-up = sign-in + the
+ * create-account step). Driven by the live /guest hand-off, so it renders
+ * `simulated` like the member — a recorded flow beside the visitor's own real
+ * token.
+ */
+export const GUEST_FLOWS: readonly FlowId[] = ['guest-signup']
+
+/**
  * Requests unique to a flow, marked with ◆ so switching makes the diff visible.
  * Nothing here is cosmetic: each entry is a request that exists in one flow and
  * genuinely does not exist in its counterpart.
@@ -387,6 +407,8 @@ export const FLOW_ONLY: Record<FlowId, readonly string[]> = {
   // neither and hits /reprocess instead.
   'member-signin': ['credtype', 'login'],
   'member-sso': ['reprocess'],
+  // The create-account half of a sign-up. A returning guest posts neither.
+  'guest-signup': ['selfasserted', 'confirmed'],
 }
 
 type Measured = {
@@ -589,6 +611,78 @@ const ANNOTATIONS: Record<string, Annotation> = {
       // FLOW_ANNOTATIONS.
       gotcha:
         'Some of this may not be Entra at all. DNS, TCP and TLS are paid by whichever request reaches the tenant host on a cold connection, and they are setup rather than server time. Whether this one paid them depends on what the browser already had open.',
+    },
+  },
+  // ── The B2B self-service sign-up requests (Module 2's live guest) ──────────
+  '/tfp/{tid}/B2X_1_B2B/oauth2/v2.0/authorize': {
+    match: '/tfp/{tid}/B2X_1_B2B/oauth2/v2.0/authorize',
+    id: 'userflow',
+    short: '/tfp …/authorize',
+    label: 'GET /tfp/…/B2X_1_B2B/authorize',
+    actor: 'network',
+    humanDoing: 'picking a sign-up provider',
+    summary: 'Routed into the B2X_1_B2B self-service sign-up user flow.',
+    detail: {
+      what: 'The authorize redirects into a named user flow — tfp is "trust framework policy" — rather than the default sign-in.',
+      why: 'The app registration is bound to the B2X_1_B2B self-service sign-up flow.',
+      gotcha:
+        'The user flow is the knob. It decides which providers the create-account screen offers (email, Microsoft, GitHub and Google here) and which attributes the sign-up collects, with no app code involved.',
+    },
+  },
+  '/te/{tid}/oauth2/authresp': {
+    match: '/te/{tid}/oauth2/authresp',
+    id: 'authresp',
+    short: '/authresp',
+    label: 'GET /te/…/oauth2/authresp',
+    actor: 'entra',
+    humanDoing: 'signing in at the external provider',
+    summary: 'Back from the external provider. Entra takes the federated response.',
+    detail: {
+      what: 'The provider the guest chose (Google, in this capture) redirects back to Entra, which ingests its assertion at the authresp endpoint.',
+      why: 'A guest is homed in an external realm, so authentication happened there. This is where the result comes home.',
+      gotcha:
+        'The whole trip out to the provider is the human gap before this. This request is where it lands, and the two seconds of it are Entra mapping the assertion to a guest object, not our side.',
+    },
+  },
+  '/{tid}/B2X_1_B2B/SelfAsserted': {
+    match: '/{tid}/B2X_1_B2B/SelfAsserted',
+    id: 'selfasserted',
+    short: '/SelfAsserted',
+    label: 'POST /B2X_1_B2B/SelfAsserted',
+    actor: 'entra',
+    humanDoing: 'filling in the sign-up form',
+    summary: 'The sign-up attributes are submitted, and the guest object is created.',
+    detail: {
+      what: 'The attributes the user flow collected are posted, validated, and written as a new external user.',
+      why: 'First time through: there is no guest object yet, so one is created here.',
+      gotcha:
+        'This is the create step, and it is why a sign-up costs more than a sign-in. A returning guest never posts SelfAsserted — the object already exists. Writing a directory object is the expensive part of identity, the same thing the customer sign-up shows on /createuser.',
+    },
+  },
+  '/{tid}/B2X_1_B2B/api/SelfAsserted/confirmed': {
+    match: '/{tid}/B2X_1_B2B/api/SelfAsserted/confirmed',
+    id: 'confirmed',
+    short: '/confirmed',
+    label: 'GET /B2X_1_B2B/…/confirmed',
+    actor: 'entra',
+    summary: 'The self-asserted step is confirmed and the sign-up moves on.',
+    detail: {
+      what: 'The user flow acknowledges the attributes posted a moment earlier and continues toward issuing the code.',
+      why: 'The confirm half of the create.',
+    },
+  },
+  '/common/federation/oauth2ief': {
+    match: '/common/federation/oauth2ief',
+    id: 'oauth2ief',
+    short: '/oauth2ief',
+    label: 'POST /common/federation/oauth2ief',
+    actor: 'entra',
+    summary: 'The identity-experience-framework federation completes.',
+    detail: {
+      what: 'The IEF — the orchestration engine behind the user flow — finishes the federated sign-up and hands back an authorization code.',
+      why: 'A user flow is an IEF policy underneath, and this is its last server-side step before the redirect home.',
+      gotcha:
+        'The few screens you clicked through are an IEF orchestration. This is where it signs off, which is why a workforce guest sign-up carries an oauth2ief the CIAM customer flow does not.',
     },
   },
   '/common/GetCredentialType': {
@@ -916,6 +1010,22 @@ const FLOW_ANNOTATIONS: Partial<Record<FlowId, Record<string, AnnotationOverride
       code: undefined,
     },
   },
+  'guest-signup': {
+    '/{tid}/oauth2/v2.0/authorize': {
+      // Same as the member: a workforce app, not CIAM, so drop the msalConfig
+      // code ref and the four inside steps (omitted for workforce flows in
+      // toEvents). The connection-setup gotcha underneath stays.
+      code: undefined,
+      summary: 'The browser leaves for the workforce tenant to start the sign-up.',
+      detail: {
+        what: 'The browser leaves for the workforce tenant carrying client_id, redirect_uri, scope, state, nonce and the PKCE challenge.',
+        why: 'The workforce authority this app registration is configured with.',
+      },
+    },
+    '/{tid}/oauth2/v2.0/token': {
+      code: undefined,
+    },
+  },
 }
 
 // ── The phases: a real level down ───────────────────────────────────────────
@@ -1033,11 +1143,11 @@ function toEvents(
   let clock = 0
 
   /**
-   * The member simulation reuses the shared request annotations, which are
-   * mostly generic OAuth mechanics, but its authorize must not open into the
+   * The member and guest samples reuse the shared request annotations, which are
+   * mostly generic OAuth mechanics, but their authorize must not open into the
    * CIAM-specific inside steps below. See the insideWait assignment.
    */
-  const memberFlow = flow.startsWith('member-')
+  const workforceFlow = flow.startsWith('member-') || flow.startsWith('guest-')
 
   /** This flow's overrides, if it has any. Falls through to the shared map. */
   const overrides = FLOW_ANNOTATIONS[flow] ?? {}
@@ -1107,7 +1217,7 @@ function toEvents(
     // of a workforce app, so a member authorize shows its real phases and stops.
     const insideWait: ZoomNode[] =
       m.id === 'authorize'
-        ? memberFlow
+        ? workforceFlow
           ? []
           : AUTHORIZE_INSIDE
         : m.id === 'login'

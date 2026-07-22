@@ -10,6 +10,7 @@ import ssoOffCapture from '../lib/captures/sso-off.json'
 import ssoProbeCapture from '../lib/captures/sso-probe.json'
 import memberSigninCapture from '../lib/captures/member-signin.json'
 import memberSsoCapture from '../lib/captures/member-sso.json'
+import guestSignupCapture from '../lib/captures/guest-signup.json'
 import {
   ACTOR_LABELS,
   buildJourney,
@@ -40,6 +41,8 @@ const FLOWS: FlowId[] = [
   // this file runs over it too.
   'member-signin',
   'member-sso',
+  // And the live guest's sign-up.
+  'guest-signup',
 ]
 
 // These exist because of a real outage, not for coverage.
@@ -761,6 +764,7 @@ const CAPTURE: Record<FlowId, CaptureShape> = {
   signout: signoutCapture as CaptureShape,
   'member-signin': memberSigninCapture as CaptureShape,
   'member-sso': memberSsoCapture as CaptureShape,
+  'guest-signup': guestSignupCapture as CaptureShape,
 }
 
 describe('per-capture prose stays inside the capture it was measured from', () => {

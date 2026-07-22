@@ -110,6 +110,12 @@ const isRelevant = (url) => {
   // Vite dev-server machinery: module requests, its client, the refresh runtime.
   // Present only in a localhost capture and never a step in the flow.
   if (/^\/@|^\/src\/|^\/node_modules\//.test(path)) return false
+  // Entra's own telemetry and reporting, plus the user-flow form markup: real
+  // requests, but not steps that advance the flow. perftrace and cspreport are
+  // fire-and-forget reporting; the .cshtml is the sign-up form's HTML, not its
+  // submit. (cspreport also carries the tenant NAME rather than the GUID, so it
+  // would not templatize.)
+  if (/\/perftrace\b|\/cspreport\b|\.cshtml$/.test(path)) return false
   // Entra, either tenant.
   if (/ciamlogin|login\.microsoftonline\.com/.test(u.host)) return true
   // Our own origin, but only on the real site. Localhost is a capture harness.

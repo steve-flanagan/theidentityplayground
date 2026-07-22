@@ -5,7 +5,7 @@ import { JourneyTimeline } from './components/JourneyTimeline'
 import { SignInPanel } from './components/SignInPanel'
 import { AccountTypes } from './components/AccountTypes'
 import { buildSampleToken, buildMemberSampleToken } from './lib/sampleToken'
-import { MEMBER_FLOWS } from './lib/journey'
+import { MEMBER_FLOWS, GUEST_FLOWS } from './lib/journey'
 import { readGuestToken, clearGuestToken } from './guest/handback'
 import {
   accountCreatedAtMs,
@@ -305,10 +305,27 @@ function App() {
               </p>
             )}
 
+            {guestMode && (
+              <p className="mb-4 max-w-3xl rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-200/70">
+                <span className="font-medium text-amber-300">Guest sign-up, recorded.</span> The token
+                above is your own, live. This flow is a real capture of the self-service B2B sign-up
+                that made it, measured request by request.
+              </p>
+            )}
+
             {/* One timeline, the identity is the variable. The member sim is a
                 separate mount (its own key) so it opens fresh on the member flows
                 with no customer lastFlow, badge or deep link carried across. */}
-            {simMember ? (
+            {guestMode ? (
+              <JourneyTimeline
+                key="guest"
+                token={guestToken!}
+                tokenLabel="Your guest ID token"
+                flows={GUEST_FLOWS}
+                defaultFlow="guest-signup"
+                simulated
+              />
+            ) : simMember ? (
               <JourneyTimeline
                 key="sim-member"
                 token={memberToken}
