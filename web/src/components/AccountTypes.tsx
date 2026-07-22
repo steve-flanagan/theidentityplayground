@@ -80,10 +80,10 @@ const IDENTITIES: Identity[] = [
       ciam: { tenant: 'none', top: 'none' },
     },
     claims: {
-      idp: 'sts.windows.net/9188040d…  (personal-account home)',
+      idp: 'google.com  (home IdP, from the self-service capture)',
       tid: 'workforce  9e1372b0, same as the member',
       identifier: 'home email',
-      email: 'home email',
+      email: 'present',
     },
   },
   {
