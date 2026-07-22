@@ -74,9 +74,10 @@ emptying the tenant over successive runs while every run looked fine.
 ./Remove-ExpiredDemoAccounts.Tests.ps1
 ```
 
-No Pester, no network, no tenant. Nineteen cases against synthetic users under
-`Set-StrictMode -Version Latest`, covering the four guards, the purge, `-WhatIf`, both
-auth paths, and the ceiling. Exits non-zero on failure.
+No Pester, no network, no tenant. Twenty-two cases against synthetic users under
+`Set-StrictMode -Version Latest`, covering the four guards, the purge and its
+replication-lag retry, `-WhatIf`, both auth paths, and the ceiling. Exits non-zero on
+failure.
 
 `-ScriptPath` points it at a different copy of the script, which is how a test gets
 checked for actually discriminating:
