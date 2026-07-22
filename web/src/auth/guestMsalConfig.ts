@@ -62,14 +62,11 @@ export const guestMsalConfig: Configuration = {
 /**
  * The self-service sign-up request.
  *
- * `prompt: 'select_account'` shows the account picker, where a visitor can add a
- * Google account — the self-service B2B path that the B2X_1_B2B user flow and
- * Google federation on this app reg are configured for. capture.tsx signs guests
- * in exactly this way.
- *
- * Steering straight past the picker to Google with `domain_hint: 'google.com'`
- * is a possible refinement, left off for now so the picker still appears and the
- * flow matches the captured one. Steve's call once the sign-in is verified.
+ * `prompt: 'select_account'` reaches the B2X_1_B2B "Create account" screen, which
+ * offers email, Microsoft, GitHub and Google. Whichever the visitor picks becomes
+ * the guest's home realm — the idp claim on the token — and that choice is
+ * permanent (see notes/findings.md on the immutable home realm). capture.tsx
+ * signs guests in the same way.
  */
 export const guestSignUpRequest: RedirectRequest = {
   scopes: ['openid', 'profile', 'email'],

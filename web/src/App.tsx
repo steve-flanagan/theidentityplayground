@@ -211,7 +211,7 @@ function App() {
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-slate-400">
                 {guestMode
-                  ? 'The real token from your guest sign-in, every claim annotated. Note the workforce tenant, the Google home realm, and the idp that gives it away.'
+                  ? 'The real token from your guest sign-in, every claim annotated. Note the workforce tenant, your external home realm, and the idp claim that gives it away.'
                   : simMember
                     ? 'A workforce member’s captured token, shown as a sample. Every claim annotated, with the member’s values.'
                     : realIdToken
