@@ -51,7 +51,7 @@ const IDENTITIES: Identity[] = [
   {
     key: 'member',
     label: 'Workforce member',
-    what: 'A workforce tenant member User. The company’s own directory identity, native to one tenant.',
+    what: 'Has an account in your Entra directory and member-level access in your organization. Employees.',
     summary:
       'Home is tenant B, where it can be a directory Admin or common User. Every subscription, its home tenant’s included, is a separate RBAC grant it may or may not hold. It can also show up as a B2B guest in tenant A and in the CIAM tenant.',
     home: 'B',
@@ -70,7 +70,7 @@ const IDENTITIES: Identity[] = [
   {
     key: 'guest',
     label: 'B2B guest',
-    what: 'A partner or contractor invited in from another org. Another Entra tenant, a personal account, wherever they sign in from.',
+    what: 'Uses an external Entra account, social IDP, or other external IDP to sign in. Collaboration.',
     summary:
       'Home is tenant A. As a B2B guest in tenant B it can reach tenant level with external User limitations, and subscription level too if granted the RBAC. No presence in the CIAM tenant through Tenant A, would need to be separately invited.',
     home: 'A',
@@ -132,7 +132,7 @@ const CLAIM_LABEL: Record<ClaimKey, string> = {
 function Triangle({ level, home }: { level: Level; home: boolean }) {
   const h = HEAT[level]
   return (
-    <svg viewBox="0 0 100 90" width="120" height="106" aria-hidden="true">
+    <svg viewBox="0 0 100 90" className="h-auto w-[80px] sm:w-[120px]" aria-hidden="true">
       <polygon
         points="50,6 94,84 6,84"
         fill={h.solid ? h.color : 'none'}
@@ -156,7 +156,7 @@ function KeyIcon({ level }: { level: Level }) {
   const h = HEAT[level]
   const dash = h.dashed ? '5 3' : undefined
   return (
-    <svg viewBox="0 0 100 40" width="60" height="24" aria-hidden="true">
+    <svg viewBox="0 0 100 40" className="h-auto w-[44px] sm:w-[60px]" aria-hidden="true">
       <circle cx="20" cy="20" r="12" fill="none" stroke={h.color} strokeWidth="4" strokeDasharray={dash} />
       <line x1="32" y1="20" x2="90" y2="20" stroke={h.color} strokeWidth="4" strokeDasharray={dash} />
       <line x1="74" y1="20" x2="74" y2="33" stroke={h.color} strokeWidth="4" />
@@ -168,7 +168,7 @@ function KeyIcon({ level }: { level: Level }) {
 function AppIcon({ level }: { level: Level }) {
   const h = HEAT[level]
   return (
-    <svg viewBox="0 0 60 50" width="52" height="42" aria-hidden="true">
+    <svg viewBox="0 0 60 50" className="h-auto w-[38px] sm:w-[52px]" aria-hidden="true">
       <rect
         x="6"
         y="6"
@@ -313,7 +313,7 @@ export function AccountTypes() {
             />
           ))}
         </svg>
-        <div className="flex gap-4">
+        <div className="flex gap-2 sm:gap-4">
           {SCOPES.map((s) => {
             const e = sel.exposure[s.key]
             const isHome = sel.home === s.key
@@ -329,7 +329,7 @@ export function AccountTypes() {
                 <div ref={(el) => { triRefs.current[s.key] = el }}>
                   <Triangle level={e.tenant} home={isHome} />
                 </div>
-                <p className="text-sm font-medium text-slate-200">{s.tenant}</p>
+                <p className="text-xs sm:text-sm font-medium text-slate-200">{s.tenant}</p>
               </div>
             )
           })}
@@ -339,7 +339,7 @@ export function AccountTypes() {
       <Legend />
 
       {/* What the account is, then how far it reaches */}
-      <p className="mt-6 max-w-3xl text-sm font-medium text-slate-200">{sel.what}</p>
+      <p className="mt-6 max-w-3xl text-base font-medium text-slate-200">{sel.what}</p>
       <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-400">{sel.summary}</p>
 
       {/* The measured claim diff */}
