@@ -6,6 +6,7 @@ import { SignInPanel } from './components/SignInPanel'
 import { AccountTypes } from './components/AccountTypes'
 import { buildSampleToken, buildMemberSampleToken } from './lib/sampleToken'
 import { MEMBER_FLOWS } from './lib/journey'
+import { readGuestToken, clearGuestToken } from './guest/handback'
 import {
   accountCreatedAtMs,
   readLastFlow,
@@ -121,16 +122,37 @@ function App() {
   // Built once, like the customer sample beside it.
   const memberToken = useMemo(() => buildMemberSampleToken(), [])
 
-  // What the inspector shows: the member sample while simulating, otherwise the
-  // real token or the customer sample. `live` stays false for a sample, so the
-  // inspector keeps its "not your real token" framing.
-  const inspectorToken = simMember ? memberToken : (realIdToken ?? sampleToken)
-  const inspectorLabel = simMember
-    ? 'Member sample token'
-    : realIdToken
-      ? 'Your ID token'
-      : 'Sample ID token'
-  const inspectorLive = simMember ? false : Boolean(realIdToken)
+  /**
+   * Guest mode: the real token a /guest sign-in handed back through
+   * sessionStorage (guest/handback.ts), read once on mount. It is a LIVE guest
+   * sign-in, so it outranks both the member sample and the customer display and
+   * drives the inspector and Module 2 — the two surfaces this was scoped to.
+   * /guest already dropped its own MSAL account, so realIdToken is null here and
+   * there is nothing to fight with.
+   */
+  const [guestToken, setGuestToken] = useState(() => readGuestToken())
+  const guestMode = Boolean(guestToken)
+  const exitGuest = () => {
+    clearGuestToken()
+    setGuestToken(null)
+  }
+
+  // What the inspector shows, in precedence order: a live guest, then the member
+  // sample, then the real customer token or the customer sample. `live` is true
+  // only for a real token, so the sample keeps its "not your real token" framing.
+  const inspectorToken = guestMode
+    ? guestToken!
+    : simMember
+      ? memberToken
+      : (realIdToken ?? sampleToken)
+  const inspectorLabel = guestMode
+    ? 'Your guest ID token'
+    : simMember
+      ? 'Member sample token'
+      : realIdToken
+        ? 'Your ID token'
+        : 'Sample ID token'
+  const inspectorLive = guestMode ? true : simMember ? false : Boolean(realIdToken)
 
   return (
     // No max-width. There was one — 112rem, 1792px — and on a full-screen
@@ -179,14 +201,22 @@ function App() {
           >
             <div className="mb-4">
               <h2 id="inspector" className="text-sm font-medium uppercase tracking-widest text-slate-500">
-                {simMember ? 'Member’s claims (sample)' : realIdToken ? 'Your claims' : 'The claims you’d get'}
+                {guestMode
+                  ? 'Your guest claims'
+                  : simMember
+                    ? 'Member’s claims (sample)'
+                    : realIdToken
+                      ? 'Your claims'
+                      : 'The claims you’d get'}
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-slate-400">
-                {simMember
-                  ? 'A workforce member’s captured token, shown as a sample. Every claim annotated, with the member’s values.'
-                  : realIdToken
-                    ? 'The real token you were just issued, every claim annotated: what it is, why it’s in your token, and which tenant configuration produced it.'
-                    : 'A sample, until you sign in. Then this reads your own real token: same claims, your values.'}
+                {guestMode
+                  ? 'The real token from your guest sign-in, every claim annotated. Note the workforce tenant, the Google home realm, and the idp that gives it away.'
+                  : simMember
+                    ? 'A workforce member’s captured token, shown as a sample. Every claim annotated, with the member’s values.'
+                    : realIdToken
+                      ? 'The real token you were just issued, every claim annotated: what it is, why it’s in your token, and which tenant configuration produced it.'
+                      : 'A sample, until you sign in. Then this reads your own real token: same claims, your values.'}
               </p>
             </div>
 
@@ -196,6 +226,8 @@ function App() {
                 onSimulateMember={() => setActiveSim('member')}
                 simActive={simMember}
                 onExitSim={() => setActiveSim(null)}
+                guestActive={guestMode}
+                onExitGuest={exitGuest}
               />
             </div>
 
@@ -259,7 +291,7 @@ function App() {
                 claim about the data's provenance; this is a temporary state note
                 that stops applying the moment someone signs in. Folding a
                 transient into a permanent statement made both read as hedging. */}
-            {!realIdToken && !simMember && (
+            {!realIdToken && !simMember && !guestMode && (
               <p className="mb-4 max-w-3xl rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-200/70">
                 <span className="font-medium text-amber-300">Recorded sample flows.</span> Sign in
                 and the one you actually performed gets called out.
@@ -304,7 +336,7 @@ function App() {
                 the signed-in state through the shared MSAL instance's hooks,
                 never a second instance. */}
             <div className="mt-14 border-t border-slate-800 pt-12">
-              <AccountTypes activeKey={simMember ? 'member' : undefined} />
+              <AccountTypes activeKey={guestMode ? 'guest' : simMember ? 'member' : undefined} />
             </div>
           </div>
         </div>

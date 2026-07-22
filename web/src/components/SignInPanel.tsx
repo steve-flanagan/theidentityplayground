@@ -23,6 +23,14 @@ type Props = {
   onSimulateMember?: () => void
   simActive?: boolean
   onExitSim?: () => void
+  /**
+   * Guest mode: a live /guest sign-in handed a token back to the main page. When
+   * active the panel collapses to a guest indicator and an exit — the customer
+   * sign-in, the member sample and the SSO controls have nothing to say about a
+   * guest, which is on the inspector and Module 2 instead.
+   */
+  guestActive?: boolean
+  onExitGuest?: () => void
 }
 
 /**
@@ -58,6 +66,8 @@ export function SignInPanel({
   onSimulateMember,
   simActive = false,
   onExitSim,
+  guestActive = false,
+  onExitGuest,
 }: Props) {
   const { instance, inProgress, accounts } = useMsal()
   const isAuthenticated = useIsAuthenticated()
@@ -194,6 +204,31 @@ export function SignInPanel({
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sign-out failed.')
     }
+  }
+
+  // Guest mode collapses the panel. A live guest sign-in is already on the main
+  // page's inspector and Module 2, and the customer sign-in, member sample and
+  // SSO controls below have nothing to say about it — so show who you are and a
+  // way out. Every hook above has already run, so this early return is safe.
+  if (guestActive) {
+    return (
+      <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-200">Signed in as a guest</p>
+            <p className="text-xs text-slate-500">
+              A live B2B guest. Your real token is in the inspector and Module 2 below.
+            </p>
+          </div>
+          <button
+            onClick={onExitGuest}
+            className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500"
+          >
+            Exit guest
+          </button>
+        </div>
+      </div>
+    )
   }
 
   const account = accounts[0]

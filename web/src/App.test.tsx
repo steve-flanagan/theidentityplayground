@@ -135,6 +135,9 @@ beforeEach(() => {
   // decide what the next test's sign-in sees.
   history.replaceState(null, '', '/')
   clearLastFlow()
+  // The guest hand-off token lives in sessionStorage too; the same leakage
+  // between tests applies, so clear it.
+  sessionStorage.removeItem('tip.guest.idtoken')
 })
 afterEach(cleanup)
 
@@ -312,5 +315,47 @@ describe('the member sample is only offered signed out', () => {
     signedIn = [accountHolding(realToken(5))]
     render(<App />)
     expect(memberButton()).toBeNull()
+  })
+})
+
+// ── A handed-back guest token puts the page in guest mode ───────────────────
+// /guest signs a real B2B guest in as the workforce client, which the main
+// page's CIAM instance cannot read, so the token crosses in sessionStorage. The
+// main page reads it into guest mode: the panel collapses to an exit, and the
+// inspector and Module 2 show the guest. See guest/handback.ts.
+
+describe('a handed-back guest token drives guest mode', () => {
+  const GUEST_KEY = 'tip.guest.idtoken'
+  const guestToken = () => {
+    const payload = {
+      iat: ISSUED_AT_SECONDS,
+      tid: '9e1372b0-e94f-40af-aef8-6a5fa2bfb2e4',
+      idp: 'https://sts.windows.net/9188040d-6c67-4c5b-b112-36a304b66dad/',
+      email: 'guest@example.com',
+    }
+    return `${seg({ typ: 'JWT', alg: 'RS256' })}.${seg(payload)}.NOT_A_SIGNATURE`
+  }
+
+  it('collapses the panel to a guest exit, hiding the normal sign-in', () => {
+    sessionStorage.setItem(GUEST_KEY, guestToken())
+
+    render(<App />)
+
+    expect(screen.getByRole('button', { name: 'Exit guest' })).toBeDefined()
+    // The customer sign-in and the member sample have nothing to say to a guest.
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Sign in as Member (sample data)' })).toBeNull()
+  })
+
+  it('exits back to signed-out and clears the hand-off', () => {
+    sessionStorage.setItem(GUEST_KEY, guestToken())
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exit guest' }))
+
+    expect(screen.queryByRole('button', { name: 'Exit guest' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeDefined()
+    // The token is gone, so a refresh would not silently re-enter guest mode.
+    expect(sessionStorage.getItem(GUEST_KEY)).toBeNull()
   })
 })

@@ -4,6 +4,7 @@ import { PublicClientApplication } from '@azure/msal-browser'
 import { guestMsalConfig } from '../auth/guestMsalConfig'
 import { clearForeignInteractionLock } from '../auth/interactionLock'
 import { Guest } from './Guest'
+import { storeGuestToken } from './handback'
 
 /**
  * Boot the guest sign-up page.
@@ -33,26 +34,30 @@ export async function mountGuest(rootElement: HTMLElement): Promise<void> {
   const instance = new PublicClientApplication(guestMsalConfig)
   await instance.initialize()
 
-  let idToken: string | null = null
   let redirectError: string | null = null
 
   try {
-    // The result when we have just come back from Entra, or null on an ordinary
-    // load. Rejects when Entra sent an error back instead.
+    // The result when we have just come back from Entra, or null on a fresh
+    // visit. On a refresh with a token already cached, adopt that instead.
     const result = await instance.handleRedirectPromise()
-    if (result) {
-      instance.setActiveAccount(result.account)
-      idToken = result.idToken
-    } else {
-      // A refresh or a plain visit: adopt whatever this client already holds.
-      // The token cache is keyed by OUR client ID, so this is a guest token or
-      // nothing — never the customer's or the member app's from elsewhere on the
-      // origin.
-      const cached = instance.getAllAccounts()[0]
-      if (cached) {
-        instance.setActiveAccount(cached)
-        idToken = cached.idToken ?? null
+    const account = result?.account ?? instance.getAllAccounts()[0] ?? null
+    const idToken = result?.idToken ?? account?.idToken ?? null
+
+    if (idToken) {
+      // Hand the real guest token to the main page, then leave. clearCache drops
+      // THIS guest account from MSAL's per-origin account list before we go, so
+      // the main page's CIAM instance does not see a stray "signed in" account it
+      // holds no token for. Scoped to the one account, so a CIAM session (if any)
+      // survives. The token string is already saved in our own key, so clearing
+      // MSAL's cache cannot take it along.
+      storeGuestToken(idToken)
+      try {
+        await instance.clearCache(account ? { account } : undefined)
+      } catch {
+        // Best-effort cleanup; the hand-off token is what matters and it is saved.
       }
+      window.location.assign('/')
+      return
     }
   } catch (e) {
     // Entra's own errors arrive here. AADSTS50011 (redirect URI not registered)
@@ -62,9 +67,10 @@ export async function mountGuest(rootElement: HTMLElement): Promise<void> {
       e instanceof Error ? e.message : 'The authorization response could not be read.'
   }
 
+  // No token: a fresh visit or an error. Show the interstitial.
   createRoot(rootElement).render(
     <StrictMode>
-      <Guest instance={instance} idToken={idToken} redirectError={redirectError} />
+      <Guest instance={instance} redirectError={redirectError} />
     </StrictMode>,
   )
 }
