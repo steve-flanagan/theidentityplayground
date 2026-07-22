@@ -51,9 +51,9 @@ const IDENTITIES: Identity[] = [
   {
     key: 'member',
     label: 'Workforce member',
-    what: 'A workforce employee. The company’s own directory identity, native to one tenant.',
+    what: 'A workforce tenant member User. The company’s own directory identity, native to one tenant.',
     summary:
-      'Home is tenant B, where it can be a directory admin. Every subscription, even its home tenant’s, is a separate RBAC grant it may or may not hold, never automatic. It can also show up as a B2B guest in tenant A and in the CIAM tenant.',
+      'Home is tenant B, where it can be a directory Admin or common User. Every subscription, its home tenant’s included, is a separate RBAC grant it may or may not hold. It can also show up as a B2B guest in tenant A and in the CIAM tenant.',
     home: 'B',
     exposure: {
       A: { tenant: 'medium', top: 'possible' },
@@ -61,18 +61,18 @@ const IDENTITIES: Identity[] = [
       ciam: { tenant: 'medium', top: 'none' },
     },
     claims: {
-      idp: '—  (native)',
+      idp: 'N/A  (native)',
       tid: 'workforce  9e1372b0',
       identifier: 'Member@…com  (UPN)',
-      email: '—',
+      email: 'N/A',
     },
   },
   {
     key: 'guest',
     label: 'B2B guest',
-    what: 'A partner or contractor invited in from another org. An Entra tenant, a personal account, wherever.',
+    what: 'A partner or contractor invited in from another org. Another Entra tenant, a personal account, wherever they sign in from.',
     summary:
-      'Home is tenant A. As a B2B guest in tenant B it can reach tenant level, and even subscription level if granted the RBAC. No presence in the CIAM tenant.',
+      'Home is tenant A. As a B2B guest in tenant B it can reach tenant level with external User limitations, and subscription level too if granted the RBAC. No presence in the CIAM tenant through Tenant A, would need to be separately invited.',
     home: 'A',
     exposure: {
       A: { tenant: 'high', top: 'possible' },
@@ -80,7 +80,7 @@ const IDENTITIES: Identity[] = [
       ciam: { tenant: 'none', top: 'none' },
     },
     claims: {
-      idp: 'google.com  (home IdP, from the self-service capture)',
+      idp: 'google.com  (home IdP)',
       tid: 'workforce  9e1372b0, same as the member',
       identifier: 'home email',
       email: 'present',
@@ -88,7 +88,7 @@ const IDENTITIES: Identity[] = [
   },
   {
     key: 'customer',
-    label: 'External ID customer',
+    label: 'CIAM Customer',
     what: 'An end user of the app. Never in the company’s workforce directory at all.',
     summary:
       'The app only, and that is by design. A compromised customer can misuse the app as a customer and nothing more. No directory, no subscription, no workforce tenant.',
@@ -99,7 +99,7 @@ const IDENTITIES: Identity[] = [
       ciam: { tenant: 'none', top: 'low' },
     },
     claims: {
-      idp: '—  local · google.com social',
+      idp: 'N/A  local · google.com social',
       tid: 'External ID  7e8da8a9',
       identifier: 'their email · generated @…onmicrosoft.com',
       email: 'present',
@@ -205,7 +205,7 @@ function Legend() {
         <span className="inline-block w-5" style={{ borderTop: `2px dashed ${B2B_COLOR}` }} />
         B2B redemption link
       </span>
-      <span className="text-slate-600">blast radius if the account were compromised, not a judgement of the person</span>
+      <span className="text-slate-600">blast radius if the account were compromised. Directory/subscription role holders have significant impact</span>
     </div>
   )
 }
@@ -269,10 +269,10 @@ export function AccountTypes() {
   return (
     <section aria-labelledby="account-types-heading" className="max-w-4xl text-slate-200">
       <h2 id="account-types-heading" className="text-lg font-medium">
-        Account types, where each one can reach
+        Account types, and how they affect your exposure
       </h2>
       <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500">
-        Same person, three directory objects. Pick one and watch its blast radius light up across the
+        Same person, three directory objects. Pick one; its potential blast radius lights up across the
         tenants, their subscriptions, and the app.
       </p>
 
@@ -346,8 +346,10 @@ export function AccountTypes() {
       <div className="mt-10">
         <p className="text-sm font-medium text-slate-200">What the token actually says</p>
         <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">
-          The interesting claims, measured. Everything else is identical in shape. The token carries
-          no roles or RBAC, which is why the map above is a separate thing from the token.
+          The interesting claims, measured. Everything else is identical in shape. The token is
+          identity, not authorization: the directory roles and Azure RBAC the map lights up are
+          evaluated where the access happens, not carried in the token unless the app asks. That is
+          why the map is a separate thing.
         </p>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full border-collapse text-xs">
