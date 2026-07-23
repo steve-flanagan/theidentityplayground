@@ -18,6 +18,7 @@ Format: **Context** (what forced a choice) → **Decision** → **Rejected alter
 | 006 | [Standalone Function App over SWA managed API (timer triggers vs. $9/mo)](006-standalone-function-app.md) | decided · implemented |
 | 007 | [TypeScript over JavaScript across web/ and api/](007-typescript-over-javascript.md) | decided |
 | 008 | Self-service account deletion: how a visitor deletes their own demo account | **deferred** — build only if requested |
+| 009 | [Sweeping the self-service B2B guests /guest creates](009-workforce-guest-cleanup.md) | decided · **built, not yet run against the tenant** |
 
 **005 was withdrawn on 20 July and the number is retired.** It was never a decision.
 On-demand provisioning is the feature built for this case, and the alternative it was

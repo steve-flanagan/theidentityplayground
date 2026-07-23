@@ -51,6 +51,7 @@ $global:connectArgs = $null
 # Purge simulator state. purgeThrowCount is how many times the purge stub 404s for a
 # given id before it succeeds; purgeThrowMessage is what it throws. Attempts are
 # tracked per id so a multi-user run stays per-user. These let a test prove the retry.
+$global:runOutput = ''
 $global:purgeAttemptsById = @{}
 $global:purgeThrowCount = 0
 $global:purgeThrowMessage = "[Request_ResourceNotFound] : Resource does not exist or one of its queried reference-property objects are not present."
@@ -143,8 +144,14 @@ function global:Remove-MgDirectoryDeletedItem {
 function New-SyntheticUser {
   param(
     [string] $Upn,
+    # Defaults to the UPN so most assertions can read deletedIds as names. Pass a
+    # distinct one where the difference between the two is the thing under test.
+    [string] $Id,
     [double] $AgeHours = 100,
     [string[]] $SignInTypes = @('emailAddress'),
+    [string] $UserType = 'Member',
+    # $null is the documented creationType of an ordinary work or school account.
+    [string] $CreationType = $null,
     [switch] $NoCreatedDate,
     [switch] $NoIdentities
   )
@@ -153,13 +160,28 @@ function New-SyntheticUser {
                 else { @($SignInTypes | ForEach-Object { [pscustomobject]@{ SignInType = $_ } }) }
 
   [pscustomobject]@{
-    Id                = $Upn
+    Id                = if ($Id) { $Id } else { $Upn }
     DisplayName       = $Upn
     UserPrincipalName = $Upn
     CreatedDateTime   = if ($NoCreatedDate) { $null } else { (Get-Date).ToUniversalTime().AddHours(-$AgeHours) }
     Identities        = $identities
-    UserType          = 'Member'
+    UserType          = $UserType
+    CreationType      = $CreationType
   }
+}
+
+function New-SyntheticGuest {
+  <#
+    What /guest produces: a B2B guest created by the B2X_1_B2B self-service sign-up
+    user flow. Graph marks exactly these with creationType SelfServiceSignUp.
+  #>
+  param(
+    [string] $Upn,
+    [double] $AgeHours = 100,
+    [string[]] $SignInTypes = @('federated')
+  )
+  New-SyntheticUser -Upn $Upn -AgeHours $AgeHours -SignInTypes $SignInTypes `
+    -UserType 'Guest' -CreationType 'SelfServiceSignUp'
 }
 
 # The standard mixed population: one legitimate candidate per guard it must clear,
@@ -177,8 +199,34 @@ function Get-MixedPopulation {
 }
 
 function Get-AgedSignups {
-  param([int] $Count)
-  1..$Count | ForEach-Object { New-SyntheticUser -Upn "aged-$_@demo" }
+  # AgeStep spreads the ages so oldest-first truncation has something to sort on.
+  # aged-1 is the youngest, aged-$Count the oldest.
+  param([int] $Count, [double] $AgeStep = 0)
+  1..$Count | ForEach-Object {
+    New-SyntheticUser -Upn "aged-$_@demo" -AgeHours (100 + ($_ - 1) * $AgeStep)
+  }
+}
+
+function Get-AgedGuests {
+  param([int] $Count, [double] $AgeStep = 0)
+  1..$Count | ForEach-Object {
+    New-SyntheticGuest -Upn "guest-$_@demo" -AgeHours (100 + ($_ - 1) * $AgeStep)
+  }
+}
+
+# The workforce tenant as it actually stands: the admin, the demo member, and
+# whatever /guest has created. One user per rule that must stop the sweep.
+function Get-WorkforcePopulation {
+  @(
+    New-SyntheticGuest -Upn 'guest-google@demo'                                     # candidate
+    New-SyntheticGuest -Upn 'guest-msa@demo' -SignInTypes 'federated'               # candidate
+    New-SyntheticUser -Upn 'admin@demo' -AgeHours 999                               # role holder
+    New-SyntheticUser -Upn 'Member@theidentityplayground.com' -AgeHours 999 `
+      -SignInTypes 'userPrincipalName'                                              # the demo employee
+    New-SyntheticUser -Upn 'invited@demo' -UserType 'Guest' -CreationType 'Invitation'  # invited, not ours
+    New-SyntheticUser -Upn 'email-verified@demo' -CreationType 'EmailVerified'      # internal self-signup
+    New-SyntheticGuest -Upn 'fresh-guest@demo' -AgeHours 2                          # inside the TTL
+  )
 }
 
 # ── Harness ───────────────────────────────────────────────────────────────────
@@ -209,12 +257,16 @@ function Invoke-Cleanup {
   $global:purgeThrowCount = $PurgeThrowCount
   $global:purgeThrowMessage = $PurgeThrowMessage
 
+  $global:runOutput = ''
+
   # -Confirm:$false everywhere. These tests are about the other guards; the
   # ShouldProcess prompt would just hang an unattended run.
   $splat = @{ Confirm = $false } + $Parameters
 
   try {
-    & $ScriptPath @splat *>&1 | Out-Null
+    # Every stream captured, not discarded: what a run PRINTS is itself under test
+    # now that the unattended run's log is a public artifact.
+    $global:runOutput = (& $ScriptPath @splat *>&1 | Out-String)
     return $null
   }
   catch {
@@ -443,6 +495,209 @@ Test-Case 'The default ceiling is 10' {
   $err = Invoke-Cleanup -Users (Get-AgedSignups -Count 10)
   Assert-Equal $null $err '10 candidates should be allowed by the default ceiling'
   Assert-Equal 10 $global:deletedIds.Count 'all ten should go'
+}
+
+Write-Host "`n-Directory Workforce: the /guest sweep"
+
+$workforce = @{ Directory = 'Workforce' }
+
+Test-Case 'Only self-service B2B guests are deleted' {
+  # The headline. Everything else in that tenant -- the admin, the demo employee,
+  # an invited guest, an email-verified internal signup -- has to survive.
+  $roles = @{ 'role-ga' = @('admin@demo') }
+  $err = Invoke-Cleanup -Users (Get-WorkforcePopulation) -Roles $roles -Parameters $workforce
+  Assert-Equal $null $err 'should not have thrown'
+  Assert-Collection @('guest-google@demo', 'guest-msa@demo') $global:deletedIds `
+    'only the aged self-service guests should be deleted'
+}
+
+Test-Case 'An INVITED B2B guest is never a candidate' {
+  # creationType Invitation. A guest Steve invited by hand is not a demo account,
+  # and this is the difference the whole rule turns on.
+  $users = @(New-SyntheticUser -Upn 'invited@demo' -UserType 'Guest' -CreationType 'Invitation' -AgeHours 999)
+  $err = Invoke-Cleanup -Users $users -Parameters $workforce
+  Assert-Equal $null $err 'should not have thrown'
+  Assert-Equal 0 $global:deletedIds.Count 'an invited guest must survive'
+}
+
+Test-Case 'An ordinary employee is never a candidate' {
+  # creationType null, userType Member. Member@theidentityplayground.com is this.
+  $users = @(New-SyntheticUser -Upn 'Member@theidentityplayground.com' -AgeHours 999 `
+      -SignInTypes 'userPrincipalName')
+  $err = Invoke-Cleanup -Users $users -Parameters $workforce
+  Assert-Equal $null $err 'should not have thrown'
+  Assert-Equal 0 $global:deletedIds.Count 'the demo member must survive'
+}
+
+Test-Case 'A self-service guest promoted to Member is skipped' {
+  # Both properties have to agree. Flipping userType is a documented, one-click
+  # portal action, so it is a realistic way for one half of the rule to go stale.
+  $users = @(New-SyntheticUser -Upn 'promoted@demo' -UserType 'Member' `
+      -CreationType 'SelfServiceSignUp' -AgeHours 999)
+  $err = Invoke-Cleanup -Users $users -Parameters $workforce
+  Assert-Equal $null $err 'should not have thrown'
+  Assert-Equal 0 $global:deletedIds.Count 'userType Member is not a guest object'
+}
+
+Test-Case 'In Workforce mode signInType is irrelevant' {
+  # The workforce rule names the mechanism, not the credential. A guest with no
+  # identities at all is still a candidate, which is the point: it does not
+  # inherit the External ID sweep''s unverified signInType assumption.
+  $users = @(New-SyntheticUser -Upn 'guest-no-identities@demo' -UserType 'Guest' `
+      -CreationType 'SelfServiceSignUp' -NoIdentities -AgeHours 999)
+  $err = Invoke-Cleanup -Users $users -Parameters $workforce
+  Assert-Equal $null $err 'should not have thrown'
+  Assert-Collection @('guest-no-identities@demo') $global:deletedIds `
+    'creationType alone identifies it'
+}
+
+Test-Case 'The two rules do not leak into each other' {
+  # A self-service guest under the External ID rule, and an emailAddress signup
+  # under the Workforce rule. Each must be invisible to the other mode, or one
+  # tenant''s assumption silently becomes the other''s.
+  $guest = @(New-SyntheticUser -Upn 'guest@demo' -UserType 'Guest' `
+      -CreationType 'SelfServiceSignUp' -SignInTypes 'userPrincipalName' -AgeHours 999)
+  $err = Invoke-Cleanup -Users $guest -Parameters @{ Directory = 'ExternalId' }
+  Assert-Equal $null $err 'should not have thrown'
+  Assert-Equal 0 $global:deletedIds.Count 'ExternalId mode must not read creationType'
+
+  $signup = @(New-SyntheticUser -Upn 'signup@demo' -SignInTypes 'emailAddress' -AgeHours 999)
+  $err = Invoke-Cleanup -Users $signup -Parameters $workforce
+  Assert-Equal $null $err 'should not have thrown'
+  Assert-Equal 0 $global:deletedIds.Count 'Workforce mode must not read signInType'
+}
+
+Test-Case 'The default directory is ExternalId' {
+  # No -Directory passed. A default that flipped would point the External ID
+  # schedule at the wrong rule and silently stop deleting customers.
+  $err = Invoke-Cleanup -Users (Get-AgedSignups -Count 2)
+  Assert-Equal $null $err 'should not have thrown'
+  Assert-Equal 2 $global:deletedIds.Count 'the signInType rule should still be the default'
+}
+
+Test-Case 'The interactive tenant follows -Directory' {
+  $null = Invoke-Cleanup -Users @() -Parameters $workforce
+  Assert-Equal '9e1372b0-e94f-40af-aef8-6a5fa2bfb2e4' $global:connectArgs.TenantId `
+    'Workforce should default to the workforce tenant'
+
+  $null = Invoke-Cleanup -Users @()
+  Assert-Equal '7e8da8a9-67bc-4d53-bfc7-fe3e13128382' $global:connectArgs.TenantId `
+    'ExternalId should default to the External ID tenant'
+}
+
+Test-Case 'An explicit -TenantId still wins' {
+  $null = Invoke-Cleanup -Users @() -Parameters @{ Directory = 'Workforce'; TenantId = 'other-tenant' }
+  Assert-Equal 'other-tenant' $global:connectArgs.TenantId 'an explicit tenant overrides the default'
+}
+
+Write-Host "`n-OnCeilingExceeded TruncateOldest"
+
+Test-Case 'Truncate deletes exactly MaxDeletions, and the OLDEST ones' {
+  # aged-25 is the oldest (Get-AgedSignups ages ascending). A spam wave must not
+  # stop the sweep, and the accounts whose 24 hours expired longest ago go first.
+  $err = Invoke-Cleanup -Users (Get-AgedSignups -Count 25 -AgeStep 1) `
+    -Parameters @{ MaxDeletions = 3; OnCeilingExceeded = 'TruncateOldest' }
+  if ($null -eq $err) { throw 'a truncated run must not exit clean' }
+  Assert-Collection @('aged-25@demo', 'aged-24@demo', 'aged-23@demo') $global:deletedIds `
+    'the three oldest should go'
+}
+
+Test-Case 'Truncate still fails the run, naming what is left' {
+  # The half-works-silently failure this whole design exists to avoid. Deleting
+  # some and exiting 0 would read as a clean pass with expired accounts still live.
+  $err = Invoke-Cleanup -Users (Get-AgedSignups -Count 25 -AgeStep 1) `
+    -Parameters @{ MaxDeletions = 3; OnCeilingExceeded = 'TruncateOldest' }
+  if ($null -eq $err) { throw 'a truncated run must not exit clean' }
+  if ($err.Exception.Message -notmatch '22 expired account') {
+    throw "expected the message to name the 22 left behind, got: $($err.Exception.Message)"
+  }
+}
+
+Test-Case 'Truncate under the ceiling behaves exactly like a normal run' {
+  $err = Invoke-Cleanup -Users (Get-AgedGuests -Count 4 -AgeStep 1) `
+    -Parameters @{ Directory = 'Workforce'; MaxDeletions = 10; OnCeilingExceeded = 'TruncateOldest' }
+  Assert-Equal $null $err 'nothing was truncated, so nothing should throw'
+  Assert-Equal 4 $global:deletedIds.Count 'all four go'
+}
+
+Test-Case 'Truncate deletes nothing under WhatIf, and still fails as a truncation' {
+  # A dry run reports what the real run would do, and what the real run would do
+  # is delete a slice and fail. Asserting on WHICH failure matters: an abort also
+  # throws and also deletes nothing, so "it threw" alone would pass against a
+  # build that has no truncation at all.
+  $err = Invoke-Cleanup -Users (Get-AgedSignups -Count 25 -AgeStep 1) `
+    -Parameters @{ MaxDeletions = 3; OnCeilingExceeded = 'TruncateOldest'; WhatIf = $true }
+  if ($null -eq $err) { throw 'the ceiling report must survive WhatIf' }
+  if ($err.Exception.Message -notmatch 'left undeleted by the -MaxDeletions ceiling') {
+    throw "expected the truncation failure, got: $($err.Exception.Message)"
+  }
+  Assert-Equal 0 $global:deletedIds.Count 'WhatIf must not delete'
+}
+
+Test-Case 'Abort is still the default when the ceiling is hit' {
+  # No -OnCeilingExceeded passed. The External ID sweep must not quietly acquire
+  # truncation, which for that tenant would be the wrong response entirely.
+  $err = Invoke-Cleanup -Users (Get-AgedSignups -Count 25) -Parameters @{ MaxDeletions = 5 }
+  Assert-CeilingAbort $err
+}
+
+Write-Host "`nWhat an unattended run prints"
+
+# A guest whose UPN is a real visitor's address and whose object id is not, so
+# "did it print the name" and "did it print the id" are different questions.
+function Get-NamedGuest {
+  New-SyntheticUser -Upn 'visitor_gmail.com#EXT#@theidentityplaygroundgmail.onmicrosoft.com' `
+    -Id 'aaaaaaaa-1111-2222-3333-444444444444' `
+    -UserType 'Guest' -CreationType 'SelfServiceSignUp' -SignInTypes 'federated'
+}
+
+Test-Case 'App-only output carries no principal names' {
+  # The UPN of a demo account is a visitor's email address and the scheduled run's
+  # log is public. Deleted accounts' UPNs are named in decision 003 as something
+  # that must never be in run output.
+  $token = ConvertTo-SecureString 'synthetic-not-a-real-token' -AsPlainText -Force
+  $err = Invoke-Cleanup -Users @(Get-NamedGuest) `
+    -Parameters @{ Directory = 'Workforce'; AccessToken = $token }
+  Assert-Equal $null $err 'should not have thrown'
+  Assert-Equal 1 $global:deletedIds.Count 'it still deletes them'
+  if ($global:runOutput -match 'visitor_gmail\.com') {
+    throw "an app-only run printed a principal name: $global:runOutput"
+  }
+  if ($global:runOutput -notmatch 'aaaaaaaa-1111-2222-3333-444444444444') {
+    throw 'the object id should still be there, or a failed run cannot be traced'
+  }
+}
+
+Test-Case 'An interactive run still names the accounts' {
+  # An admin at a console is deciding whether to delete these specific people.
+  $err = Invoke-Cleanup -Users @(Get-NamedGuest) -Parameters $workforce
+  Assert-Equal $null $err 'should not have thrown'
+  if ($global:runOutput -notmatch 'visitor_gmail\.com') {
+    throw 'an interactive run should print the UPN'
+  }
+}
+
+Test-Case 'The skip breakdown counts, and never names' {
+  # A zero-candidate run and a run whose rule matches nothing print the same zero.
+  # The breakdown is what tells them apart, and it has to do that without
+  # publishing who was skipped.
+  $token = ConvertTo-SecureString 'synthetic-not-a-real-token' -AsPlainText -Force
+  $users = @(
+    New-SyntheticUser -Upn 'employee@demo' -AgeHours 999 -SignInTypes 'userPrincipalName'
+    New-SyntheticUser -Upn 'invited@demo' -UserType 'Guest' -CreationType 'Invitation' -AgeHours 999
+    New-SyntheticGuest -Upn 'fresh@demo' -AgeHours 2
+  )
+  $err = Invoke-Cleanup -Users $users -Parameters @{ Directory = 'Workforce'; AccessToken = $token }
+  Assert-Equal $null $err 'should not have thrown'
+  if ($global:runOutput -notmatch 'not a self-service signup:\s*2') {
+    throw "expected 2 unidentified, got: $global:runOutput"
+  }
+  if ($global:runOutput -notmatch 'inside the TTL\s*:\s*1') {
+    throw "expected 1 inside the TTL, got: $global:runOutput"
+  }
+  if ($global:runOutput -match 'employee@demo') {
+    throw 'the breakdown must not name who it skipped'
+  }
 }
 
 Write-Host "`nAuth paths"

@@ -1,0 +1,123 @@
+# Trades this workflow run's GitHub OIDC token for an app-only Microsoft Graph
+# token, and puts it in GRAPH_TOKEN for the steps that follow.
+#
+# NO STORED CREDENTIAL. There is no client secret and no certificate in this repo
+# or in GitHub secrets. The job proves who it is with a token GitHub mints for the
+# run, which Entra trusts through a federated identity credential on the app
+# registration. Nothing to rotate, nothing to leak. Decision 003 has the reasoning.
+#
+# It lives here, as one action used by two workflows, because the masking below is
+# the only thing keeping a Graph token out of a public log. Two copies of that is
+# two places for it to drift, and the copy that drifts is the one nobody reads.
+#
+# The exchange is three hops and worth reading once:
+#
+#   1. Ask GitHub for an OIDC ID token with audience api://AzureADTokenExchange.
+#      Needs `id-token: write` on the calling job, and nothing else gets you it.
+#   2. POST that token to the tenant as `client_assertion`, with
+#      client_assertion_type urn:ietf:params:oauth:client-assertion-type:jwt-bearer.
+#      Entra matches its issuer, subject and audience against the federated
+#      credential and returns an app-only Graph token.
+#   3. Hand that to Connect-MgGraph -AccessToken.
+#
+# Note what is NOT used: azure/login. That gets an Azure Resource Manager session,
+# and these identities have no subscription and no RM role. They hold Graph
+# application permissions in tenants that own no Azure resources.
+
+name: Get an app-only Graph token
+description: Exchanges the GitHub OIDC token for a Microsoft Graph app-only token via a federated credential.
+
+inputs:
+  tenant-id:
+    description: 'The tenant to get a Graph token for. A public identifier.'
+    required: true
+  client-id:
+    description: 'The app registration holding the federated credential. A public identifier.'
+    required: true
+  token-host:
+    description: 'Token endpoint host. Only change it if the default is rejected.'
+    required: false
+    default: 'login.microsoftonline.com'
+
+runs:
+  using: composite
+  steps:
+    # No `set -x` here, ever. It would print the assertion and the access token.
+    - shell: bash
+      env:
+        TENANT_ID: ${{ inputs.tenant-id }}
+        CLIENT_ID: ${{ inputs.client-id }}
+        TOKEN_HOST: ${{ inputs.token-host }}
+      run: |
+        set -euo pipefail
+
+        # These two are injected only when the job has id-token: write. Checked
+        # explicitly because `set -u` would otherwise fail on an unbound variable,
+        # which does not point at the permissions block.
+        if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+          echo "No OIDC token endpoint in the environment." >&2
+          echo "The calling job needs 'permissions: id-token: write'." >&2
+          exit 1
+        fi
+
+        # Step 1. GitHub's OIDC token for this workflow run.
+        # The audience must match the federated credential exactly.
+        id_token=$(curl -sS \
+          -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+          "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" \
+          | jq -r '.value')
+
+        if [ -z "$id_token" ] || [ "$id_token" = "null" ]; then
+          echo "Could not get an OIDC token from GitHub. Is 'id-token: write' set?" >&2
+          exit 1
+        fi
+        echo "::add-mask::$id_token"
+
+        # The subject and audience this run is actually presenting. These are the
+        # three fields Entra matches against the federated credential, and a
+        # mismatch fails at exchange with an opaque AADSTS error rather than at
+        # save time. Printing them turns "it just fails" into "paste this into the
+        # credential". They are not secrets. The token itself is never printed,
+        # only these claims.
+        payload=$(printf '%s' "$id_token" | cut -d. -f2 | tr '_-' '/+')
+        case $(( ${#payload} % 4 )) in
+          2) payload="${payload}==" ;;
+          3) payload="${payload}="  ;;
+        esac
+        echo "Presenting to Entra:"
+        printf '%s' "$payload" | base64 -d 2>/dev/null \
+          | jq -r '"  issuer  : \(.iss)\n  subject : \(.sub)\n  audience: \(.aud)"' \
+          || echo "  (could not decode the token payload, continuing)"
+
+        # Step 2. Exchange it for a Graph token at the tenant. Documented as the
+        # "access token request with a federated credential" case of the client
+        # credentials flow.
+        response=$(curl -sS -X POST \
+          "https://${TOKEN_HOST}/${TENANT_ID}/oauth2/v2.0/token" \
+          -H 'Content-Type: application/x-www-form-urlencoded' \
+          --data-urlencode "client_id=${CLIENT_ID}" \
+          --data-urlencode 'scope=https://graph.microsoft.com/.default' \
+          --data-urlencode 'grant_type=client_credentials' \
+          --data-urlencode 'client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer' \
+          --data-urlencode "client_assertion=${id_token}")
+
+        access_token=$(jq -r '.access_token // empty' <<<"$response" 2>/dev/null || true)
+
+        if [ -z "$access_token" ]; then
+          echo "Token exchange failed at ${TOKEN_HOST}." >&2
+          # error_description carries the AADSTS code, which is the whole
+          # diagnostic. There is no token in an error response.
+          jq -r '"  error: \(.error)\n  description: \(.error_description)"' <<<"$response" >&2 \
+            || echo "  Response was not JSON." >&2
+          echo "" >&2
+          echo "AADSTS700016 or 'application not found' usually means the wrong token host." >&2
+          echo "AADSTS70021 'No matching federated identity record found' means the" >&2
+          echo "issuer, subject or audience above does not match the credential." >&2
+          echo "AADSTS7000215 or an empty permission set means admin consent was never" >&2
+          echo "granted on the app registration." >&2
+          exit 1
+        fi
+
+        echo "::add-mask::$access_token"
+        echo "GRAPH_TOKEN=$access_token" >> "$GITHUB_ENV"
+        echo "Got a Graph token from ${TOKEN_HOST}."
