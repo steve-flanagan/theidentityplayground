@@ -1,0 +1,160 @@
+# Deletes and purges expired self-service B2B guests from the WORKFORCE tenant.
+#
+# The twin of cleanup-demo-accounts.yml. That one sweeps the customers Module 1
+# creates in the External ID tenant; this one sweeps the guests /guest creates in
+# the workforce tenant. Same script, same guards, same purge. Decision 009 has
+# what differs and why: docs/decisions/009-workforce-guest-cleanup.md
+#
+# WHY THIS EXISTS AS ITS OWN FILE. /guest is an anonymous surface: anybody who
+# loads the page can create a real directory object, with no invitation and no
+# approval. That changes three things about the sweep, and each of them is a line
+# below rather than a comment on the other workflow.
+#
+#   Cadence  -- hourly, not six-hourly. The TTL is still 24 hours, so this is not
+#               about catching expiries sooner. It is drain rate: a wave of
+#               sign-ups is bounded by how fast the sweep removes them.
+#   Ceiling  -- 50 and TRUNCATE, not 10 and abort. Aborting is right when a
+#               surprising count means the allowlist is broken. Here a surprising
+#               count is more likely to be a wave, and aborting would delete
+#               nothing at exactly the moment the sweep is the only thing between
+#               the tenant and its object quota.
+#   Blast    -- a separate app registration in a separate tenant, so neither
+#               credential reaches the other directory.
+#
+# PUSH ACCESS TO main IS USER-DELETE IN THE WORKFORCE TENANT, on top of the CIAM
+# tenant it already was. The federated credential trusts a repo ref, so the branch
+# protection ruleset on main is an access control here, not hygiene.
+
+name: Cleanup guest accounts
+
+on:
+  # Hourly. Free on a public repo, and the workforce tenant is not the External ID
+  # tenant, so the client-credentials meter that decision 003 worried about does
+  # not apply to it at all -- there is nothing to buy by running less often.
+  #
+  # :47 keeps it off the same minute as the External ID sweep at :17. They use
+  # different tenants and different app registrations, so they cannot collide on
+  # anything real; this is only about reading two run logs apart.
+  #
+  # Scheduled workflows on public repos are disabled automatically after 60 days
+  # with no repository activity, and a job that stops running raises nothing.
+  schedule:
+    - cron: '47 * * * *'
+
+  workflow_dispatch:
+    inputs:
+      delete:
+        description: 'Actually delete. Leave unchecked for a dry run.'
+        type: boolean
+        default: false
+      maxDeletions:
+        description: 'Delete at most this many per run, oldest first.'
+        type: string
+        default: '50'
+      onCeilingExceeded:
+        description: 'What exceeding the ceiling does.'
+        type: choice
+        default: 'TruncateOldest'
+        options:
+          - 'TruncateOldest'
+          - 'Abort'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: cleanup-guest-accounts
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      # Public identifiers. See "What must never be in the repo" in decision 003,
+      # and notes/environment.md for where these came from.
+      #
+      # The workforce tenant, and the "Guest Self-Destruct" app registration in it
+      # -- the twin of demo-account-cleanup, with the same three application
+      # permissions and its own federated credential on this repo's main.
+      TENANT_ID: '9e1372b0-e94f-40af-aef8-6a5fa2bfb2e4'
+      CLIENT_ID: '8bf3c4f7-7716-4134-8ac8-ae89e6f98d5c'
+
+      MAX_DELETIONS: ${{ inputs.maxDeletions || '50' }}
+      ON_CEILING: ${{ inputs.onCeilingExceeded || 'TruncateOldest' }}
+
+      # The demo employee. It cannot match the candidate rule anyway -- it is a
+      # native member, so creationType is null and userType is Member -- but it is
+      # the one account in this tenant whose loss would be felt, and belt and
+      # braces on it costs a line.
+      PROTECTED_UPN: 'Member@theidentityplayground.com'
+
+      # Dry run unless this is the schedule, or someone explicitly ticked delete.
+      # Written as "not (scheduled or explicitly asked)" so any event type added
+      # later lands on the dry-run side. The first thing anyone does with a new
+      # workflow is press the button, and pressing the button must not delete
+      # users.
+      WHAT_IF: ${{ !(github.event_name == 'schedule' || inputs.delete == true) }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Get an app-only Graph token
+        uses: ./.github/actions/graph-token
+        with:
+          tenant-id: ${{ env.TENANT_ID }}
+          client-id: ${{ env.CLIENT_ID }}
+
+      # Only the three modules the script requires. Installing all of
+      # Microsoft.Graph pulls in about forty modules and minutes of install time
+      # for cmdlets this never calls.
+      - name: Install the Graph modules
+        shell: pwsh
+        run: |
+          # Without this, Install-Module spends most of its time drawing a bar.
+          $ProgressPreference = 'SilentlyContinue'
+
+          # Pinned, same as the External ID sweep. 2.35.1 shipped a regression
+          # where -AccessToken with a SecureString silently fell through to a
+          # different credential type on Linux, which is exactly this code path on
+          # exactly this runner.
+          $modules = @(
+            'Microsoft.Graph.Authentication'
+            'Microsoft.Graph.Users'
+            'Microsoft.Graph.Identity.DirectoryManagement'
+          )
+          foreach ($module in $modules) {
+            Install-Module $module -RequiredVersion 2.38.1 `
+              -Scope CurrentUser -Force -AllowClobber
+          }
+
+      - name: Remove expired guest accounts
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+
+          $parameters = @{
+            Directory                  = 'Workforce'
+            AccessToken                = ConvertTo-SecureString $env:GRAPH_TOKEN -AsPlainText -Force
+            MaxDeletions               = [int] $env:MAX_DELETIONS
+            OnCeilingExceeded          = $env:ON_CEILING
+            ProtectedUserPrincipalName = @($env:PROTECTED_UPN)
+
+            # ShouldProcess would otherwise prompt, and there is nobody here to
+            # answer. The ceiling is what stands in for it.
+            Confirm                    = $false
+          }
+
+          # No -TenantId. Connect-MgGraph's AccessToken parameter set does not
+          # take one, and the token already says which tenant it is for.
+
+          if ($env:WHAT_IF -eq 'true') {
+            Write-Host 'DRY RUN. Reporting what would go, deleting nothing.'
+            Write-Host 'Re-run from the Actions tab with "Actually delete" ticked.'
+            Write-Host ''
+            $parameters['WhatIf'] = $true
+          }
+
+          & "$env:GITHUB_WORKSPACE/scripts/Remove-ExpiredDemoAccounts.ps1" @parameters
