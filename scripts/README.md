@@ -174,11 +174,20 @@ in the safe direction, which is why it's worth checking rather than discovering.
 skip breakdown a run now prints is the cheaper version of this check: "not a
 self-service signup" equal to the tenant's whole user count is the same finding.
 
-**NOT verified at all: the workforce sweep.** `-Directory Workforce` has never
-authenticated to tenant `9e1372b0`. Its rule is documented rather than observed —
-Graph's own definition of `creationType SelfServiceSignUp` — and whether this tenant
-actually sets it is **[A]**. The gate is section 3 of
-[decision 009](../docs/decisions/009-workforce-guest-cleanup.md), and none of it is met.
+**Verified against the workforce tenant, 23 July 2026.** The first dry run
+(29972105796) authenticated, resolved 2 protected principals, and confirmed the thing
+the workforce rule rests on: `creationType` really does read `SelfServiceSignUp` in
+that tenant. The skip breakdown is what settled it — the tenant's one guest appears
+under `inside the TTL`, which it can only reach by clearing the identification rule
+first, where a wrong rule would have put it under `not a self-service signup` and
+printed the same zero candidates.
+
+**NOT verified: that the workforce sweep actually deletes.** No run has found an aged
+guest yet, so the delete-and-purge path has never executed in tenant `9e1372b0`. A
+permission proven in the External ID tenant proves nothing about this one, and there it
+took two days and one silent purge failure to clear. Section 3 of
+[decision 009](../docs/decisions/009-workforce-guest-cleanup.md) owns the status; items
+5 and 7 are what remain.
 
 ## Scheduled runs
 
