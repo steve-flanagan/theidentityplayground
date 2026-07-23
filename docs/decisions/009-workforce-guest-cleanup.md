@@ -1,11 +1,10 @@
 # 009. Sweeping the self-service B2B guests /guest creates
 
-**Status:** decided 22 July 2026. Code built, tested, and **running against the tenant
-since 23 July.** **The delete-and-purge path is proven end-to-end in this tenant**
-(item 5, run 29974113932, portal-confirmed). Eight of the nine gate items are met. **One
-is open: the schedule has never been seen to fire** (item 7), so item 9 is not formally
-met — and that residual is a GitHub cron question, not a question about any of this code.
-See the 23 July updates below.
+**Status:** decided 22 July 2026. Built, tested, shipped, and **fully verified 23 July.**
+Every item on the section 3 gate is met: the delete-and-purge path is proven end-to-end
+and portal-confirmed (item 5, run 29974113932), and the schedule has fired unattended
+(item 7, runs 29990043854 / 30001027784 / 30010314397). `/guest` is live and the sentence
+on it saying the account self-destructs is earned. See the 23 July updates below.
 
 Every factual claim is marked **[M]** if it was read in current documentation
 (source and date given) or **[A]** if it is assumed and still needs testing.
@@ -316,9 +315,8 @@ If it lapses, this sweep stops mattering and `/guest` stops working, in that ord
 
 ## The gate: verified before `/guest` goes live
 
-**Status 23 July: everything is met except 7.** The delete-and-purge path is proven and
-portal-confirmed. What is left is whether GitHub's cron starts, which nothing in this repo
-controls. Evidence is in the 23 July updates above.
+**Status 23 July: every item is met.** The gate is closed. Evidence is in the 23 July
+updates above and beside each item below.
 
 1. **Admin consent on `8bf3c4f7` is real.**
 
@@ -384,18 +382,17 @@ controls. Evidence is in the 23 July updates above.
 7. **The schedule fires unattended.** A dispatch proves the credential, not the schedule,
    and the schedule is what the site's sentence depends on.
 
-   **OPEN, and it is the only open item.** As of 02:20Z on 23 July the hourly cron has
-   never fired — the workflow's only runs are two dispatches. GitHub delays new schedules,
-   sometimes by a lot, so this is expected rather than alarming, and 003's equivalent took
-   a day. **But it is the item that matters most if it does not resolve**, because it is
-   the failure this whole design has no monitor for: a run that never starts produces no
-   error, and the site's self-destruct sentence goes quietly false. See the monitoring
-   section — the run-stats publish that would catch it is still not built, and now two
-   sweeps depend on it.
+   **MET 23 July. [M]** Three unattended runs by 13:14Z — `30010314397` (13:14Z),
+   `30001027784` (10:53Z), `29990043854` (08:03Z), all `event: schedule`, all success. The
+   13:14Z run read `Users in tenant: 5`, `not a self-service signup: 0`, `inside the TTL: 2`,
+   `Expired demo accounts: 0`, `Nothing to do.` — nothing to act on, correctly.
 
-   **If no scheduled run has appeared by 24 July**, that is a real finding, not patience.
-   Check that the workflow is enabled in the Actions tab, and remember the 60-day
-   inactivity disable applies to both sweeps at once.
+   **Note the cron times: 08:03, 10:53, 13:14.** The schedule asks for `:47` every hour.
+   GitHub delivered neither the minute nor the interval — roughly every 2.5 hours, at
+   arbitrary minutes. That is documented behaviour (`schedule` can be delayed under load
+   and is not a guarantee), and it does not matter against a 24-hour TTL. **It would matter
+   if anyone ever reasons about drain rate from the cron expression rather than from the
+   run history.** The hourly figure in this record is a ceiling, not a rate.
 8. **Email one-time passcode is off on the `B2X_1_B2B` user flow.** Social identity
    providers only, so mass creation costs a social account per identity instead of a
    mailbox. This is the throttle, and it is the half of the abuse story the cleanup does
@@ -412,17 +409,20 @@ controls. Evidence is in the 23 July updates above.
 9. **Only after 1 through 8 does `/guest` go live**, and only then is the self-destruct
    sentence on that page true.
 
-   **Gated on 7 alone, and shipped anyway on 23 July — deliberately, by Steve, with this
-   list in view.** Everything the repo controls is proven against the real tenant: the
-   rule, the credential, the guards, the throttle, the delete and the purge. What is not
-   proven is that GitHub starts a timer.
+   **MET 23 July.** `/guest` is live and the sentence is earned.
 
-   The reasoning for shipping on that: the failure is recoverable and cheap. If the cron
-   never fires, guests accumulate at demo volume against a 50,000-object tenant, a manual
-   dispatch clears them in 40 seconds, and removing the prod `/guest` redirect URI from
-   app registration `1cb2c7c3` stops creation immediately without a deploy. Recorded here
-   because "we shipped with one item open" should be legible later as a decision someone
-   made, not as something nobody noticed.
+   **It shipped a few hours before it was earned, and that was a deliberate call.** At
+   02:30Z item 7 was open and Steve merged anyway: *"There really is no risk, I can just
+   delete a user if something fails."* Everything the repo controls was proven by then;
+   the only unproven thing was whether GitHub would start a timer, and the failure was
+   recoverable and cheap — guests accumulate at demo volume against a 50,000-object
+   tenant, a manual dispatch clears them in 40 seconds, and removing the prod `/guest`
+   redirect URI from app registration `1cb2c7c3` stops creation immediately without a
+   deploy.
+
+   The cron fired at 08:03Z. Recorded rather than smoothed over, because "we shipped with
+   an item open" should read later as a decision someone made with the risk in view, not
+   as something nobody noticed — and because the call was right.
 
 If item 8 changes which providers the sign-up screen offers, the copy naming them —
 `Guest.tsx`, `guestMsalConfig.ts` and the Module 2 journey annotation — has to change
