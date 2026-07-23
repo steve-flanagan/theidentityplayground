@@ -280,7 +280,7 @@ export function SignInPanel({
             Sign in as Guest (live)
           </a>
           <p className="mt-2 text-xs leading-relaxed text-slate-600">
-            Creates a real B2B guest via Google on its own page, then shows your token. It
+            Creates a real B2B guest on its own page, then shows your token. It
             self-destructs on the cleanup.
           </p>
         </div>

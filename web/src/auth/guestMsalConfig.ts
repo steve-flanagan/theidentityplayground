@@ -3,8 +3,9 @@ import { GUEST_PATH } from '../guest/route'
 
 // The WORKFORCE app registration — the same one capture.tsx signs into and the
 // one notes/environment.md calls "serves both Module 2 doors, member and guest".
-// A visitor signs into it as a self-service B2B guest (Google), so Module 2 can
-// show a real guest token beside the customer and the member sample.
+// A visitor signs into it as a self-service B2B guest, so Module 2 can show a real
+// guest token beside the customer and the member sample. Which provider they pick
+// is theirs to choose; see the note on guestSignUpRequest below.
 //
 // This is the THIRD MSAL client on the origin, after the CIAM main app and the
 // CIAM /app2 demo. Exactly one instance boots per page (see main.tsx), so they
