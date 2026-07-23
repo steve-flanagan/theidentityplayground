@@ -6,6 +6,13 @@ produced it.
 
 Live at https://theidentityplayground.com
 
+<p align="center">
+  <img src="docs/demo.gif" alt="The account-types map cycling through CIAM customer, workforce member and B2B guest. Each one lights a different blast radius across two workforce tenants, their subscriptions, the app, and the External ID tenant. The member is homed in tenant B and reaches all three; the guest is homed in tenant A and the External ID tenant goes dark, because it has no presence there at all." width="860">
+</p>
+
+Same person, three directory objects, three different blast radiuses. No account needed to
+try it. Regenerate the clip with `npm run capture --prefix web`.
+
 Built by Steven Flanagan.
 
 ## Status

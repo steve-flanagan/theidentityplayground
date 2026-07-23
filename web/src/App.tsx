@@ -170,15 +170,19 @@ function App() {
       <div className="px-8 pt-16 pb-20">
         <header className="max-w-3xl">
           <p className="font-mono text-xs uppercase tracking-widest text-emerald-400">
-            Phase 1 · token inspector
+            Token inspector · account types
           </p>
           <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
             The Identity Playground
           </h1>
+          {/* The old version opened "sign in for real", which put the one thing most
+              visitors will not do in front of the one thing they will. The member
+              sample needs no account and drives all three surfaces, so the offer
+              leads with that and keeps signing in as the upgrade it is. */}
           <p className="mt-6 text-lg leading-relaxed text-slate-400">
-            Identity work is invisible in production. This site makes it visible: sign in
-            for real, then read the token that came back and every request that produced
-            it.
+            Identity work is invisible in production. This site makes it visible: read a
+            real token claim by claim, and every request that produced it. Load a sample
+            with one click, or sign in and it reads your own.
           </p>
           <p className="mt-4 text-lg leading-relaxed text-slate-400">
             Built on Microsoft Entra by{' '}
