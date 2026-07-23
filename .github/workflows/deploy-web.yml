@@ -23,9 +23,36 @@ permissions:
   contents: read
   pull-requests: write
 
+# A PRODUCTION DEPLOY IS NEVER CANCELLED. It queues behind whatever is running.
+#
+# The previous version of this block was `group: deploy-web-${{ github.ref }}` with
+# `cancel-in-progress: true` for every event, and it silently ate half the deploys
+# to main: 10 of the 20 push-to-main runs between 20 and 23 July finished
+# `cancelled`, each within a second or two of starting. The site only ever looked
+# current because a later merge happened to win the race. Merging PR #9 lost it, and
+# Module 2 sat built-and-not-deployed until the run was re-run by hand.
+#
+# Two changes, and the first is the one that matters:
+#
+#   cancel-in-progress is now true only for pull_request. Cancelling a preview build
+#   when you push again to the same PR is useful. Cancelling a deploy to the live
+#   site is never useful -- it means a merge silently does not ship, and the only
+#   signal is a grey tick nobody reads as a failure. Queueing costs a minute.
+#
+#   github.event_name is in the group key, so a push run and a pull_request run can
+#   never land in the same group whatever GitHub resolves github.ref to for a merged
+#   PR's close event. That resolution is the part that was never pinned down, and
+#   putting the event in the key means it does not have to be.
+#
+# PR runs still key on the PR number rather than the ref, so the three events that
+# share a PR (opened, synchronize, closed) collapse into one group as intended.
+#
+# Worth knowing when reading run history: this failure looks like NOTHING. A
+# cancelled run is grey, not red, so it does not notify, does not fail a branch
+# rule, and reads as "someone stopped it on purpose".
 concurrency:
-  group: deploy-web-${{ github.ref }}
-  cancel-in-progress: true
+  group: deploy-web-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build_and_deploy:
