@@ -1,10 +1,11 @@
 # 009. Sweeping the self-service B2B guests /guest creates
 
 **Status:** decided 22 July 2026. Code built, tested, and **running against the tenant
-since 23 July.** Six of the nine gate items in section 3 are met, including the one the
-whole rule rested on. **The delete path itself has still never executed** (item 5), and
-the schedule has not yet been seen to fire unattended (item 7), so item 9 is not met and
-`/guest` is not yet earned. See the 23 July update below.
+since 23 July.** Five of the nine gate items in section 3 are met, including the one the
+whole rule rested on. Three are open: **the delete path itself has still never executed**
+(item 5), the schedule has not been seen to fire unattended (item 7), and **the throttle
+in front of the whole thing is not doing anything observable** (item 8). So item 9 is not
+met and `/guest` is not yet earned. See the 23 July update below.
 
 Every factual claim is marked **[M]** if it was read in current documentation
 (source and date given) or **[A]** if it is assumed and still needs testing.
@@ -63,11 +64,42 @@ problem.** Same shape as the misleading consent error in
 like a missing resource rather than a wrong question. Check `az account show` before
 believing an app registration is gone.
 
-**Item 8 is done**: email one-time passcode was dropped from the `B2X_1_B2B` user flow
-(Steve, portal, 22 July). The create-account screen now offers Microsoft, GitHub and
-Google, and the three pieces of site copy that name the providers were updated on PR #9.
-**GitHub is on that list in the portal** despite not appearing in Microsoft's documented
-IdP set for B2B self-service sign-up — observed, not explained. **[A]**
+**Item 8 is NOT done, and the first version of this paragraph said it was.** That claim
+was written from the user flow's config without looking at the screen the config is
+supposed to control, and the screen disagrees. Corrected here rather than edited away,
+because the mistake is the useful part: **a setting is not an observation.**
+
+What is actually true, both observed 23 July:
+
+- **The `B2X_1_B2B` identity-provider list reads: Azure Active Directory Sign up ✓,
+  Google ✓, Microsoft Account ✓, Email one-time passcode ✗.** **[M]** (portal screenshot)
+- **The create-account screen still renders four buttons: email, Microsoft, GitHub,
+  Google.** **[M]** (screenshot of the live sign-up)
+
+Two mismatches fall out of that, and neither is explained yet.
+
+**GitHub is on the screen and is not in the user flow's list at all.** So it is not
+configured on the flow; it comes from somewhere else, most likely a tenant-level identity
+provider. This is the same "observed, not explained" that was flagged before — it is now
+narrower, because the user flow has been ruled out. **[A]**
+
+**Email is on the screen with email OTP unchecked.** Three candidates, in increasing
+order of how much they matter:
+
+1. The uncheck was never saved. The blade renders the unchecked box either way.
+2. It saved and the sign-up page is cached. Entra's sign-up UI and the browser both cache.
+3. **The button is not email OTP.** "Azure Active Directory Sign up" is enabled, and
+   signing up with a work account also starts by typing an email address.
+
+**If 3 is true, the throttle did not land.** Item 8 exists to make mass creation cost a
+social account per identity instead of a mailbox; a button that accepts any typed address
+defeats that regardless of what the OTP checkbox says. The test that separates 3 from 1
+and 2: reload the sign-up screen in a private window, and if the email button is still
+there, click it and enter a consumer address. Email OTP mails a code to it. Azure AD
+Sign up tries to resolve the domain to a tenant and cannot.
+
+The site copy naming the providers was changed to drop "email" on PR #9 and then changed
+back, for the same reason this paragraph was wrong. It now matches the screen.
 
 **What is still open.** The tenant's one guest is inside the TTL, so there was nothing to
 delete and the delete-and-purge path has not executed here. Item 5 is unchanged, and it
@@ -268,8 +300,9 @@ If it lapses, this sweep stops mattering and `/guest` stops working, in that ord
 
 ## The gate: verified before `/guest` goes live
 
-**Status 23 July: 1, 2, 3, 4 and 8 are met. 5 and 7 are not, so 9 is not, and `/guest`
-is not yet earned.** Item 6 is partial. Evidence is in the 23 July update above.
+**Status 23 July: 1, 2, 3, 4 and 6 are met. 5, 7 and 8 are not, so 9 is not, and `/guest`
+is not yet earned.** Evidence is in the 23 July update above. Item 8 was recorded as met
+earlier the same day and was not; the correction is in that update.
 
 1. **Admin consent on `8bf3c4f7` is real.**
 
@@ -313,9 +346,8 @@ is not yet earned.** Item 6 is partial. Evidence is in the 23 July update above.
 6. **`Member@theidentityplayground.com` and the Global Admin still exist**, and the admin
    still holds its role.
 
-   **PARTIAL. [A]** The run reports `Member@` skipped by the explicit UPN guard and 2
-   principals skipped by the role guard, which is consistent with both surviving. This
-   asks for a portal check and the run cannot perform one.
+   **MET 23 July** (Steve, portal check). The run's own view agreed: `Member@` skipped by
+   the explicit UPN guard, 2 principals skipped by the role guard.
 7. **The schedule fires unattended.** A dispatch proves the credential, not the schedule,
    and the schedule is what the site's sentence depends on.
 
@@ -329,13 +361,19 @@ is not yet earned.** Item 6 is partial. Evidence is in the 23 July update above.
    ([self-service-sign-up-user-flow](https://learn.microsoft.com/en-us/entra/external-id/self-service-sign-up-user-flow),
    ms.date 2026-03-27).
 
-   **MET 22 July** (Steve, portal). Site copy naming the providers updated on PR #9.
+   **NOT MET, and briefly recorded as met in error.** The checkbox is unticked and the
+   screen still offers email, so the setting has not been shown to do the thing the
+   setting is here for. See the 23 July update: the test is a private-window reload, then
+   clicking the email button and entering a consumer address. **The throttle is unproven
+   until the button is gone or is shown not to be OTP.**
 9. **Only after 1 through 8 does `/guest` go live**, and only then is the self-destruct
    sentence on that page true.
 
-   **NOT MET, gated on 5 and 7 alone.** The rule, the credential and the guards are
-   proven against the real tenant; what is unproven is that the thing actually deletes.
+   **NOT MET, gated on 5, 7 and 8.** The rule, the credential and the guards are proven
+   against the real tenant. What is unproven is that the sweep actually deletes, and that
+   the throttle in front of it does anything at all.
 
 If item 8 changes which providers the sign-up screen offers, the copy naming them —
 `Guest.tsx`, `guestMsalConfig.ts` and the Module 2 journey annotation — has to change
-with it. Done 23 July on PR #9: all three now read Microsoft, GitHub and Google.
+with it. **Change it from the screen, not from the setting.** On 23 July all three were
+changed from the setting, before anyone looked, and had to be changed back.
