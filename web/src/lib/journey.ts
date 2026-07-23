@@ -647,7 +647,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
       what: 'The authorize redirects into a named user flow — tfp is "trust framework policy" — rather than the default sign-in.',
       why: 'The app registration is bound to the B2X_1_B2B self-service sign-up flow.',
       gotcha:
-        'The user flow is the knob. It decides which providers the create-account screen offers (email, Microsoft, GitHub and Google here) and which attributes the sign-up collects, with no app code involved.',
+        'The user flow is the knob. It decides which providers the create-account screen offers (Microsoft, GitHub and Google here) and which attributes the sign-up collects, with no app code involved.',
     },
   },
   '/te/{tid}/oauth2/authresp': {
