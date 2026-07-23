@@ -25,11 +25,12 @@ azureauth.json
 # ---------------------------------------------------------------------------
 # Capture artifacts
 # ---------------------------------------------------------------------------
-# The tour video is a distribution asset, not a repo asset: it gets regenerated
-# every time a module ships and git would keep every 2.5 MB version of it
-# forever. docs/demo.gif IS committed, because the README renders it.
-# Regenerate the video with `npm run tour --prefix web`.
-docs/*.mp4
+# The tour video and its poster frame are distribution assets, not repo assets:
+# they get regenerated every time a module ships and git would keep every 2 MB
+# version forever. docs/demo.gif IS committed, because the README renders it.
+# Regenerate both with `npm run tour --prefix web`.
+docs/tour.mp4
+docs/tour-thumb.png
 .tour-recording/
 
 # ---------------------------------------------------------------------------

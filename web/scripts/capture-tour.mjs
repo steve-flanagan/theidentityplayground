@@ -60,7 +60,13 @@ const defaults = {
   // claims panel (672px) in one frame, which 720 was not.
   width: 1280,
   height: 800,
+  // Also write a poster frame beside the video. See the thumbnail section below.
+  thumb: 'yes',
 }
+
+// slate-950, the page background. Used to pad the thumbnail rather than letting
+// it letterbox against whatever the player defaults to.
+const PAGE_BG = '0x020617'
 
 const argv = process.argv.slice(2)
 const options = { ...defaults }
@@ -224,21 +230,105 @@ const ffmpegArgs = [
   options.out,
 ]
 
-const code = await new Promise((resolvePromise) => {
-  const proc = spawn('ffmpeg', ffmpegArgs, { stdio: ['ignore', 'ignore', 'pipe'] })
-  let stderr = ''
-  proc.stderr.on('data', (chunk) => { stderr += chunk })
-  proc.on('error', () => {
-    console.error('ffmpeg not found on PATH. The webm is still at:', webm)
-    resolvePromise(1)
+/** Run ffmpeg, returning its exit code and printing the tail of stderr on failure. */
+function ffmpeg(args, onMissing) {
+  return new Promise((resolvePromise) => {
+    const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] })
+    let stderr = ''
+    proc.stderr.on('data', (chunk) => { stderr += chunk })
+    proc.on('error', () => {
+      console.error(onMissing)
+      resolvePromise(1)
+    })
+    proc.on('close', (c) => {
+      if (c !== 0) console.error(stderr.split('\n').slice(-15).join('\n'))
+      resolvePromise(c)
+    })
   })
-  proc.on('close', (c) => {
-    if (c !== 0) console.error(stderr.split('\n').slice(-15).join('\n'))
-    resolvePromise(c)
-  })
-})
+}
 
+const code = await ffmpeg(ffmpegArgs, `ffmpeg not found on PATH. The webm is still at: ${webm}`)
 if (code !== 0) process.exit(code)
 
 await rm(videoDir, { recursive: true, force: true })
 console.log(`Wrote ${options.out}`)
+
+// ── Thumbnail ────────────────────────────────────────────────────────────────
+// A poster frame, because LinkedIn shows one before autoplay starts and to
+// anyone who has autoplay off.
+//
+// NOT a frame pulled out of the video. A video frame is a whole page at
+// thumbnail size, which means every word on it is illegible and the picture
+// reads as grey mush. What survives being shrunk into a feed is the diagram:
+// three big coloured triangles, six short labels, and a legend.
+//
+// So this is a separate, deliberately narrow shot -- the section from its
+// heading down to the bottom of the legend, and nothing below it. The paragraph
+// and the claims table underneath are the first things to become unreadable and
+// they are cropped out on purpose.
+//
+// Captured at deviceScaleFactor 2 so it stays sharp if anything upscales it, at
+// a viewport under Tailwind's lg breakpoint so the map has the full column
+// width, and in the "Workforce member" state because that is the one where the
+// most of the map is lit.
+
+if (options.thumb === 'yes') {
+  const thumbPath = options.out.replace(/\.mp4$/, '-thumb.png')
+  const rawPath = resolve(videoDir, 'thumb-raw.png')
+  await mkdir(videoDir, { recursive: true })
+
+  const thumbBrowser = await chromium.launch()
+  const thumbPage = await thumbBrowser.newPage({
+    viewport: { width: 1000, height: 1200 },
+    colorScheme: 'dark',
+    deviceScaleFactor: 2,
+  })
+  await thumbPage.goto(options.url, { waitUntil: 'networkidle' })
+
+  const mapSection = thumbPage.locator('section').filter({
+    has: thumbPage.getByRole('heading', { name: /Account types/i }),
+  })
+  await mapSection.waitFor({ state: 'visible', timeout: 30_000 })
+  await mapSection.getByRole('button', { name: 'Workforce member', exact: true }).click()
+  await thumbPage.waitForTimeout(700)
+
+  // Crop at the legend rather than a magic number, so a layout change moves the
+  // crop with it instead of silently slicing the diagram in half.
+  const clip = await mapSection.evaluate((section) => {
+    const box = section.getBoundingClientRect()
+    const legend = [...section.querySelectorAll('*')].find(
+      (el) => el.children.length === 0 && /blast radius if the account/i.test(el.textContent),
+    )
+    const bottom = legend ? legend.getBoundingClientRect().bottom : box.top + 470
+
+    // Breathing room on all four sides. Clipping to the element's exact box puts
+    // the heading hard against the left edge, which reads as a screenshot
+    // someone cropped badly rather than a composed frame.
+    const margin = 28
+    const x = Math.max(0, box.x - margin)
+    const y = Math.max(0, box.y - margin)
+    return {
+      x,
+      y,
+      width: Math.min(window.innerWidth - x, box.width + margin * 2),
+      height: Math.round(bottom - box.top) + margin * 2,
+    }
+  })
+
+  await thumbPage.screenshot({ path: rawPath, clip })
+  await thumbBrowser.close()
+
+  // Fit to the video's own dimensions. A thumbnail whose aspect ratio does not
+  // match the video gets letterboxed by the player, which looks like a mistake.
+  const thumbCode = await ffmpeg(
+    [
+      '-y', '-i', rawPath,
+      '-vf', `scale=${options.width}:-2,pad=${options.width}:${options.height}:(ow-iw)/2:(oh-ih)/2:color=${PAGE_BG}`,
+      thumbPath,
+    ],
+    'ffmpeg not found on PATH, so the thumbnail was not resized.',
+  )
+  await rm(videoDir, { recursive: true, force: true })
+
+  if (thumbCode === 0) console.log(`Wrote ${thumbPath}`)
+}
