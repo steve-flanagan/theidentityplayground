@@ -10,25 +10,34 @@ Built by Steven Flanagan.
 
 ## Status
 
-Module 1, the token inspector, is built and deployed. It reads the visitor's own ID token
-and annotates every claim. The sign-in that produced it sits on a timeline built from real
-captures against this tenant. Nothing on it is estimated.
+Modules 1 and 2 are built and deployed.
 
-The other six modules are not built. The roadmap is on the homepage.
+Module 1, the token inspector, reads the visitor's own ID token and annotates every claim.
+The sign-in that produced it sits on a timeline built from real captures against this
+tenant. Nothing on it is estimated.
 
-It runs a live sign-up form. Nothing linked to it until the public-readiness checklist in
+Module 2 puts three account types side by side: a customer, an employee, and a B2B guest.
+The customer and the guest are live sign-ins that mint real tokens. The employee is a
+captured sample, because a visitor cannot be an employee. All three drive the inspector,
+the timeline, and a map of what each one can reach.
+
+The other five modules are not built. The roadmap is on the homepage.
+
+It runs a live sign-up form, and the guest door creates a real directory object. Nothing
+linked to either until the public-readiness checklist in
 [the build spec](identity-playground-spec.md) passed, on 20 July 2026.
 
 Demo accounts are deleted between 24 and 30 hours after they are created: a 24-hour TTL,
-swept by a scheduled job every six hours. The job runs unattended, and the delete-and-purge
-path is proven: a run removed and permanently purged three expired accounts.
+swept by scheduled jobs holding no stored credential. Both sweeps have removed and
+permanently purged real expired accounts. The customer sweep has also been observed running
+unattended on its schedule; the guest sweep, added 23 July, has not yet.
 
 ## Why there are three tenants
 
 | Tenant | Role |
 |---|---|
 | External ID | Customer sign-up and sign-in. Everything a visitor touches. |
-| Demo workforce | Created, not yet used. Employees, B2B guests, and SCIM land here from Phase 2. |
+| Demo workforce | Module 2's employee and the B2B guests visitors create. SCIM lands here later. |
 | Personal | Never issues a token to anyone. It owns the Azure subscription that pays for hosting. |
 
 Visitors only ever authenticate against a throwaway demo tenant. Hosting lives in one
