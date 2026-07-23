@@ -1,11 +1,11 @@
 # 009. Sweeping the self-service B2B guests /guest creates
 
 **Status:** decided 22 July 2026. Code built, tested, and **running against the tenant
-since 23 July.** Six of the nine gate items in section 3 are met, including the one the
-whole rule rested on and the throttle in front of it. Two are open, and they are the same
-thing seen twice: **the delete path has still never executed here** (item 5), and the
-schedule has not been seen to fire unattended (item 7). So item 9 is not met. See the
-23 July update below.
+since 23 July.** **The delete-and-purge path is proven end-to-end in this tenant**
+(item 5, run 29974113932, portal-confirmed). Eight of the nine gate items are met. **One
+is open: the schedule has never been seen to fire** (item 7), so item 9 is not formally
+met — and that residual is a GitHub cron question, not a question about any of this code.
+See the 23 July updates below.
 
 Every factual claim is marked **[M]** if it was read in current documentation
 (source and date given) or **[A]** if it is assumed and still needs testing.
@@ -105,12 +105,13 @@ mailbox. Every remaining route costs a real identity: an Entra work account, a M
 account, GitHub, or Google. That is the property item 8 was asking for, and it is now
 observed at the surface rather than inferred from a setting.
 
-**Residual, cosmetic not structural: the dead button.** A visitor who clicks "Sign up
-with email" with an ordinary personal address gets a Microsoft error that reads like a
-fault. Worth removing "Azure Active Directory Sign up" from the flow if the portal allows
-it — Microsoft documents Entra ID as the *default* identity provider for self-service
-sign-up **[M]**, which may mean it cannot be unticked. Untested. It is a first-impression
-problem on a page about identity, not a security one.
+**Residual, cosmetic not structural: the dead button, and it cannot be removed. [M]**
+"Azure Active Directory Sign up" will not untick — Microsoft documents Entra ID as the
+*default* identity provider for self-service sign-up, and the portal enforces it (Steve,
+23 July). So a visitor who clicks "Sign up with email" with an ordinary personal address
+will keep getting a Microsoft error that reads like a fault. It is a first-impression
+problem on a page about identity, not a security one, and the only levers left are copy
+or an interstitial. Open, and Steve's call.
 
 The site copy naming the providers was changed to drop "email" on PR #9 and then changed
 back, for the same reason this paragraph was wrong. It now matches the screen. Whether it
@@ -315,8 +316,9 @@ If it lapses, this sweep stops mattering and `/guest` stops working, in that ord
 
 ## The gate: verified before `/guest` goes live
 
-**Status 23 July: 1, 2, 3, 4, 6 and 8 are met. 5 and 7 are not, so 9 is not.** Evidence
-is in the 23 July update above.
+**Status 23 July: everything is met except 7.** The delete-and-purge path is proven and
+portal-confirmed. What is left is whether GitHub's cron starts, which nothing in this repo
+controls. Evidence is in the 23 July updates above.
 
 1. **Admin consent on `8bf3c4f7` is real.**
 
@@ -355,8 +357,25 @@ is in the 23 July update above.
    for this tenant, because a permission proven in one tenant proves nothing about
    another — and in that tenant it took two days and one silent failure to clear.
 
-   **OPEN.** The tenant's only guest is inside the TTL, so the first run had nothing to
-   act on. The hourly schedule reaches it when it ages past 24 hours.
+   **MET 23 July, run 29974113932. [M]** `Deleted: 1`, `Purged: 1`, no warnings, exit 0,
+   and Steve confirmed object `df80e74e-…1f60` absent from **Users** and from **Deleted
+   users**. Three things in that run are worth keeping:
+
+   - **The purge succeeded on the first attempt.** No `Request_ResourceNotFound`, no
+     retry. The replication-lag failure that bit the External ID tenant on 21 July did not
+     reproduce here — which does not mean it cannot, only that the retry was not needed
+     this time.
+   - **It deleted exactly the right object.** Age 4.3h matched the known guest, the other
+     guest sat in `inside the TTL`, and the breakdown summed to the tenant's 5 users.
+   - **Redaction held in a real public log.** The run printed `object df80e74e-…` rather
+     than the guest's email address. First exercise of that outside a test.
+
+   **The wait was not waited out.** Nothing in the tenant was old enough, and "no aged
+   guests" and "the rule matches nothing" print the same zero, so waiting could not
+   distinguish them — that is how 003 spent two days authenticating cleanly without once
+   deleting. Lowering the TTL on a dispatch (`maxAgeHours=2`) turned a day of waiting into
+   a 40-second run. **Worth reusing: when a gate is blocked on data being old, make the
+   cutoff the variable rather than the calendar.**
 6. **`Member@theidentityplayground.com` and the Global Admin still exist**, and the admin
    still holds its role.
 
@@ -365,8 +384,18 @@ is in the 23 July update above.
 7. **The schedule fires unattended.** A dispatch proves the credential, not the schedule,
    and the schedule is what the site's sentence depends on.
 
-   **OPEN.** Settled together with item 5 by the first scheduled run that finds an aged
-   guest.
+   **OPEN, and it is the only open item.** As of 02:20Z on 23 July the hourly cron has
+   never fired — the workflow's only runs are two dispatches. GitHub delays new schedules,
+   sometimes by a lot, so this is expected rather than alarming, and 003's equivalent took
+   a day. **But it is the item that matters most if it does not resolve**, because it is
+   the failure this whole design has no monitor for: a run that never starts produces no
+   error, and the site's self-destruct sentence goes quietly false. See the monitoring
+   section — the run-stats publish that would catch it is still not built, and now two
+   sweeps depend on it.
+
+   **If no scheduled run has appeared by 24 July**, that is a real finding, not patience.
+   Check that the workflow is enabled in the Actions tab, and remember the 60-day
+   inactivity disable applies to both sweeps at once.
 8. **Email one-time passcode is off on the `B2X_1_B2B` user flow.** Social identity
    providers only, so mass creation costs a social account per identity instead of a
    mailbox. This is the throttle, and it is the half of the abuse story the cleanup does
@@ -383,9 +412,17 @@ is in the 23 July update above.
 9. **Only after 1 through 8 does `/guest` go live**, and only then is the self-destruct
    sentence on that page true.
 
-   **NOT MET, gated on 5 and 7 alone.** The rule, the credential, the guards and the
-   throttle are all proven against the real tenant. The single unproven thing is that the
-   sweep deletes.
+   **Gated on 7 alone, and shipped anyway on 23 July — deliberately, by Steve, with this
+   list in view.** Everything the repo controls is proven against the real tenant: the
+   rule, the credential, the guards, the throttle, the delete and the purge. What is not
+   proven is that GitHub starts a timer.
+
+   The reasoning for shipping on that: the failure is recoverable and cheap. If the cron
+   never fires, guests accumulate at demo volume against a 50,000-object tenant, a manual
+   dispatch clears them in 40 seconds, and removing the prod `/guest` redirect URI from
+   app registration `1cb2c7c3` stops creation immediately without a deploy. Recorded here
+   because "we shipped with one item open" should be legible later as a decision someone
+   made, not as something nobody noticed.
 
 If item 8 changes which providers the sign-up screen offers, the copy naming them —
 `Guest.tsx`, `guestMsalConfig.ts` and the Module 2 journey annotation — has to change
