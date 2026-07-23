@@ -1,31 +1,38 @@
-// Drives the live site through the no-account demo and writes a GIF of it.
+// Drives the account-types map through all three account types and writes a GIF.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // WHY THIS EXISTS
 //
 // The Module 1 GIF was recorded by hand, and it was miserable enough that it did
 // not get redone when Module 2 shipped. Hand-recording is also the wrong tool for
-// this particular clip: the thing worth showing is one click changing three
-// panels at once, which is deterministic, so it should be reproducible rather
-// than performed.
+// this clip: it is three clicks on a control that has exactly three states, so it
+// should be reproducible rather than performed.
 //
-// Regenerate it every time a module ships. That is the point. A stale GIF is the
-// most visible kind of stale doc, because it is the first thing anyone sees on
-// the README and it cannot be grepped.
+// Regenerate it every time a module ships. A stale GIF is the most visible kind
+// of stale doc: it sits above the fold and cannot be grepped.
 //
-// ── WHAT IT CAPTURES, AND WHY THAT CLIP ──────────────────────────────────────
+// ── WHAT IT CAPTURES, AND WHY THIS AND NOT THE INSPECTOR ─────────────────────
 //
-// Load, hold on the customer sample, click "Sign in as Member (sample data)",
-// hold on the member view. That one click swaps the token in the inspector, the
-// timeline below it, and the blast-radius map, from a CIAM customer to a
-// workforce member. Three surfaces, one click, no account.
+// Same person, three directory objects: CIAM customer, workforce member, B2B
+// guest. Click each and its potential blast radius lights up across two tenants,
+// their subscriptions, and the app.
 //
-// It deliberately does NOT show a sign-in. A sign-in cannot be scripted here
-// (real credentials, real Entra), and it is also the thing most viewers will
-// never do. The clip should show the path they will actually take.
+// An earlier version of this script captured the token inspector swapping from
+// customer to member. It was rejected for the right reason: it never showed
+// Module 2 at all. The inspector is the Module 1 story, and it is also mostly a
+// wall of text, which is the worst thing to put in a GIF.
 //
-//   node scripts/capture-demo.mjs
-//   node scripts/capture-demo.mjs --url http://localhost:5173 --out ../docs/demo.gif
+// This clip is the opposite. The map's TEXT is identical in all three states --
+// only the colouring moves -- so it is the rare thing a still cannot show and
+// prose cannot describe. That is what earns it an animation.
+//
+// FRAMES ARE CLIPPED TO THE SECTION, not the viewport. A full-page shot spends
+// most of its pixels on layout, and on a 128-colour palette that is what makes
+// small text turn to mush. Cropping to the element means the palette is spent on
+// the thing being demonstrated.
+//
+//   npm run capture --prefix web
+//   npm run capture --prefix web -- --url http://localhost:5173
 //
 // First run needs the browser binary, once:
 //
@@ -33,15 +40,12 @@
 //
 // ── ON SIZE ──────────────────────────────────────────────────────────────────
 //
-// GIF is a terrible video codec and a fine animation format. This site is dark
-// with a lot of small text, which is close to the worst case: many colours in
-// the syntax highlighting, and text that turns to mush under heavy quantisation.
-// The levers, in the order worth pulling: --fps down, --seconds down, --width
-// down, then --colors down. Under about 5 MB is a safe target for both LinkedIn
-// and a README that has to load.
+// GIF is a terrible video codec and a fine animation format. The levers, in the
+// order worth pulling: --fps down, --hold down, --colors down. Under about 5 MB
+// is a safe target for both LinkedIn and a README that has to load.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { mkdir, writeFile, rm } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -55,28 +59,29 @@ const { GIFEncoder, quantize, applyPalette } = gifenc
 
 const here = dirname(fileURLToPath(import.meta.url))
 
+// The three states, in the order the picker shows them. Customer first because
+// that is the account type a visitor of this site actually is.
+const ACCOUNT_TYPES = ['CIAM Customer', 'Workforce member', 'B2B guest']
+
 // ── Arguments ────────────────────────────────────────────────────────────────
-// Plain parsing, same as har-to-timings.mjs. No dependency for six flags.
+// Plain parsing, same as har-to-timings.mjs. No dependency for seven flags.
 
 const defaults = {
   url: 'https://theidentityplayground.com',
   out: resolve(here, '../../docs/demo.gif'),
-  width: 1280,
-  height: 800,
+  // Under Tailwind's lg breakpoint (1024) the page drops to a single column and
+  // the map gets the full width instead of sharing it with the claims panel.
+  // That is a bigger, more readable map, which is the whole point of the clip.
+  width: 1000,
+  height: 1100,
   fps: 8,
-  // Seconds held on each half of the clip. The first is short because nothing
-  // is happening yet; the second is longer because there are three panels to
-  // read and a GIF loops without warning.
-  before: 1.5,
-  after: 3.5,
+  // Seconds held on each account type. Long enough to read the lit nodes, short
+  // enough that a three-state loop does not outstay its welcome.
+  hold: 1.8,
   colors: 128,
-  // Pixels scrolled before the first frame. The hero is three paragraphs the
-  // viewer is about to read in the post anyway, and scrolling past it puts the
-  // two panels that actually change into the frame instead. Set 0 to keep it.
-  scroll: 300,
-  // Also write the first and last frame as PNGs beside the GIF. The distribution
-  // plan asks for "one screenshot/GIF" and a before/after pair carries the same
-  // point as the animation in places that will not play one.
+  // One PNG per account type beside the GIF. A still cannot show the transition,
+  // but three stills side by side make the same point in places that will not
+  // play an animation.
   stills: 'yes',
 }
 
@@ -97,17 +102,16 @@ for (let i = 0; i < argv.length; i += 2) {
 // ── Capture ──────────────────────────────────────────────────────────────────
 
 const frameDelay = Math.round(1000 / options.fps)
-const framesBefore = Math.round(options.before * options.fps)
-const framesAfter = Math.round(options.after * options.fps)
+const framesPerState = Math.round(options.hold * options.fps)
 
 console.log(`Capturing ${options.url}`)
-console.log(`  ${options.width}x${options.height}, ${options.fps} fps, ${options.before + options.after}s`)
+console.log(`  ${options.width}x${options.height} viewport, ${options.fps} fps, ${options.hold}s per account type`)
 
 const browser = await chromium.launch()
 const page = await browser.newPage({
   viewport: { width: options.width, height: options.height },
-  // The site is dark either way, but say so rather than inheriting whatever the
-  // runner's default is, so two runs on two machines produce the same frames.
+  // Say it rather than inheriting whatever the runner defaults to, so two runs
+  // on two machines produce the same frames.
   colorScheme: 'dark',
   deviceScaleFactor: 1,
 })
@@ -116,63 +120,64 @@ await page.goto(options.url, { waitUntil: 'networkidle' })
 
 // Wait for the thing being demonstrated rather than a fixed sleep, so a slow
 // network makes the run longer instead of making the GIF wrong.
-const memberButton = page.getByRole('button', { name: /Sign in as Member/i })
-await memberButton.waitFor({ state: 'visible', timeout: 30_000 })
-
-if (options.scroll > 0) {
-  await page.evaluate((y) => window.scrollTo(0, y), options.scroll)
-  // Let the scroll settle before the first frame, or frame 1 is mid-scroll and
-  // the GIF opens on a jolt.
-  await page.waitForTimeout(400)
-}
+const section = page.locator('section').filter({
+  has: page.getByRole('heading', { name: /Account types/i }),
+})
+await section.waitFor({ state: 'visible', timeout: 30_000 })
+await section.scrollIntoViewIfNeeded()
+// Let the scroll settle, or frame 1 opens mid-scroll.
+await page.waitForTimeout(400)
 
 const frames = []
+const stills = {}
 
-async function grab() {
-  frames.push(await page.screenshot({ type: 'png' }))
-}
+for (const accountType of ACCOUNT_TYPES) {
+  await section.getByRole('button', { name: accountType, exact: true }).click()
 
-async function hold(count) {
-  for (let i = 0; i < count; i++) {
-    await grab()
+  // Capture from immediately after the click, so the colour transition is in
+  // the clip rather than being skipped over. The change IS the content.
+  for (let i = 0; i < framesPerState; i++) {
+    const shot = await section.screenshot({ type: 'png' })
+    frames.push(shot)
+    // The last frame of each state is the settled one, so it is the still worth
+    // keeping.
+    stills[accountType] = shot
     await page.waitForTimeout(frameDelay)
   }
 }
 
-// 1. The customer sample, as a visitor first sees it.
-await hold(framesBefore)
-
-// 2. The click. Captured across the transition rather than after it, because the
-//    change is the content.
-await memberButton.click()
-await hold(framesAfter)
-
 await browser.close()
-console.log(`  ${frames.length} frames`)
-
-if (options.stills === 'yes') {
-  const base = options.out.replace(/\.gif$/, '')
-  await mkdir(dirname(options.out), { recursive: true })
-  await writeFile(`${base}-customer.png`, frames[0])
-  await writeFile(`${base}-member.png`, frames[frames.length - 1])
-  console.log(`  stills: ${base}-customer.png, ${base}-member.png`)
-}
+console.log(`  ${frames.length} frames across ${ACCOUNT_TYPES.length} account types`)
 
 // ── Encode ───────────────────────────────────────────────────────────────────
-// One palette for the whole clip, built from a middle frame. Per-frame palettes
-// would track colour better and would also shimmer on every frame, which on a
-// mostly-static screenshot reads as noise.
 
 const decoded = frames.map((buffer) => PNG.sync.read(buffer))
 const { width, height } = decoded[0]
 
-const paletteSource = decoded[Math.floor(decoded.length / 2)].data
-const palette = quantize(paletteSource, options.colors, { format: 'rgb565' })
+// An element screenshot is only stable if the element does not reflow, and a
+// reflow here would silently produce a GIF whose frames are different sizes.
+// gifenc would not complain; the result would just be garbage from the first
+// mismatch onward. Fail loudly instead.
+const oddSize = decoded.find((f) => f.width !== width || f.height !== height)
+if (oddSize) {
+  console.error(`Frames are not all ${width}x${height} (found ${oddSize.width}x${oddSize.height}).`)
+  console.error('The section reflowed mid-capture, so the clip would be corrupt.')
+  process.exit(1)
+}
+
+// One palette for the whole clip, built from a middle frame. Per-frame palettes
+// would track colour better and would also shimmer on every frame, which on a
+// mostly-static panel reads as noise.
+const palette = quantize(decoded[Math.floor(decoded.length / 2)].data, options.colors, {
+  format: 'rgb565',
+})
 
 const encoder = GIFEncoder()
 for (const frame of decoded) {
-  const indexed = applyPalette(frame.data, palette, 'rgb565')
-  encoder.writeFrame(indexed, width, height, { palette, delay: frameDelay })
+  encoder.writeFrame(applyPalette(frame.data, palette, 'rgb565'), width, height, {
+    palette,
+    delay: frameDelay,
+  })
 }
 encoder.finish()
 
@@ -180,8 +185,17 @@ const gif = Buffer.from(encoder.bytes())
 await mkdir(dirname(options.out), { recursive: true })
 await writeFile(options.out, gif)
 
+if (options.stills === 'yes') {
+  const base = options.out.replace(/\.gif$/, '')
+  for (const [accountType, shot] of Object.entries(stills)) {
+    const slug = accountType.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    await writeFile(`${base}-${slug}.png`, shot)
+  }
+  console.log(`  stills: ${Object.keys(stills).length} written beside the gif`)
+}
+
 const mb = (gif.length / 1024 / 1024).toFixed(2)
-console.log(`Wrote ${options.out}  (${mb} MB)`)
+console.log(`Wrote ${options.out}  ${width}x${height}  (${mb} MB)`)
 if (gif.length > 5 * 1024 * 1024) {
-  console.log('Over 5 MB. Try --fps 6, then --seconds down, then --width 1024.')
+  console.log('Over 5 MB. Try --fps 6, then --hold 1.4, then --colors 96.')
 }

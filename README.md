@@ -7,10 +7,11 @@ produced it.
 Live at https://theidentityplayground.com
 
 <p align="center">
-  <img src="docs/demo.gif" alt="One click on 'Sign in as Member (sample data)' swaps the token inspector, the measured sign-in timeline, and the account-types map from a CIAM customer to a workforce member. The customer's sign-in is 8 requests over 1,794 ms; the member's is 4 over 1,311 ms." width="860">
+  <img src="docs/demo.gif" alt="The account-types map cycling through CIAM customer, workforce member and B2B guest. Each one lights a different blast radius across two workforce tenants, their subscriptions, the app, and the External ID tenant. The member is homed in tenant B and reaches all three; the guest is homed in tenant A and the External ID tenant goes dark, because it has no presence there at all." width="860">
 </p>
 
-No account needed for that. Regenerate it with `npm run capture --prefix web`.
+Same person, three directory objects, three different blast radiuses. No account needed to
+try it. Regenerate the clip with `npm run capture --prefix web`.
 
 Built by Steven Flanagan.
 
