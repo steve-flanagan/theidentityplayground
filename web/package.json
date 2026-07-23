@@ -11,7 +11,8 @@
     "typecheck": "tsc -b --noEmit",
     "lint": "oxlint",
     "preview": "vite preview",
-    "capture": "node scripts/capture-demo.mjs"
+    "capture": "node scripts/capture-demo.mjs",
+    "tour": "node scripts/capture-tour.mjs"
   },
   "dependencies": {
     "@azure/msal-browser": "^5.17.1",
