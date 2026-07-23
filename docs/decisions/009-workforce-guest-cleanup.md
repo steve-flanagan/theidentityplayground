@@ -1,9 +1,10 @@
 # 009. Sweeping the self-service B2B guests /guest creates
 
-**Status:** decided 22 July 2026. Code built and tested; **not yet run against the
-tenant.** The verification list in section 3 is the gate, and nothing on it is met.
-Until it is, `/guest` must not be live: the page tells the visitor the account
-self-destructs, and today nothing deletes it.
+**Status:** decided 22 July 2026. Code built, tested, and **running against the tenant
+since 23 July.** Six of the nine gate items in section 3 are met, including the one the
+whole rule rested on. **The delete path itself has still never executed** (item 5), and
+the schedule has not yet been seen to fire unattended (item 7), so item 9 is not met and
+`/guest` is not yet earned. See the 23 July update below.
 
 Every factual claim is marked **[M]** if it was read in current documentation
 (source and date given) or **[A]** if it is assumed and still needs testing.
@@ -11,6 +12,69 @@ Every factual claim is marked **[M]** if it was read in current documentation
 Companion to [003](003-cross-tenant-graph.md), which decided how a GitHub Actions job
 reaches Graph in a foreign tenant with no stored credential. That mechanism is reused
 here unchanged. What this record decides is everything downstream of it.
+
+---
+
+## Update, 23 July 2026: the first run, and the assumption it settled
+
+PR #13 merged; a `workflow_dispatch` dry run (**29972105796**) authenticated to the
+workforce tenant and reported. It worked first time — no wrong subject, no missing
+consent, no token-host fallback. Verbatim:
+
+```
+Directory : Workforce
+Tenant    : 9e1372b0-e94f-40af-aef8-6a5fa2bfb2e4
+As        : app 8bf3c4f7-7716-4134-8ac8-ae89e6f98d5c
+Candidate : creationType SelfServiceSignUp + userType Guest
+Protected by directory role: 2 principal(s)
+Users in tenant            : 4
+  protected by UPN         : 1
+  holds a directory role   : 2
+  not a self-service signup: 0
+  no createdDateTime       : 0
+  inside the TTL           : 1
+Expired demo accounts      : 0
+```
+
+**`creationType` really does read `SelfServiceSignUp` in this tenant. [M]** That was the
+**[A]** the whole rule rested on, and the breakdown is what settles it: the one guest in
+the tenant appears under **inside the TTL**, which it can only reach by clearing the
+identification rule first. Had the rule been wrong it would have landed under **not a
+self-service signup** and the run would have printed the same `Expired demo accounts: 0`.
+That ambiguity is the one the External ID sweep has never been able to resolve from its
+own output, and the breakdown removed it on the first run.
+
+The other numbers close: 1 protected UPN (`Member@`) + 2 role holders + 1 inside the TTL
+= 4 users. Two protected principals, non-zero, so the role guard is guarding.
+
+**Admin consent and the federated credential are both real. [M]** Neither needed a
+separate check: `Get-MgDirectoryRole` returning 2 principals requires
+`RoleManagement.Read.Directory`, and `Get-MgUser` returning 4 users requires
+`User.ReadWrite.All`. A missing grant would have thrown before the run reached a user.
+
+**A trap worth recording:**
+`az ad app permission admin-consent --id 8bf3c4f7-…` returned *"Resource
+'8bf3c4f7-…' does not exist or one of its queried reference-property objects are not
+present"* — while consent was in fact fine. The CLI was signed in to a different tenant
+(AlinaPAYGO), and `8bf3c4f7` lives in the workforce tenant, so `az` could not see it.
+**The error names the app registration and blames it, for what is a tenant-context
+problem.** Same shape as the misleading consent error in
+[003, update 2](003-cross-tenant-graph.md): on this project, wrong answers tend to look
+like a missing resource rather than a wrong question. Check `az account show` before
+believing an app registration is gone.
+
+**Item 8 is done**: email one-time passcode was dropped from the `B2X_1_B2B` user flow
+(Steve, portal, 22 July). The create-account screen now offers Microsoft, GitHub and
+Google, and the three pieces of site copy that name the providers were updated on PR #9.
+**GitHub is on that list in the portal** despite not appearing in Microsoft's documented
+IdP set for B2B self-service sign-up — observed, not explained. **[A]**
+
+**What is still open.** The tenant's one guest is inside the TTL, so there was nothing to
+delete and the delete-and-purge path has not executed here. Item 5 is unchanged, and it
+is the same gate 003 took two days and one silent failure to clear in the other tenant. A
+permission proven in one tenant proves nothing about another. The hourly schedule will
+reach it on its own when the guest ages past 24 hours, which settles items 5 and 7
+together.
 
 ---
 
@@ -204,57 +268,74 @@ If it lapses, this sweep stops mattering and `/guest` stops working, in that ord
 
 ## The gate: verified before `/guest` goes live
 
-**Nothing on this list is met.** The code is written and tested against synthetic users;
-it has never authenticated to the workforce tenant.
+**Status 23 July: 1, 2, 3, 4 and 8 are met. 5 and 7 are not, so 9 is not, and `/guest`
+is not yet earned.** Item 6 is partial. Evidence is in the 23 July update above.
 
-The first three items cannot run until this workflow is on `main`: `workflow_dispatch`
-only appears for workflows present on the default branch. So the cleanup merges **first**,
-on its own, and PR #9 merges after this list is satisfied.
+1. **Admin consent on `8bf3c4f7` is real.**
 
-1. **Admin consent on `8bf3c4f7` is real.** Steve reports the three application
-   permissions and the federated credential were added 22 July; neither has been
-   consent-verified or exercised. **[A]** A dry run settles it: without
-   `RoleManagement.Read.Directory` the run throws on `Get-MgDirectoryRole` before it
-   reaches any user, which is the right direction to fail in. The portal button for
-   consent has failed on a CIAM registration before and the CLI worked; see
-   [003, update 2](003-cross-tenant-graph.md).
+   **MET 23 July, run 29972105796. [M]** Not checked separately: the run read directory
+   roles and users, which the two application permissions gate. A missing grant throws
+   before the run reaches a user, which is the right direction to fail in.
 2. **The federated credential subject matches.** It must be the same immutable string as
-   the External ID app registration's, `repo:steve-flanagan@234824944/theidentityplayground@1302989710:ref:refs/heads/main`
-   **[M]** ([003, update 4](003-cross-tenant-graph.md)). A wrong subject saves without
-   complaint and fails only at exchange, so the workflow prints the subject it presented
-   before exchanging.
+   the External ID app registration's **[M]** ([003, update 4](003-cross-tenant-graph.md)).
+   A wrong subject saves without complaint and fails only at exchange, so the workflow
+   prints the subject it presented before exchanging.
+
+   **MET 23 July. [M]** Presented and accepted:
+   `repo:steve-flanagan@234824944/theidentityplayground@1302989710:ref:refs/heads/main`,
+   audience `api://AzureADTokenExchange`, token from `login.microsoftonline.com`. The
+   `ciamlogin.com` fallback was not needed and is not relevant to a workforce tenant.
 3. **A `workflow_dispatch` dry run authenticates and reports.** Delete unticked, which is
    the default. It must print the workforce tenant id, a **non-zero** protected-principal
    count, and a candidate breakdown. Zero protected principals means the role guard is
    not guarding, which matters more here than anywhere: the app holds
    `User.ReadWrite.All` over the whole tenant.
+
+   **MET 23 July, run 29972105796. [M]** `Protected by directory role: 2 principal(s)`.
 4. **`creationType` really reads `SelfServiceSignUp` in this tenant.** This is the
-   assumption the whole rule rests on, and it is **[A]** until a run says otherwise. The
-   dry run's breakdown is what settles it: a guest created through `/guest` and aged past
-   the cutoff must appear as a candidate, not under "not a self-service signup". A wrong
-   value here fails silently in the safe direction, which is why it needs checking rather
-   than discovering.
-5. **A real delete-and-purge run.** Sign up through `/guest`, wait past the TTL, dispatch
-   with delete ticked, and confirm the object is gone from **Users** *and* from **Deleted
-   users**. Present in Deleted users means the purge permission did not take, and a month
-   of restorable PII is sitting behind a page that says otherwise. This is item 6 of 003's
-   list, done again for this tenant, because a permission proven in one tenant proves
-   nothing about another.
+   assumption the whole rule rests on, and it is **[A]** until a run says otherwise. A
+   wrong value fails silently in the safe direction, which is why it needs checking
+   rather than discovering.
+
+   **MET 23 July, run 29972105796. [M]** The tenant's one guest appears under `inside the
+   TTL`, which it can only reach by clearing the identification rule first. See the 23
+   July update for why that, and not the candidate count, is the discriminating
+   observation.
+5. **A real delete-and-purge run.** Sign up through `/guest`, wait past the TTL, and
+   confirm the object is gone from **Users** *and* from **Deleted users**. Present in
+   Deleted users means the purge permission did not take, and a month of restorable PII
+   is sitting behind a page that says otherwise. This is item 6 of 003's list, done again
+   for this tenant, because a permission proven in one tenant proves nothing about
+   another — and in that tenant it took two days and one silent failure to clear.
+
+   **OPEN.** The tenant's only guest is inside the TTL, so the first run had nothing to
+   act on. The hourly schedule reaches it when it ages past 24 hours.
 6. **`Member@theidentityplayground.com` and the Global Admin still exist**, and the admin
    still holds its role.
+
+   **PARTIAL. [A]** The run reports `Member@` skipped by the explicit UPN guard and 2
+   principals skipped by the role guard, which is consistent with both surviving. This
+   asks for a portal check and the run cannot perform one.
 7. **The schedule fires unattended.** A dispatch proves the credential, not the schedule,
    and the schedule is what the site's sentence depends on.
-8. **Email one-time passcode is off on the `B2X_1_B2B` user flow.** Portal, Steve. Social
-   identity providers only, so mass creation costs a social account per identity instead
-   of a mailbox. This is the throttle, and it is the half of the abuse story the cleanup
-   does not cover. Entra ID is the default IdP on a self-service sign-up flow and cannot
-   be removed; email OTP, Google, Facebook and Microsoft account are the optional ones
-   **[M]**
+
+   **OPEN.** Settled together with item 5 by the first scheduled run that finds an aged
+   guest.
+8. **Email one-time passcode is off on the `B2X_1_B2B` user flow.** Social identity
+   providers only, so mass creation costs a social account per identity instead of a
+   mailbox. This is the throttle, and it is the half of the abuse story the cleanup does
+   not cover. Entra ID is the default IdP on a self-service sign-up flow and cannot be
+   removed; email OTP, Google, Facebook and Microsoft account are the optional ones **[M]**
    ([self-service-sign-up-user-flow](https://learn.microsoft.com/en-us/entra/external-id/self-service-sign-up-user-flow),
    ms.date 2026-03-27).
+
+   **MET 22 July** (Steve, portal). Site copy naming the providers updated on PR #9.
 9. **Only after 1 through 8 does `/guest` go live**, and only then is the self-destruct
    sentence on that page true.
 
+   **NOT MET, gated on 5 and 7 alone.** The rule, the credential and the guards are
+   proven against the real tenant; what is unproven is that the thing actually deletes.
+
 If item 8 changes which providers the sign-up screen offers, the copy naming them —
 `Guest.tsx`, `guestMsalConfig.ts` and the Module 2 journey annotation — has to change
-with it, in the same PR that flips it.
+with it. Done 23 July on PR #9: all three now read Microsoft, GitHub and Google.
