@@ -63,16 +63,26 @@ export const guestMsalConfig: Configuration = {
  * The self-service sign-up request.
  *
  * `prompt: 'select_account'` reaches the B2X_1_B2B "Create account" screen, which
- * offers Microsoft, GitHub and Google. Whichever the visitor picks becomes the
- * guest's home realm — the idp claim on the token — and that choice is permanent
- * (see notes/findings.md on the immutable home realm). capture.tsx signs guests in
- * the same way.
+ * offers email, Microsoft, GitHub and Google — observed 23 July, and this comment
+ * is written from the screen rather than from the user flow's config. Whichever the
+ * visitor picks becomes the guest's home realm — the idp claim on the token — and
+ * that choice is permanent (see notes/findings.md on the immutable home realm).
+ * capture.tsx signs guests in the same way.
  *
- * Email one-time passcode was removed from the user flow on 22 July, deliberately.
- * It is the throttle on an anonymous surface: /guest creates a real directory
- * object per new identity, and a mailbox is cheap where a social account is not.
- * See decision 009. If the IdP list changes again, this comment and the two pieces
- * of copy that name the providers (Guest.tsx, journey.ts) change with it.
+ * TWO THINGS HERE DO NOT MATCH THE PORTAL, and both are open. The user flow's
+ * identity-provider list reads: Azure Active Directory Sign up, Google, Microsoft
+ * Account, and Email one-time passcode UNCHECKED.
+ *
+ *   - GitHub is on the screen and is NOT in that list, so it is configured
+ *     somewhere else. Tenant-level identity providers is the place to look.
+ *   - Email is on the screen with email OTP unchecked. Either the uncheck did not
+ *     save, or the page is cached, or the button is "Azure Active Directory Sign
+ *     up" rather than OTP. The third one matters: dropping OTP is the throttle on
+ *     an anonymous surface (decision 009 item 8), and if that button is not OTP
+ *     then the throttle did not land.
+ *
+ * Do not update this comment or the copy in Guest.tsx and journey.ts from a config
+ * change. Update it from the rendered screen.
  */
 export const guestSignUpRequest: RedirectRequest = {
   scopes: ['openid', 'profile', 'email'],
