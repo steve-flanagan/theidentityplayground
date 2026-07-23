@@ -51,6 +51,10 @@ on:
         description: 'Delete at most this many per run, oldest first.'
         type: string
         default: '50'
+      maxAgeHours:
+        description: 'Treat guests older than this as expired. Lower it only to exercise the delete path.'
+        type: string
+        default: '24'
       onCeilingExceeded:
         description: 'What exceeding the ceiling does.'
         type: choice
@@ -84,6 +88,24 @@ jobs:
 
       MAX_DELETIONS: ${{ inputs.maxDeletions || '50' }}
       ON_CEILING: ${{ inputs.onCeilingExceeded || 'TruncateOldest' }}
+
+      # The TTL. 24 hours is the promise the site makes and the only value the
+      # schedule ever uses -- `inputs` is empty on a schedule event, so it falls
+      # through to the default here and a dispatch cannot change what the
+      # unattended run does.
+      #
+      # It is a dispatch input for one reason: without it the delete path is
+      # unprovable on a young tenant. "No aged guests" and "the identification
+      # rule matches nothing" produce the same zero, and you cannot tell them
+      # apart by waiting -- which is how the External ID sweep went two days
+      # authenticating cleanly while never once exercising a delete
+      # (decision 003, section 3, items 5 and 6). Lowering the TTL on a dispatch
+      # turns that wait into a run.
+      #
+      # It is not a wide lever. Every guard still applies, the ceiling still
+      # applies, and the only objects it can reach are self-service guests that
+      # were going to be deleted within the day anyway.
+      MAX_AGE_HOURS: ${{ inputs.maxAgeHours || '24' }}
 
       # The demo employee. It cannot match the candidate rule anyway -- it is a
       # native member, so creationType is null and userType is Member -- but it is
@@ -139,6 +161,7 @@ jobs:
             Directory                  = 'Workforce'
             AccessToken                = ConvertTo-SecureString $env:GRAPH_TOKEN -AsPlainText -Force
             MaxDeletions               = [int] $env:MAX_DELETIONS
+            MaxAgeHours                = [int] $env:MAX_AGE_HOURS
             OnCeilingExceeded          = $env:ON_CEILING
             ProtectedUserPrincipalName = @($env:PROTECTED_UPN)
 
