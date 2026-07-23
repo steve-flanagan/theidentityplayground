@@ -28,9 +28,8 @@ linked to either until the public-readiness checklist in
 [the build spec](identity-playground-spec.md) passed, on 20 July 2026.
 
 Demo accounts are deleted between 24 and 30 hours after they are created: a 24-hour TTL,
-swept by scheduled jobs holding no stored credential. Both sweeps have removed and
-permanently purged real expired accounts. The customer sweep has also been observed running
-unattended on its schedule; the guest sweep, added 23 July, has not yet.
+swept by scheduled jobs holding no stored credential. Both sweeps run unattended, and both
+have removed and permanently purged real expired accounts.
 
 ## Why there are three tenants
 
