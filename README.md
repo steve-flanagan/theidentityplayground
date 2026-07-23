@@ -6,6 +6,12 @@ produced it.
 
 Live at https://theidentityplayground.com
 
+<p align="center">
+  <img src="docs/demo.gif" alt="One click on 'Sign in as Member (sample data)' swaps the token inspector, the measured sign-in timeline, and the account-types map from a CIAM customer to a workforce member. The customer's sign-in is 8 requests over 1,794 ms; the member's is 4 over 1,311 ms." width="860">
+</p>
+
+No account needed for that. Regenerate it with `npm run capture --prefix web`.
+
 Built by Steven Flanagan.
 
 ## Status

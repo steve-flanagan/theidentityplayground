@@ -49,10 +49,15 @@ export function Guest({
         </h1>
         <p className="mt-6 text-lg leading-relaxed text-slate-400">
           This one is live, not a sample. You become a real B2B guest in the workforce tenant, a
-          self-service sign-up the first time and a sign-in after, with email, Microsoft, GitHub, or
+          self-service sign-up the first time and a sign-in after, with Microsoft, GitHub, or
           Google, and whichever you pick becomes your home realm. Your token comes back to the
           inspector and Module 2 on the main page, and the account self-destructs on the cleanup job,
           the same as every demo account here.
+        </p>
+        <p className="mt-4 text-sm leading-relaxed text-slate-500">
+          The screen also offers email. That one is home-realm discovery, not a sign-up: it looks
+          the address up against Entra tenants and rejects anything it does not find, so a personal
+          address comes back as an error. Use one of the three above.
         </p>
 
         <div className="mt-8">
