@@ -14,6 +14,8 @@
 // token on this site, and it is scoped to the origin so /guest and / share it.
 // It only ever holds the visitor's OWN guest token, in their OWN browser.
 
+import { decodeJwt } from '../lib/jwt'
+
 const GUEST_TOKEN_KEY = 'tip.guest.idtoken'
 
 export function storeGuestToken(idToken: string): void {
@@ -26,9 +28,30 @@ export function storeGuestToken(idToken: string): void {
 }
 
 export function readGuestToken(): string | null {
+  let raw: string | null
   try {
-    return window.sessionStorage.getItem(GUEST_TOKEN_KEY)
+    raw = window.sessionStorage.getItem(GUEST_TOKEN_KEY)
   } catch {
+    return null
+  }
+  if (!raw) return null
+
+  // Only hand back a token that still decodes and has not expired. A value that
+  // will not decode would throw when the timeline builds its token subtree
+  // (buildTokenNode does not guard decodeJwt), white-screening the page; an
+  // expired one would render as "live" for the tab's lifetime, which is the wrong
+  // tell on a site about telling the truth about tokens. Both only arise from a
+  // tampered or stale key, and the guard costs one decode.
+  try {
+    const { payload } = decodeJwt(raw)
+    const exp = (payload as { exp?: unknown }).exp
+    if (typeof exp === 'number' && exp * 1000 <= Date.now()) {
+      clearGuestToken()
+      return null
+    }
+    return raw
+  } catch {
+    clearGuestToken()
     return null
   }
 }

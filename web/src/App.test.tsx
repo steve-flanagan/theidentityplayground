@@ -358,4 +358,20 @@ describe('a handed-back guest token drives guest mode', () => {
     // The token is gone, so a refresh would not silently re-enter guest mode.
     expect(sessionStorage.getItem(GUEST_KEY)).toBeNull()
   })
+
+  it('yields to a real customer session rather than masking it', () => {
+    // A customer signed in on `/`, then a guest hand-off appears (they visited
+    // /guest and signed up). /guest scopes its clearCache to the workforce
+    // account, so the live customer session survives — guest mode must NOT mask
+    // it. Without the `!realIdToken` guard on guestMode, it would.
+    signedIn = [accountHolding(realToken(5))]
+    sessionStorage.setItem(GUEST_KEY, guestToken())
+
+    render(<App />)
+
+    // Guest mode does not take over: no exit control, and the customer's own
+    // token — not the guest hand-off — drives the surfaces.
+    expect(screen.queryByRole('button', { name: 'Exit guest' })).toBeNull()
+    expect(timeline().token).toBe(realToken(5))
+  })
 })

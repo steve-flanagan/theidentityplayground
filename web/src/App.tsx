@@ -124,14 +124,16 @@ function App() {
 
   /**
    * Guest mode: the real token a /guest sign-in handed back through
-   * sessionStorage (guest/handback.ts), read once on mount. It is a LIVE guest
-   * sign-in, so it outranks both the member sample and the customer display and
-   * drives the inspector and Module 2 — the two surfaces this was scoped to.
-   * /guest already dropped its own MSAL account, so realIdToken is null here and
-   * there is nothing to fight with.
+   * sessionStorage (guest/handback.ts), read once on mount. A live guest sign-in
+   * drives the inspector and Module 2 (the two surfaces this was scoped to) and
+   * outranks the member sample — but NOT a real CIAM customer session, which
+   * wins. /guest scopes its clearCache to the workforce account, so a customer
+   * signed in on `/` survives a guest sign-in; the `!realIdToken` guard keeps
+   * guest mode from masking that live session, while guest still wins the normal
+   * case (a visitor who was never signed in, where realIdToken is null).
    */
   const [guestToken, setGuestToken] = useState(() => readGuestToken())
-  const guestMode = Boolean(guestToken)
+  const guestMode = Boolean(guestToken) && !realIdToken
   const exitGuest = () => {
     clearGuestToken()
     setGuestToken(null)

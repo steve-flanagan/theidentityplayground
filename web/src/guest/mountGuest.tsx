@@ -50,11 +50,18 @@ export async function mountGuest(rootElement: HTMLElement): Promise<void> {
       // holds no token for. Scoped to the one account, so a CIAM session (if any)
       // survives. The token string is already saved in our own key, so clearing
       // MSAL's cache cannot take it along.
+      //
+      // NEVER clearCache(undefined) here: that is MSAL's clear-EVERYTHING branch
+      // and would wipe a live CIAM customer session too. If we somehow hold a
+      // token but no account, skip the clear — the hand-off is already saved, and
+      // nothing is worth a whole-origin wipe.
       storeGuestToken(idToken)
-      try {
-        await instance.clearCache(account ? { account } : undefined)
-      } catch {
-        // Best-effort cleanup; the hand-off token is what matters and it is saved.
+      if (account) {
+        try {
+          await instance.clearCache({ account })
+        } catch {
+          // Best-effort cleanup; the hand-off token is what matters and it is saved.
+        }
       }
       window.location.assign('/')
       return
