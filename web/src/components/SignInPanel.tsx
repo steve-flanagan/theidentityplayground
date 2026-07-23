@@ -14,6 +14,23 @@ type Props = {
    * standalone.
    */
   onLocalSignOut?: () => void
+  /**
+   * Module 2's member simulation. A visitor can never really be a workforce
+   * member, so these drive a client-side sample: onSimulateMember turns it on,
+   * simActive reports it is on, onExitSim turns it back off. App owns the state
+   * and swaps the inspector, the timeline and the account-types map with it.
+   */
+  onSimulateMember?: () => void
+  simActive?: boolean
+  onExitSim?: () => void
+  /**
+   * Guest mode: a live /guest sign-in handed a token back to the main page. When
+   * active the panel collapses to a guest indicator and an exit — the customer
+   * sign-in, the member sample and the SSO controls have nothing to say about a
+   * guest, which is on the inspector and Module 2 instead.
+   */
+  guestActive?: boolean
+  onExitGuest?: () => void
 }
 
 /**
@@ -44,7 +61,14 @@ type Props = {
  * clearCache(), drops the local tokens and leaves the Entra session standing, so
  * the next sign-in demonstrates SSO instead of hiding it.
  */
-export function SignInPanel({ onLocalSignOut }: Props) {
+export function SignInPanel({
+  onLocalSignOut,
+  onSimulateMember,
+  simActive = false,
+  onExitSim,
+  guestActive = false,
+  onExitGuest,
+}: Props) {
   const { instance, inProgress, accounts } = useMsal()
   const isAuthenticated = useIsAuthenticated()
   const [error, setError] = useState<string | null>(null)
@@ -182,6 +206,31 @@ export function SignInPanel({ onLocalSignOut }: Props) {
     }
   }
 
+  // Guest mode collapses the panel. A live guest sign-in is already on the main
+  // page's inspector and Module 2, and the customer sign-in, member sample and
+  // SSO controls below have nothing to say about it — so show who you are and a
+  // way out. Every hook above has already run, so this early return is safe.
+  if (guestActive) {
+    return (
+      <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-200">Signed in as a guest</p>
+            <p className="text-xs text-slate-500">
+              A live B2B guest. Your real token is in the inspector and Module 2 below.
+            </p>
+          </div>
+          <button
+            onClick={onExitGuest}
+            className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500"
+          >
+            Exit guest
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   const account = accounts[0]
 
   return (
@@ -215,6 +264,70 @@ export function SignInPanel({ onLocalSignOut }: Props) {
           </button>
         )}
       </div>
+
+      {/* ── Sign in as Guest (Module 2, live) ──────────────────────────────
+          A real self-service B2B guest sign-up. It authenticates as the
+          WORKFORCE app, a different client ID, so it cannot run on this page: an
+          href navigation to /guest boots that instance on its own page (the same
+          reason /app2 is a link, not a button). Live, so it is grouped with the
+          real customer sign-in above, not the sample below. */}
+      {!isAuthenticated && (
+        <div className="mt-3">
+          <a
+            href="/guest"
+            className="inline-block rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500"
+          >
+            Sign in as Guest (live)
+          </a>
+          <p className="mt-2 text-xs leading-relaxed text-slate-600">
+            Creates a real B2B guest on its own page, then shows your token. It
+            self-destructs on the cleanup.
+          </p>
+        </div>
+      )}
+
+      {/* ── Sample identities (Module 2) ───────────────────────────────────
+          A visitor can never really be a workforce member, so this is a
+          client-side sample: App swaps the inspector, the timeline and the
+          account-types map onto the member's captured token and flows, all
+          clearly labelled sample. Guest joins this when its live flow lands.
+
+          Hidden once you are really signed in. Overlaying a sample on a live
+          session put the panel in two states at once — "signed in as X" up top,
+          a member sample below — which read as broken. A real account takes the
+          panel; the sample is only offered signed-out. */}
+      {!isAuthenticated && (
+        <div className="mt-4 border-t border-slate-800 pt-3">
+          <p className="font-mono text-xs uppercase tracking-wider text-slate-500">
+            Sample identities
+          </p>
+          {simActive ? (
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-slate-300">
+                Viewing a sample: <span className="text-emerald-300">workforce member</span>
+              </p>
+              <button
+                onClick={onExitSim}
+                className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500"
+              >
+                Exit sample
+              </button>
+            </div>
+          ) : (
+            <>
+              <button
+                onClick={onSimulateMember}
+                className="mt-2 rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500"
+              >
+                Sign in as Member (sample data)
+              </button>
+              <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                No account needed. Loads a real member's captured token and sign-in, to compare against the customer above.
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* ── The SSO switches ─────────────────────────────────────────────── */}
       <div className="mt-4 border-t border-slate-800 pt-3">

@@ -111,7 +111,22 @@ export type JourneyEvent = ZoomNode & {
   idleDoing?: string
 }
 
-export type FlowId = 'signup' | 'signin' | 'sso-on' | 'sso-off' | 'sso-probe' | 'signout'
+export type FlowId =
+  | 'signup'
+  | 'signin'
+  | 'sso-on'
+  | 'sso-off'
+  | 'sso-probe'
+  | 'signout'
+  // Module 2's member simulation: the workforce equivalents of signin / sso-on,
+  // measured off Member@ through the workforce app. A separate tab set from the
+  // customer flows above — see MEMBER_FLOWS.
+  | 'member-signin'
+  | 'member-sso'
+  // Module 2's live guest: real B2B self-service flows, measured. See GUEST_FLOWS.
+  | 'guest-signup'
+  | 'guest-signin'
+  | 'guest-sso'
 
 export type Journey = {
   id: FlowId
@@ -208,6 +223,11 @@ import ssoOnCapture from './captures/sso-on.json'
 import ssoOffCapture from './captures/sso-off.json'
 import ssoProbeCapture from './captures/sso-probe.json'
 import signoutCapture from './captures/signout.json'
+import memberSigninCapture from './captures/member-signin.json'
+import memberSsoCapture from './captures/member-sso.json'
+import guestSignupCapture from './captures/guest-signup.json'
+import guestSigninCapture from './captures/guest-signin.json'
+import guestSsoCapture from './captures/guest-sso.json'
 
 type CapturedRequest = {
   path: string
@@ -245,6 +265,11 @@ const CAPTURES: Record<FlowId, Capture> = {
   'sso-off': ssoOffCapture as Capture,
   'sso-probe': ssoProbeCapture as Capture,
   signout: signoutCapture as Capture,
+  'member-signin': memberSigninCapture as Capture,
+  'member-sso': memberSsoCapture as Capture,
+  'guest-signup': guestSignupCapture as Capture,
+  'guest-signin': guestSigninCapture as Capture,
+  'guest-sso': guestSsoCapture as Capture,
 }
 
 /**
@@ -302,6 +327,36 @@ export const FLOW_META: Record<
       'Global sign-out. Two requests end the session at Entra. The local variant makes none at all.',
     outcome: { label: 'Session ended', ok: true },
   },
+  'member-signin': {
+    label: 'Sign-in',
+    summary:
+      'A workforce member, signing in with a password. Home-realm discovery, the credential, the token.',
+    outcome: { label: 'Token issued', ok: true },
+  },
+  'member-sso': {
+    label: 'SSO',
+    summary:
+      'The same member with a live session. No password: after the account is picked, /reprocess continues off the session.',
+    outcome: { label: 'Token issued', ok: true },
+  },
+  'guest-signup': {
+    label: 'Sign-up',
+    summary:
+      'A first-time B2B guest. Into the sign-up user flow, out to an external provider, back to create the account.',
+    outcome: { label: 'Token issued', ok: true },
+  },
+  'guest-signin': {
+    label: 'Sign-in',
+    summary:
+      'A returning B2B guest. Home-realm discovery routes the email back to its provider, and no account is created.',
+    outcome: { label: 'Token issued', ok: true },
+  },
+  'guest-sso': {
+    label: 'SSO',
+    summary:
+      'The same guest with a live session. Pick the account and /reprocess continues, with no trip out to the provider.',
+    outcome: { label: 'Token issued', ok: true },
+  },
 }
 
 /**
@@ -333,6 +388,25 @@ export const TAB_FLOWS: readonly FlowId[] = [
 ]
 
 /**
+ * Module 2's member simulation has its own tab set, entirely separate from the
+ * customer flows above. A visitor never really signs in as a member, so this is
+ * driven by the "Sign in as Member" control, not by a lastFlow marker: the
+ * timeline renders it with `simulated`, which turns off the "yours" badge and
+ * the deep-link fragment. Two flows, the same signin-vs-SSO contrast the
+ * customer strip makes, one tenant over.
+ */
+export const MEMBER_FLOWS: readonly FlowId[] = ['member-signin', 'member-sso']
+
+/**
+ * Module 2's guest tab set. Sign-up creates the account (and posts SelfAsserted);
+ * sign-in is the returning guest (home-realm discovery on the email, no create);
+ * SSO reuses a live session and just picks the account. Driven by the live /guest
+ * hand-off, so they render `simulated` like the member — recorded flows beside
+ * the visitor's own real token.
+ */
+export const GUEST_FLOWS: readonly FlowId[] = ['guest-signup', 'guest-signin', 'guest-sso']
+
+/**
  * Requests unique to a flow, marked with ◆ so switching makes the diff visible.
  * Nothing here is cosmetic: each entry is a request that exists in one flow and
  * genuinely does not exist in its counterpart.
@@ -345,6 +419,17 @@ export const FLOW_ONLY: Record<FlowId, readonly string[]> = {
   'sso-probe': [],
   // The only two requests on the site that end a session rather than start one.
   signout: ['logout', 'logoutsession'],
+  // The member pair's diff, the same shape as the customer SSO pair: signing in
+  // pays home-realm discovery and the credential; reusing the session pays
+  // neither and hits /reprocess instead.
+  'member-signin': ['credtype', 'login'],
+  'member-sso': ['reprocess'],
+  // The create-account half of a sign-up. A returning guest posts neither.
+  'guest-signup': ['selfasserted', 'confirmed'],
+  // The returning guest types an email, so it alone does home-realm discovery.
+  'guest-signin': ['credtype'],
+  // Session reused: the account picker, in place of the whole federated leg.
+  'guest-sso': ['reprocess'],
 }
 
 type Measured = {
@@ -549,6 +634,78 @@ const ANNOTATIONS: Record<string, Annotation> = {
         'Some of this may not be Entra at all. DNS, TCP and TLS are paid by whichever request reaches the tenant host on a cold connection, and they are setup rather than server time. Whether this one paid them depends on what the browser already had open.',
     },
   },
+  // ── The B2B self-service sign-up requests (Module 2's live guest) ──────────
+  '/tfp/{tid}/B2X_1_B2B/oauth2/v2.0/authorize': {
+    match: '/tfp/{tid}/B2X_1_B2B/oauth2/v2.0/authorize',
+    id: 'userflow',
+    short: '/tfp …/authorize',
+    label: 'GET /tfp/…/B2X_1_B2B/authorize',
+    actor: 'network',
+    humanDoing: 'picking a sign-up provider',
+    summary: 'Routed into the B2X_1_B2B self-service sign-up user flow.',
+    detail: {
+      what: 'The authorize redirects into a named user flow — tfp is "trust framework policy" — rather than the default sign-in.',
+      why: 'The app registration is bound to the B2X_1_B2B self-service sign-up flow.',
+      gotcha:
+        'The user flow is the knob. It decides which providers the create-account screen offers (email, Microsoft, GitHub and Google here) and which attributes the sign-up collects, with no app code involved.',
+    },
+  },
+  '/te/{tid}/oauth2/authresp': {
+    match: '/te/{tid}/oauth2/authresp',
+    id: 'authresp',
+    short: '/authresp',
+    label: 'GET /te/…/oauth2/authresp',
+    actor: 'entra',
+    humanDoing: 'signing in at the external provider',
+    summary: 'Back from the external provider. Entra takes the federated response.',
+    detail: {
+      what: 'The provider the guest chose (Google, in this capture) redirects back to Entra, which ingests its assertion at the authresp endpoint.',
+      why: 'A guest is homed in an external realm, so authentication happened there. This is where the result comes home.',
+      gotcha:
+        'The whole trip out to the provider is the human gap before this. This request is where it lands: Entra mapping the provider\'s assertion to a guest object. That is server work on Entra\'s side, not ours, and it is the most expensive machine step in the flow.',
+    },
+  },
+  '/{tid}/B2X_1_B2B/SelfAsserted': {
+    match: '/{tid}/B2X_1_B2B/SelfAsserted',
+    id: 'selfasserted',
+    short: '/SelfAsserted',
+    label: 'POST /B2X_1_B2B/SelfAsserted',
+    actor: 'entra',
+    humanDoing: 'filling in the sign-up form',
+    summary: 'The sign-up attributes are submitted, and the guest object is created.',
+    detail: {
+      what: 'The attributes the user flow collected are posted, validated, and written as a new external user.',
+      why: 'First time through: there is no guest object yet, so one is created here.',
+      gotcha:
+        'This is the create step, and it is why a sign-up costs more than a sign-in. A returning guest never posts SelfAsserted — the object already exists. Writing a directory object is the expensive part of identity, the same thing the customer sign-up shows on /createuser.',
+    },
+  },
+  '/{tid}/B2X_1_B2B/api/SelfAsserted/confirmed': {
+    match: '/{tid}/B2X_1_B2B/api/SelfAsserted/confirmed',
+    id: 'confirmed',
+    short: '/confirmed',
+    label: 'GET /B2X_1_B2B/…/confirmed',
+    actor: 'entra',
+    summary: 'The self-asserted step is confirmed and the sign-up moves on.',
+    detail: {
+      what: 'The user flow acknowledges the attributes posted a moment earlier and continues toward issuing the code.',
+      why: 'The confirm half of the create.',
+    },
+  },
+  '/common/federation/oauth2ief': {
+    match: '/common/federation/oauth2ief',
+    id: 'oauth2ief',
+    short: '/oauth2ief',
+    label: 'POST /common/federation/oauth2ief',
+    actor: 'entra',
+    summary: 'The identity-experience-framework federation completes.',
+    detail: {
+      what: 'The IEF — the orchestration engine behind the user flow — finishes the federated sign-up and hands back an authorization code.',
+      why: 'A user flow is an IEF policy underneath, and this is its last server-side step before the redirect home.',
+      gotcha:
+        'The few screens you clicked through are an IEF orchestration. This is where it signs off, which is why a workforce guest sign-up carries an oauth2ief the CIAM customer flow does not.',
+    },
+  },
   '/common/GetCredentialType': {
     match: '/common/GetCredentialType',
     id: 'credtype',
@@ -577,6 +734,21 @@ const ANNOTATIONS: Record<string, Annotation> = {
       why: 'Email + password, per the SUSI_Email flow.',
       gotcha:
         'Conditional Access and MFA evaluation both happen inside this one request. Neither triggered here, and neither is separately timed. A browser sees a single TTFB and nothing can decompose it.',
+    },
+  },
+  '/{tid}/reprocess': {
+    match: '/{tid}/reprocess',
+    id: 'reprocess',
+    short: '/reprocess',
+    label: 'GET /reprocess',
+    actor: 'entra',
+    humanDoing: 'picking an account',
+    summary: 'The session is reused. No password, just a choice of account.',
+    detail: {
+      what: 'Entra reprocesses the existing sign-in session for the account that was picked.',
+      why: 'A live session already existed, so there was nothing to authenticate. Picking an account is enough to continue the authorize.',
+      gotcha:
+        'SSO with a prompt, not silent SSO. The session is reused so no credential is entered, but an account chooser still appears, which is why /reprocess stands where GetCredentialType and /login are in the sign-in. Force a fresh sign-in instead and you pay the home-realm discovery and the credential check this skips.',
     },
   },
   '/{tid}/federation/oauth2': {
@@ -832,6 +1004,92 @@ const FLOW_ANNOTATIONS: Partial<Record<FlowId, Record<string, AnnotationOverride
       },
     },
   },
+  'member-signin': {
+    '/{tid}/oauth2/v2.0/authorize': {
+      // The shared entry points at the CIAM msalConfig and promises four inside
+      // steps to open. The workforce member goes through a different app, and this
+      // sample does not expose that app's internals, so both are dropped. The
+      // connection-setup gotcha underneath is generic and stays.
+      code: undefined,
+      summary: 'The browser leaves for the workforce tenant to start the sign-in.',
+      detail: {
+        what: 'The browser leaves for the workforce tenant carrying client_id, redirect_uri, scope, state, nonce and the PKCE challenge.',
+        why: 'The workforce authority this app registration is configured with.',
+      },
+    },
+    '/{tid}/login': {
+      detail: {
+        why: 'A native workforce credential, checked against the directory.',
+        gotcha:
+          'Conditional Access and MFA are evaluated inside this one request when a policy applies. Neither did here, and a browser sees a single TTFB either way, so nothing inside it is separately timed.',
+      },
+    },
+    '/{tid}/oauth2/v2.0/token': {
+      // Same as authorize: the shared code reference is the CIAM sign-in panel,
+      // not this flow. The PKCE / no-secret point in the shared detail still
+      // holds, the member app being a SPA too.
+      code: undefined,
+    },
+  },
+  'guest-signup': {
+    '/{tid}/oauth2/v2.0/authorize': {
+      // Same as the member: a workforce app, not CIAM, so drop the msalConfig
+      // code ref and the four inside steps (omitted for workforce flows in
+      // toEvents). The connection-setup gotcha underneath stays.
+      code: undefined,
+      summary: 'The browser leaves for the workforce tenant to start the sign-up.',
+      detail: {
+        what: 'The browser leaves for the workforce tenant carrying client_id, redirect_uri, scope, state, nonce and the PKCE challenge.',
+        why: 'The workforce authority this app registration is configured with.',
+      },
+    },
+    '/{tid}/oauth2/v2.0/token': {
+      code: undefined,
+    },
+  },
+  'guest-signin': {
+    '/{tid}/oauth2/v2.0/authorize': {
+      code: undefined,
+      summary: 'The browser leaves for the workforce tenant to start the sign-in.',
+      detail: {
+        what: 'The browser leaves for the workforce tenant carrying client_id, redirect_uri, scope, state, nonce and the PKCE challenge.',
+        why: 'The workforce authority this app registration is configured with.',
+      },
+    },
+    '/tfp/{tid}/B2X_1_B2B/oauth2/v2.0/authorize': {
+      // A returning guest reaches the user flow after home-realm discovery on the
+      // email they typed, not by picking a provider on a create-account screen.
+      // Drop the sign-up-flavoured human label; the gap here is the redirect, and
+      // it is not clearly a person.
+      humanDoing: undefined,
+      summary: 'Routed into the B2X_1_B2B user flow, this time to sign in.',
+    },
+    '/{tid}/oauth2/v2.0/token': {
+      code: undefined,
+    },
+  },
+  'guest-sso': {
+    '/{tid}/oauth2/v2.0/authorize': {
+      code: undefined,
+      summary: 'The browser leaves for the workforce tenant, session in hand.',
+      detail: {
+        what: 'The browser leaves for the workforce tenant carrying client_id, redirect_uri, scope, state, nonce and the PKCE challenge.',
+        why: 'The workforce authority this app registration is configured with.',
+      },
+    },
+    '/{tid}/reprocess': {
+      // The shared gotcha compares reprocess against GetCredentialType and /login,
+      // which is the MEMBER's fresh sign-in. A guest's fresh sign-in is home-realm
+      // discovery and the whole trip out to the provider instead.
+      detail: {
+        gotcha:
+          'SSO with a prompt, not silent SSO. The session is reused so nothing is entered, but an account chooser still appears. Force a fresh sign-in instead and you pay the home-realm discovery and the whole trip out to the provider that this skips.',
+      },
+    },
+    '/{tid}/oauth2/v2.0/token': {
+      code: undefined,
+    },
+  },
 }
 
 // ── The phases: a real level down ───────────────────────────────────────────
@@ -948,6 +1206,13 @@ function toEvents(
 ): JourneyEvent[] {
   let clock = 0
 
+  /**
+   * The member and guest samples reuse the shared request annotations, which are
+   * mostly generic OAuth mechanics, but their authorize must not open into the
+   * CIAM-specific inside steps below. See the insideWait assignment.
+   */
+  const workforceFlow = flow.startsWith('member-') || flow.startsWith('guest-')
+
   /** This flow's overrides, if it has any. Falls through to the shared map. */
   const overrides = FLOW_ANNOTATIONS[flow] ?? {}
 
@@ -1010,10 +1275,15 @@ function toEvents(
     const span = { start: clock, end: clock + m.total }
     clock = span.end
 
-    // What hangs off the `wait` phase — the part Entra won't itemise.
+    // What hangs off the `wait` phase — the part Entra won't itemise. The member
+    // sample deliberately does NOT open the authorize internals: those steps (the
+    // SUSI_Email user flow, the msalConfig redirect) are CIAM-specific and untrue
+    // of a workforce app, so a member authorize shows its real phases and stops.
     const insideWait: ZoomNode[] =
       m.id === 'authorize'
-        ? AUTHORIZE_INSIDE
+        ? workforceFlow
+          ? []
+          : AUTHORIZE_INSIDE
         : m.id === 'login'
           ? CA_MFA_INSIDE
           : m.id === 'logout'
@@ -1037,7 +1307,7 @@ function toEvents(
         // Static Web Apps handing back HTML, and Entra is nowhere near it.
         label:
           key === 'wait'
-            ? r.host.includes('ciamlogin')
+            ? /ciamlogin|login\.microsoftonline\.com/.test(r.host)
               ? 'Waiting: Entra thinking'
               : 'Waiting: our host responding'
             : copy.label,

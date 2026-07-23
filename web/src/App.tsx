@@ -3,7 +3,10 @@ import { useMsal } from '@azure/msal-react'
 import { TokenInspector } from './components/TokenInspector'
 import { JourneyTimeline } from './components/JourneyTimeline'
 import { SignInPanel } from './components/SignInPanel'
-import { buildSampleToken } from './lib/sampleToken'
+import { AccountTypes } from './components/AccountTypes'
+import { buildSampleToken, buildMemberSampleToken } from './lib/sampleToken'
+import { MEMBER_FLOWS, GUEST_FLOWS } from './lib/journey'
+import { readGuestToken, clearGuestToken } from './guest/handback'
 import {
   accountCreatedAtMs,
   readLastFlow,
@@ -29,8 +32,8 @@ type Module = {
 // Homepage roadmap, per spec section 5: "The site is never 'unfinished,' just
 // growing." Update `status` as phases land.
 const MODULES: Module[] = [
-  { phase: 1, name: 'Token Inspector', blurb: 'Sign in, then read your own ID token. Every claim annotated.', status: 'building' },
-  { phase: 2, name: 'Three Doors, One App', blurb: 'Customer, business guest, or employee. Compare what each token says.', status: 'planned' },
+  { phase: 1, name: 'Token Inspector', blurb: 'Sign in, then read your own ID token. Every claim annotated.', status: 'live' },
+  { phase: 2, name: 'Member, Guest, Customer', blurb: 'Customer, business guest, or employee. Compare what each token says.', status: 'building' },
   { phase: 3, name: 'Auth Methods Arena', blurb: 'Password, email OTP, social, passkey. Watch each flow execute.', status: 'planned' },
   { phase: 4, name: "The Admin's View", blurb: 'A live sign-in log. Yours shows up in it.', status: 'planned' },
   { phase: 5, name: 'Conditional Access, Live', blurb: 'Trip a real CA policy and read the policy that caught you.', status: 'planned' },
@@ -103,6 +106,56 @@ function App() {
    */
   const [localSignOutCount, setLocalSignOutCount] = useState(0)
 
+  /**
+   * Module 2's member simulation. A visitor can never really be a workforce
+   * member, so "Sign in as Member" flips this on and App swaps three surfaces
+   * onto the member sample: the inspector token, the timeline's flows, and the
+   * account-types map. Client-side only, no MSAL and no network. Null is
+   * signed-out or the real customer, exactly as before.
+   */
+  const [activeSim, setActiveSim] = useState<'member' | null>(null)
+  // A real sign-in always wins over the sample. The button that sets this is
+  // hidden once you are signed in (see SignInPanel), and this is the belt to that
+  // suspenders: even if activeSim were somehow still set, a real token overrides
+  // it, so the two identities can never fight over the three surfaces.
+  const simMember = activeSim === 'member' && !realIdToken
+  // Built once, like the customer sample beside it.
+  const memberToken = useMemo(() => buildMemberSampleToken(), [])
+
+  /**
+   * Guest mode: the real token a /guest sign-in handed back through
+   * sessionStorage (guest/handback.ts), read once on mount. A live guest sign-in
+   * drives the inspector and Module 2 (the two surfaces this was scoped to) and
+   * outranks the member sample — but NOT a real CIAM customer session, which
+   * wins. /guest scopes its clearCache to the workforce account, so a customer
+   * signed in on `/` survives a guest sign-in; the `!realIdToken` guard keeps
+   * guest mode from masking that live session, while guest still wins the normal
+   * case (a visitor who was never signed in, where realIdToken is null).
+   */
+  const [guestToken, setGuestToken] = useState(() => readGuestToken())
+  const guestMode = Boolean(guestToken) && !realIdToken
+  const exitGuest = () => {
+    clearGuestToken()
+    setGuestToken(null)
+  }
+
+  // What the inspector shows, in precedence order: a live guest, then the member
+  // sample, then the real customer token or the customer sample. `live` is true
+  // only for a real token, so the sample keeps its "not your real token" framing.
+  const inspectorToken = guestMode
+    ? guestToken!
+    : simMember
+      ? memberToken
+      : (realIdToken ?? sampleToken)
+  const inspectorLabel = guestMode
+    ? 'Your guest ID token'
+    : simMember
+      ? 'Member sample token'
+      : realIdToken
+        ? 'Your ID token'
+        : 'Sample ID token'
+  const inspectorLive = guestMode ? true : simMember ? false : Boolean(realIdToken)
+
   return (
     // No max-width. There was one — 112rem, 1792px — and on a full-screen
     // window wider than that it stopped the page dead in the middle of the
@@ -134,20 +187,15 @@ function App() {
           </p>
         </header>
 
-        {/* Timeline left, claims right — the token you got and how you got it,
-            side by side. The claims are a tall column of long values (GUIDs), so
-            rather than fight them flat they scroll inside a sticky reference panel
-            on the right, which is the second-monitor shape. Timeline gets the wide
-            column for the axis. Claims are first in the DOM, placed right by the
-            grid, so a phone shows the payoff first and then stacks the timeline —
-            mobile just needs to work.
-
-            The column widths are what makes a wide monitor pay off, now that
-            nothing caps the page: claims are a fixed 27rem, so every pixel a
-            wider window adds goes to the timeline's 1fr. Being the second grid
-            column also puts the claims panel against the right edge rather than
-            floating somewhere near the middle. Both of those collapse below lg,
-            where the grid is a single stacked column. */}
+        {/* Claims right, everything else left. The claims panel is a sticky,
+            internally-scrolling reference column pinned to the right: top-6,
+            capped at the viewport, and it scrolls inside itself. It stays put
+            while the left column scrolls past it. The LEFT column holds the
+            timeline AND Module 2, so the pinned claims stay in view as you scroll
+            from the token flow down into the account-types map. Claims are first
+            in the DOM, placed right by the grid, so a phone shows the payoff first
+            and then stacks the left column. Below lg the grid is one stacked
+            column and nothing is pinned. */}
         <div className="mt-12 grid gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_27rem]">
           <section
             aria-labelledby="inspector"
@@ -155,23 +203,40 @@ function App() {
           >
             <div className="mb-4">
               <h2 id="inspector" className="text-sm font-medium uppercase tracking-widest text-slate-500">
-                {realIdToken ? 'Your claims' : 'The claims you’d get'}
+                {guestMode
+                  ? 'Your guest claims'
+                  : simMember
+                    ? 'Member’s claims (sample)'
+                    : realIdToken
+                      ? 'Your claims'
+                      : 'The claims you’d get'}
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-slate-400">
-                {realIdToken
-                  ? 'The real token you were just issued, every claim annotated: what it is, why it’s in your token, and which tenant configuration produced it.'
-                  : 'A sample, until you sign in. Then this reads your own real token: same claims, your values.'}
+                {guestMode
+                  ? 'The real token from your guest sign-in, every claim annotated. Note the workforce tenant, your external home realm, and the idp claim that gives it away.'
+                  : simMember
+                    ? 'A workforce member’s captured token, shown as a sample. Every claim annotated, with the member’s values.'
+                    : realIdToken
+                      ? 'The real token you were just issued, every claim annotated: what it is, why it’s in your token, and which tenant configuration produced it.'
+                      : 'A sample, until you sign in. Then this reads your own real token: same claims, your values.'}
               </p>
             </div>
 
             <div className="mb-4">
-              <SignInPanel onLocalSignOut={() => setLocalSignOutCount((n) => n + 1)} />
+              <SignInPanel
+                onLocalSignOut={() => setLocalSignOutCount((n) => n + 1)}
+                onSimulateMember={() => setActiveSim('member')}
+                simActive={simMember}
+                onExitSim={() => setActiveSim(null)}
+                guestActive={guestMode}
+                onExitGuest={exitGuest}
+              />
             </div>
 
             <TokenInspector
-              token={realIdToken ?? sampleToken}
-              label={realIdToken ? 'Your ID token' : 'Sample ID token'}
-              live={Boolean(realIdToken)}
+              token={inspectorToken}
+              label={inspectorLabel}
+              live={inspectorLive}
             />
 
             {/* ── The way to /app2, which was reachable only by typing the URL ──
@@ -205,7 +270,8 @@ function App() {
             )}
           </section>
 
-          <section aria-labelledby="journey" className="min-w-0 lg:col-start-1 lg:row-start-1">
+          <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+            <section aria-labelledby="journey">
             <div className="mb-5">
               <h2 id="journey" className="text-sm font-medium uppercase tracking-widest text-slate-500">
                 How those claims got there
@@ -227,20 +293,71 @@ function App() {
                 claim about the data's provenance; this is a temporary state note
                 that stops applying the moment someone signs in. Folding a
                 transient into a permanent statement made both read as hedging. */}
-            {!realIdToken && (
+            {!realIdToken && !simMember && !guestMode && (
               <p className="mb-4 max-w-3xl rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-200/70">
                 <span className="font-medium text-amber-300">Recorded sample flows.</span> Sign in
                 and the one you actually performed gets called out.
               </p>
             )}
 
-            <JourneyTimeline
-              token={realIdToken ?? sampleToken}
-              tokenLabel={realIdToken ? 'Your ID token' : 'Sample ID token'}
-              localSignOutCount={localSignOutCount}
-              resolvedFlow={resolvedFlow}
-            />
+            {simMember && (
+              <p className="mb-4 max-w-3xl rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-200/70">
+                <span className="font-medium text-amber-300">Member sample.</span> A real workforce
+                member’s captured sign-in, replayed. Switch tabs to compare SSO against a full sign-in.
+              </p>
+            )}
+
+            {guestMode && (
+              <p className="mb-4 max-w-3xl rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-200/70">
+                <span className="font-medium text-amber-300">Guest sign-up, recorded.</span> The token
+                above is your own, live. This flow is a real capture of the self-service B2B sign-up
+                that made it, measured request by request.
+              </p>
+            )}
+
+            {/* One timeline, the identity is the variable. The member sim is a
+                separate mount (its own key) so it opens fresh on the member flows
+                with no customer lastFlow, badge or deep link carried across. */}
+            {guestMode ? (
+              <JourneyTimeline
+                key="guest"
+                token={guestToken!}
+                tokenLabel="Your guest ID token"
+                flows={GUEST_FLOWS}
+                defaultFlow="guest-signup"
+                simulated
+              />
+            ) : simMember ? (
+              <JourneyTimeline
+                key="sim-member"
+                token={memberToken}
+                tokenLabel="Member sample token"
+                flows={MEMBER_FLOWS}
+                defaultFlow="member-signin"
+                simulated
+              />
+            ) : (
+              <JourneyTimeline
+                key="customer"
+                token={realIdToken ?? sampleToken}
+                tokenLabel={realIdToken ? 'Your ID token' : 'Sample ID token'}
+                localSignOutCount={localSignOutCount}
+                resolvedFlow={resolvedFlow}
+              />
+            )}
           </section>
+
+            {/* ── Module 2 · account types ───────────────────────────────
+                In the same (left) column as the timeline, so the pinned claims
+                panel on the right stays in view as you scroll from the token
+                flow down into the account-types map. A separate product from
+                the inspector (design.md §6), set off by a top rule. It reads
+                the signed-in state through the shared MSAL instance's hooks,
+                never a second instance. */}
+            <div className="mt-14 border-t border-slate-800 pt-12">
+              <AccountTypes activeKey={guestMode ? 'guest' : simMember ? 'member' : undefined} />
+            </div>
+          </div>
         </div>
 
         <section className="mt-16 max-w-3xl" aria-labelledby="roadmap">

@@ -135,6 +135,9 @@ beforeEach(() => {
   // decide what the next test's sign-in sees.
   history.replaceState(null, '', '/')
   clearLastFlow()
+  // The guest hand-off token lives in sessionStorage too; the same leakage
+  // between tests applies, so clear it.
+  sessionStorage.removeItem('tip.guest.idtoken')
 })
 afterEach(cleanup)
 
@@ -290,5 +293,85 @@ describe('a sign-in that fails clears what it failed on', () => {
 
     expect(loginRedirect).not.toHaveBeenCalled()
     expect(clearCache).not.toHaveBeenCalled()
+  })
+})
+
+// ── The member sample is a signed-out affordance ────────────────────────────
+// Clicking "Sign in as Member" while signed in as a real account put the panel in
+// two states at once — "signed in as X" above, a member sample below — and read
+// as broken. The sample is client-side and a real token overrides it anyway, so
+// the control is simply removed once someone is signed in.
+
+describe('the member sample is only offered signed out', () => {
+  const memberButton = () =>
+    screen.queryByRole('button', { name: 'Sign in as Member (sample data)' })
+
+  it('offers it to a signed-out visitor', () => {
+    render(<App />)
+    expect(memberButton()).not.toBeNull()
+  })
+
+  it('removes it once a real account is signed in', () => {
+    signedIn = [accountHolding(realToken(5))]
+    render(<App />)
+    expect(memberButton()).toBeNull()
+  })
+})
+
+// ── A handed-back guest token puts the page in guest mode ───────────────────
+// /guest signs a real B2B guest in as the workforce client, which the main
+// page's CIAM instance cannot read, so the token crosses in sessionStorage. The
+// main page reads it into guest mode: the panel collapses to an exit, and the
+// inspector and Module 2 show the guest. See guest/handback.ts.
+
+describe('a handed-back guest token drives guest mode', () => {
+  const GUEST_KEY = 'tip.guest.idtoken'
+  const guestToken = () => {
+    const payload = {
+      iat: ISSUED_AT_SECONDS,
+      tid: '9e1372b0-e94f-40af-aef8-6a5fa2bfb2e4',
+      idp: 'https://sts.windows.net/9188040d-6c67-4c5b-b112-36a304b66dad/',
+      email: 'guest@example.com',
+    }
+    return `${seg({ typ: 'JWT', alg: 'RS256' })}.${seg(payload)}.NOT_A_SIGNATURE`
+  }
+
+  it('collapses the panel to a guest exit, hiding the normal sign-in', () => {
+    sessionStorage.setItem(GUEST_KEY, guestToken())
+
+    render(<App />)
+
+    expect(screen.getByRole('button', { name: 'Exit guest' })).toBeDefined()
+    // The customer sign-in and the member sample have nothing to say to a guest.
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Sign in as Member (sample data)' })).toBeNull()
+  })
+
+  it('exits back to signed-out and clears the hand-off', () => {
+    sessionStorage.setItem(GUEST_KEY, guestToken())
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exit guest' }))
+
+    expect(screen.queryByRole('button', { name: 'Exit guest' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeDefined()
+    // The token is gone, so a refresh would not silently re-enter guest mode.
+    expect(sessionStorage.getItem(GUEST_KEY)).toBeNull()
+  })
+
+  it('yields to a real customer session rather than masking it', () => {
+    // A customer signed in on `/`, then a guest hand-off appears (they visited
+    // /guest and signed up). /guest scopes its clearCache to the workforce
+    // account, so the live customer session survives — guest mode must NOT mask
+    // it. Without the `!realIdToken` guard on guestMode, it would.
+    signedIn = [accountHolding(realToken(5))]
+    sessionStorage.setItem(GUEST_KEY, guestToken())
+
+    render(<App />)
+
+    // Guest mode does not take over: no exit control, and the customer's own
+    // token — not the guest hand-off — drives the surfaces.
+    expect(screen.queryByRole('button', { name: 'Exit guest' })).toBeNull()
+    expect(timeline().token).toBe(realToken(5))
   })
 })

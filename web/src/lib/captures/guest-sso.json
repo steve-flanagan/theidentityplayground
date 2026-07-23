@@ -1,0 +1,65 @@
+{
+  "flow": "guest-sso",
+  "capturedAt": "2026-07-22T19:10:44.376-04:00",
+  "note": "Derived from a real HAR by scripts/har-to-timings.mjs. Timings only — no headers, cookies, bodies or query strings. The HAR itself is gitignored and must stay that way.",
+  "requestCount": 3,
+  "machineMs": 1326,
+  "wallMs": 4982,
+  "humanMs": 3656,
+  "requests": [
+    {
+      "path": "/{tid}/oauth2/v2.0/authorize",
+      "host": "login.microsoftonline.com",
+      "method": "GET",
+      "status": 200,
+      "startedAt": 0,
+      "total": 656,
+      "idleBefore": 0,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 656,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/{tid}/reprocess",
+      "host": "login.microsoftonline.com",
+      "method": "GET",
+      "status": 302,
+      "startedAt": 1879,
+      "total": 510,
+      "idleBefore": 1223,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 510,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/{tid}/oauth2/v2.0/token",
+      "host": "login.microsoftonline.com",
+      "method": "POST",
+      "status": 200,
+      "startedAt": 4822,
+      "total": 160,
+      "idleBefore": 2433,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 160,
+        "receive": 0
+      }
+    }
+  ]
+}

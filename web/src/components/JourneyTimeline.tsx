@@ -38,6 +38,21 @@ type Props = {
   token: string
   tokenLabel: string
   /**
+   * The tab set this timeline offers. Defaults to the customer flows; Module 2's
+   * member simulation passes its own (MEMBER_FLOWS).
+   */
+  flows?: readonly FlowId[]
+  /** Where to open when there is no lastFlow to honour. Defaults to sign-in. */
+  defaultFlow?: FlowId
+  /**
+   * A client-side simulation (the member sample), not a real session. It turns
+   * off everything that speaks to a real sign-in: the lastFlow banner and the
+   * "yours" badge, the resolvedFlow answer, and the deep-link fragment, which
+   * belongs to MSAL and the customer flows. Tabs come from `flows`, and it opens
+   * on `defaultFlow`.
+   */
+  simulated?: boolean
+  /**
    * Bumped by App every time the visitor signs out of this app only. See the
    * block where it is consumed for why that path bypasses lastFlow entirely.
    *
@@ -297,6 +312,9 @@ function landingFlow(
 export function JourneyTimeline({
   token,
   tokenLabel,
+  flows = TAB_FLOWS,
+  defaultFlow = 'signin',
+  simulated = false,
   localSignOutCount = 0,
   resolvedFlow = null,
 }: Props) {
@@ -310,7 +328,7 @@ export function JourneyTimeline({
    * mount: landing on a recording of a flow you did not perform is what made
    * this page look fabricated, so it opens on the real one where possible.
    */
-  const [lastFlow, setLastFlow] = useState(() => readLastFlow())
+  const [lastFlow, setLastFlow] = useState(() => (simulated ? null : readLastFlow()))
 
   /**
    * The deep link, read ONCE during the first render. Held in state rather than
@@ -318,7 +336,9 @@ export function JourneyTimeline({
    * decision below is about where the visitor arrived, not where they have got
    * to since.
    */
-  const [link] = useState(readStepHash)
+  const [link] = useState<StepLink>(() =>
+    simulated ? { flow: null, ids: [] } : readStepHash(),
+  )
 
   /**
    * A deep link outranks the flow the page would otherwise open on, because it
@@ -331,9 +351,13 @@ export function JourneyTimeline({
    * fragment it short-circuits before building anything.
    */
   const [flow, setFlow] = useState<FlowId>(() =>
-    landingFlow(link, lastFlow?.kind === 'matched' ? lastFlow.flow : 'signin', (f) =>
-      buildJourney(f, token, tokenLabel).events,
-    ),
+    simulated
+      ? defaultFlow
+      : landingFlow(
+          link,
+          lastFlow?.kind === 'matched' ? lastFlow.flow : defaultFlow,
+          (f) => buildJourney(f, token, tokenLabel).events,
+        ),
   )
 
   /** The one flow we can honestly say the visitor performed, if any. */
@@ -381,6 +405,9 @@ export function JourneyTimeline({
    */
   useEffect(() => {
     const onHashChange = () => {
+      // The member sim never participates in the fragment — it belongs to MSAL
+      // and the customer flows — so a hashchange while it is on screen is ignored.
+      if (simulated) return
       const next = readStepHash()
 
       // Not ours, or cleared outright. Both arrive as an empty link and neither
@@ -396,7 +423,7 @@ export function JourneyTimeline({
 
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
-  }, [flow, token, tokenLabel])
+  }, [flow, token, tokenLabel, simulated])
 
   /**
    * Brushing and linking (Becker/Cleveland, late 1980s — canonical, not
@@ -488,7 +515,7 @@ export function JourneyTimeline({
    */
   function navigate(next: ZoomNode[]) {
     setPath(next)
-    writeStepHash(flow, next)
+    if (!simulated) writeStepHash(flow, next)
   }
 
   /**
@@ -511,8 +538,8 @@ export function JourneyTimeline({
     if (!path.length) return
     const next = path.slice(0, -1)
     setPath(next)
-    writeStepHash(flow, next)
-  }, [flow, path])
+    if (!simulated) writeStepHash(flow, next)
+  }, [flow, path, simulated])
 
   const selected = path[path.length - 1] ?? null
 
@@ -628,7 +655,7 @@ export function JourneyTimeline({
             {/* Five, not every FlowId. The silent probe is a real capture and
                 its numbers are on the SSO flow; it is not a thing a visitor can
                 perform, so it is not offered as though it were. See TAB_FLOWS. */}
-            {TAB_FLOWS.map((f) => {
+            {flows.map((f) => {
               const isYours = yours === f
               const selected = flow === f
               return (

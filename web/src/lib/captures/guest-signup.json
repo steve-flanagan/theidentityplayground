@@ -1,0 +1,137 @@
+{
+  "flow": "guest-signup",
+  "capturedAt": "2026-07-22T18:03:58.806-04:00",
+  "note": "Derived from a real HAR by scripts/har-to-timings.mjs. Timings only — no headers, cookies, bodies or query strings. The HAR itself is gitignored and must stay that way.",
+  "requestCount": 7,
+  "machineMs": 4681,
+  "wallMs": 24625,
+  "humanMs": 19944,
+  "requests": [
+    {
+      "path": "/{tid}/oauth2/v2.0/authorize",
+      "host": "login.microsoftonline.com",
+      "method": "GET",
+      "status": 200,
+      "startedAt": 0,
+      "total": 205,
+      "idleBefore": 0,
+      "timings": {
+        "blocked": 0,
+        "dns": 27,
+        "connect": 21,
+        "ssl": 22,
+        "send": 0,
+        "wait": 117,
+        "receive": 18
+      }
+    },
+    {
+      "path": "/tfp/{tid}/B2X_1_B2B/oauth2/v2.0/authorize",
+      "host": "login.microsoftonline.com",
+      "method": "GET",
+      "status": 302,
+      "startedAt": 5074,
+      "total": 337,
+      "idleBefore": 4869,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 337,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/te/{tid}/oauth2/authresp",
+      "host": "login.microsoftonline.com",
+      "method": "GET",
+      "status": 200,
+      "startedAt": 15875,
+      "total": 2088,
+      "idleBefore": 10464,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 2048,
+        "receive": 40
+      }
+    },
+    {
+      "path": "/{tid}/B2X_1_B2B/SelfAsserted",
+      "host": "login.microsoftonline.com",
+      "method": "POST",
+      "status": 200,
+      "startedAt": 20017,
+      "total": 1117,
+      "idleBefore": 2054,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 1117,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/{tid}/B2X_1_B2B/api/SelfAsserted/confirmed",
+      "host": "login.microsoftonline.com",
+      "method": "GET",
+      "status": 200,
+      "startedAt": 21164,
+      "total": 200,
+      "idleBefore": 30,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 200,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/common/federation/oauth2ief",
+      "host": "login.microsoftonline.com",
+      "method": "POST",
+      "status": 302,
+      "startedAt": 21444,
+      "total": 503,
+      "idleBefore": 80,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 0,
+        "ssl": 0,
+        "send": 0,
+        "wait": 503,
+        "receive": 0
+      }
+    },
+    {
+      "path": "/{tid}/oauth2/v2.0/token",
+      "host": "login.microsoftonline.com",
+      "method": "POST",
+      "status": 200,
+      "startedAt": 24394,
+      "total": 231,
+      "idleBefore": 2447,
+      "timings": {
+        "blocked": 0,
+        "dns": 0,
+        "connect": 20,
+        "ssl": 25,
+        "send": 0,
+        "wait": 186,
+        "receive": 0
+      }
+    }
+  ]
+}
