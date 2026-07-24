@@ -156,10 +156,17 @@ first run to reach this path soft-deleted but failed to purge on an Entra replic
 404 (`Request_ResourceNotFound`); the purge now retries that transient 404 and fails the
 run loudly if anything is left unpurged. See decision 003's 22 July update.
 
-**NOT verified, needs the tenant, and it is the assumption everything rests on:**
-the real `signInType` values. The two runs cannot settle this. With a 24-hour cutoff and
-only young accounts, "no aged accounts" and "signInType never matched" print the same
-zero. Confirm directly:
+**Partly verified, and narrower than it used to read: the real `signInType` values.**
+This was the assumption everything rested on, and the runs that deleted real accounts
+have since closed half of it. A run cannot delete a self-service account without having
+matched it against `$demoSignInTypes`, so the values this tenant issues to ordinary
+sign-ups are now demonstrated rather than assumed (External ID: run 29880436817,
+3 deleted and purged).
+
+**What is still open is the tail, not the common case.** A variant the tenant issues on
+some other path, a provider added later, or a value Entra changes underneath us would
+still be skipped forever and silently, in the safe direction. That is worth checking
+rather than discovering, and the check needs an interactive admin token:
 
 ```powershell
 Connect-MgGraph -TenantId 7e8da8a9-67bc-4d53-bfc7-fe3e13128382 -Scopes 'User.Read.All'
@@ -182,12 +189,10 @@ under `inside the TTL`, which it can only reach by clearing the identification r
 first, where a wrong rule would have put it under `not a self-service signup` and
 printed the same zero candidates.
 
-**NOT verified: that the workforce sweep actually deletes.** No run has found an aged
-guest yet, so the delete-and-purge path has never executed in tenant `9e1372b0`. A
-permission proven in the External ID tenant proves nothing about this one, and there it
-took two days and one silent purge failure to clear. Section 3 of
-[decision 009](../docs/decisions/009-workforce-guest-cleanup.md) owns the status; items
-5 and 7 are what remain.
+**Both sweeps are proven end to end, and section 3 of
+[decision 009](../docs/decisions/009-workforce-guest-cleanup.md) owns that status.** It
+is the only place it is written down; this file used to restate it and went stale within
+a day of the runs that closed it.
 
 ## Scheduled runs
 
@@ -207,8 +212,12 @@ tick of the `delete` input on the Actions tab.
 
 ## Not here yet
 
-- Publishing run stats (created / deleted / current count) to the front end, per
-  spec Module 7. Scoped in decision 003, not built. It is also the only monitor that
-  catches either workflow silently not running — and they now share a repo, so the
-  60-day inactivity disable takes out both at once.
-- Demo-employee password rotation — Phase 2.
+- Demo-employee password rotation, per spec Module 7. **Probably retired rather than
+  pending:** it was written when the Employee door was going to publish shared
+  credentials, and the shipped Module 2 uses a captured sample token instead, so there
+  is no published password to rotate. Steve's call to close or keep.
+
+The run-stats monitor that used to be listed here **is built**: Module 7 renders both
+sweeps' real run history, read live from GitHub's API. See
+[decision 010](../docs/decisions/010-cleanup-status-from-github-api.md), which owns it
+and records why it does not publish a stats file of its own.

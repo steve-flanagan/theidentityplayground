@@ -1,7 +1,27 @@
 # 004. Proof of control before a B2B invitation is sent
 
-**Status:** decided 20 July 2026. **Not built.** Module 2 is Phase 2, and `api/` deploys
-nothing yet. This is the blocker Phase 2 does not ship without.
+**Status:** decided 20 July 2026. **SUPERSEDED 24 July 2026, and never built.** Module 2
+shipped without it, because the design it guards was retired rather than implemented.
+
+**What changed.** This decision exists because the planned B2B door took an email address
+from an anonymous visitor and called Graph `POST /invitations`, which makes the site an
+open email relay: anyone could have made Microsoft send mail to any address on our behalf.
+Module 2 instead ships a **self-service sign-up user flow** (`B2X_1_B2B`). The visitor
+authenticates with a provider they already control and the guest object is created on the
+way through, so **no invitation is sent, no address is accepted from a stranger, and there
+is no relay to abuse.** The threat this record was written against does not exist in the
+shipped design. See [009](009-workforce-guest-cleanup.md) § Context and `notes/design.md`
+§ 6.
+
+**Read it for the reasoning, not the plan.** The proof-of-control analysis stands and would
+apply again to anything that mails a stranger on the visitor's say-so.
+
+**Two things in the original status line were also wrong before this.** `api/` has been
+deployed since 21 July ([006](006-standalone-function-app.md), and `notes/environment.md`
+owns the live state), and Phase 2 did ship. The old line read: *"Not built. Module 2 is
+Phase 2, and `api/` deploys nothing yet. This is the blocker Phase 2 does not ship
+without."* It contradicted this record's own Consequences section, which already said the
+backend exists.
 
 Every factual claim below is marked **[M]** if it was read in current documentation (source
 and date given) or **[A]** if it is assumed and still to be tested. Microsoft-behaviour
