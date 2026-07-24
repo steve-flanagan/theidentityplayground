@@ -4,6 +4,7 @@ import { TokenInspector } from './components/TokenInspector'
 import { JourneyTimeline } from './components/JourneyTimeline'
 import { SignInPanel } from './components/SignInPanel'
 import { AccountTypes } from './components/AccountTypes'
+import { CleanupStatus } from './components/CleanupStatus'
 import { buildSampleToken, buildMemberSampleToken } from './lib/sampleToken'
 import { MEMBER_FLOWS, GUEST_FLOWS } from './lib/journey'
 import { readGuestToken, clearGuestToken } from './guest/handback'
@@ -33,12 +34,12 @@ type Module = {
 // growing." Update `status` as phases land.
 const MODULES: Module[] = [
   { phase: 1, name: 'Token Inspector', blurb: 'Sign in, then read your own ID token. Every claim annotated.', status: 'live' },
-  { phase: 2, name: 'Member, Guest, Customer', blurb: 'Customer, business guest, or employee. Compare what each token says.', status: 'building' },
+  { phase: 2, name: 'Member, Guest, Customer', blurb: 'Customer, business guest, or employee. Compare what each token says.', status: 'live' },
   { phase: 3, name: 'Auth Methods Arena', blurb: 'Password, email OTP, social, passkey. Watch each flow execute.', status: 'planned' },
   { phase: 4, name: "The Admin's View", blurb: 'A live sign-in log. Yours shows up in it.', status: 'planned' },
   { phase: 5, name: 'Conditional Access, Live', blurb: 'Trip a real CA policy and read the policy that caught you.', status: 'planned' },
   { phase: 6, name: 'Live SCIM Provisioning', blurb: 'Hire a demo employee, watch them provision into a SaaS app in real time.', status: 'planned' },
-  { phase: 7, name: 'Self-Destructing Accounts', blurb: 'Every demo account expires. Here is the job that kills them.', status: 'planned' },
+  { phase: 7, name: 'Self-Destructing Accounts', blurb: 'Every demo account expires. Here is the job that kills them, and its real run history.', status: 'live' },
 ]
 
 // Record<ModuleStatus, string> forces this map to stay exhaustive: add a status
@@ -360,6 +361,17 @@ function App() {
                 never a second instance. */}
             <div className="mt-14 border-t border-slate-800 pt-12">
               <AccountTypes activeKey={guestMode ? 'guest' : simMember ? 'member' : undefined} />
+            </div>
+
+            {/* ── Module 7 · self-destructing accounts ────────────────────
+                Below Module 2, in the same left column, set off by the same
+                rule. It is the proof for a promise the rest of the page keeps
+                making: the sign-in panel, /guest and the account map all tell
+                the visitor their account self-destructs, and this is the only
+                place that shows it happening. Reads GitHub's public API in the
+                browser, so it holds no credential and needs no backend. */}
+            <div className="mt-14 border-t border-slate-800 pt-12">
+              <CleanupStatus />
             </div>
           </div>
         </div>

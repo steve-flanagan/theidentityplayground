@@ -43,7 +43,7 @@
 // person stops when the thing they were scrolling towards is on screen.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { mkdir, rm, readdir, rename } from 'node:fs/promises'
+import { mkdir, rm, readdir } from 'node:fs/promises'
 import { dirname, resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'

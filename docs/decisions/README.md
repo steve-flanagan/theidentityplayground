@@ -19,6 +19,7 @@ Format: **Context** (what forced a choice) → **Decision** → **Rejected alter
 | 007 | [TypeScript over JavaScript across web/ and api/](007-typescript-over-javascript.md) | decided |
 | 008 | Self-service account deletion: how a visitor deletes their own demo account | **deferred** — build only if requested |
 | 009 | [Sweeping the self-service B2B guests /guest creates](009-workforce-guest-cleanup.md) | decided · running · **verified end-to-end, gate closed** |
+| 010 | [Module 7 reads GitHub's API instead of publishing its own stats](010-cleanup-status-from-github-api.md) | decided · built · **supersedes 003's stats-publishing scope** |
 
 **005 was withdrawn on 20 July and the number is retired.** It was never a decision.
 On-demand provisioning is the feature built for this case, and the alternative it was

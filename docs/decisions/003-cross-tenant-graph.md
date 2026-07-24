@@ -557,7 +557,8 @@ verified against current documentation rather than assumed.
   tenant, covering the four guards, the purge, `-WhatIf`, both auth paths, and the
   ceiling. Confirmed to fail against the pre-change script, so it discriminates.
 
-- **Module 7 stats publishing.** Scoped below, not built.
+- **Module 7 stats publishing.** Scoped below. **Built 24 July, but not the way this
+  document recommended: see [decision 010](010-cleanup-status-from-github-api.md).**
 
 ## 3. Verified before the site's claim is allowed to stand
 
@@ -634,10 +635,20 @@ alone, not on the deletion proof.**
 
 ---
 
-## Not built: publishing run stats to the front end
+## Publishing run stats to the front end
+
+**[SUPERSEDED 24 July 2026 by [decision 010](010-cleanup-status-from-github-api.md).** The
+monitor was built and Module 7 is live, but the design below was rejected. The page reads
+GitHub's public workflow-runs API from the visitor's browser instead of rendering a stats
+file this repo commits. Two reasons, in 010: `contents: write` on the deleting job turns a
+PSGallery supply-chain compromise from one run's access into permanent access via `main`;
+and a stats file we publish about ourselves is a claim where a link to GitHub's record of
+the run is evidence. The cost is that the counts are not on the page. The reasoning below
+is left intact because the "why it is the right monitor" half of it is still correct and
+is why 010 exists at all.**]
 
 Scoped here because it is the only monitor that tests the promise, and because spec
-Module 7 already asks for it. Deliberately not implemented.
+Module 7 already asks for it.
 
 **Why it is the right monitor.** Alerting on job failure does not work. The failure that
 breaks the promise is a run that never starts, and a run that never starts produces no
