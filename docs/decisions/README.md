@@ -13,12 +13,14 @@ Format: **Context** (what forced a choice) → **Decision** → **Rejected alter
 | 001 | [Container Apps over Container Instances for the SCIM mock](001-container-apps-over-container-instances.md) | decided |
 | 002 | [Azure DNS over Cloudflare for the domain](002-azure-dns-over-cloudflare.md) | decided |
 | 003 | [Cross-tenant Graph for the demo-account cleanup](003-cross-tenant-graph.md) | decided |
-| 004 | [Proof of control before a B2B invitation is sent](004-b2b-invitation-proof-of-control.md) | decided |
+| 004 | [Proof of control before a B2B invitation is sent](004-b2b-invitation-proof-of-control.md) | **superseded 24 July** — self-service sign-up retired the invitation, and the relay with it |
 | 005 | ~~On-demand provisioning instead of waiting for Entra's cycle~~ | **withdrawn** — not a decision |
 | 006 | [Standalone Function App over SWA managed API (timer triggers vs. $9/mo)](006-standalone-function-app.md) | decided · implemented |
 | 007 | [TypeScript over JavaScript across web/ and api/](007-typescript-over-javascript.md) | decided |
 | 008 | Self-service account deletion: how a visitor deletes their own demo account | **deferred** — build only if requested |
 | 009 | [Sweeping the self-service B2B guests /guest creates](009-workforce-guest-cleanup.md) | decided · running · **verified end-to-end, gate closed** |
+| 010 | [Module 7 reads GitHub's API instead of publishing its own stats](010-cleanup-status-from-github-api.md) | decided · built · **supersedes 003's stats-publishing scope** |
+| 011 | [Drop passkey from the Auth Methods Arena](011-drop-passkey-from-auth-methods.md) | decided 24 July — the custom URL domain it needs requires ~$35/mo of Azure Front Door |
 
 **005 was withdrawn on 20 July and the number is retired.** It was never a decision.
 On-demand provisioning is the feature built for this case, and the alternative it was
@@ -32,12 +34,13 @@ not a decision. A record with no real rejected alternative is a record with a ho
 section that carries all the value.
 
 Decision 008 was raised 20 July and is **deferred**: not built until it is an actually
-requested feature. Scheduled cleanup already removes accounts after roughly 24 hours (proven
-up to the deletion, which is still unexercised), so a self-service button is about immediacy
-and principle, not necessity. Recorded here so the safe shape is not relitigated if it is
-ever built: the SPA sends its ID token, the backend validates it and reads `oid` from the
-validated token, and deletes only that user. An account id accepted from the client turns
-delete-me into delete-anyone. It needs `api/` deployed, so it also reopens 006.
+requested feature. Scheduled cleanup already removes accounts after roughly 24 hours, and
+the delete-and-purge path is proven in both tenants (003 and 009 own that status), so a
+self-service button is about immediacy and principle, not necessity. Recorded here so the
+safe shape is not relitigated if it is ever built: the SPA sends its ID token, the backend
+validates it and reads `oid` from the validated token, and deletes only that user. An
+account id accepted from the client turns delete-me into delete-anyone. It needs `api/`,
+which has been deployed since 21 July, so 006 no longer has to reopen for it.
 
 Records carry a **Status** line and mark each factual claim **[M]** (read in current
 documentation, source and date cited) or **[A]** (assumed, still to be tested). 003 is the

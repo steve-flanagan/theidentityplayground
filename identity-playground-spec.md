@@ -32,7 +32,7 @@ The differentiator: identity work is invisible in production. This makes it visi
 
 Document the tenant-separation rationale in the README — it demonstrates correct security architecture thinking.
 
-**Status (July 2026):** External ID tenant created — `theidentityplayground.onmicrosoft.com`, org name "The Identity Playground". Resource group and Azure DNS zone created; delegation to Azure DNS verified live on public resolvers. Demo workforce tenant **created 17 July 2026**; the blocker below is resolved. It carries the custom domain, which is why External ID cannot and a branded CIAM login needs a subdomain. Two risks on it are open and tracked in the environment notes: it sits on a trial subscription with an unknown expiry, and the project's budget alert is scoped to the other subscription, so nothing guards spend there.
+**Status (July 2026):** External ID tenant created — `theidentityplayground.onmicrosoft.com`, org name "The Identity Playground". Resource group and Azure DNS zone created; delegation to Azure DNS verified live on public resolvers. Demo workforce tenant **created 17 July 2026**; the blocker below is resolved. It carries the custom domain, which is why External ID cannot and a branded CIAM login needs a subdomain. One risk on it is open and tracked in the environment notes, which owns live infra state: it sits on a trial subscription with an unknown expiry. The budget gap that used to be listed beside it was closed on 20 July.
 
 > ### ✅ Resolved 17 July 2026. Kept because the constraint is real and would apply again
 >
@@ -204,7 +204,24 @@ Ordered by build sequence, not homepage order. Each lists: experience, what it p
 - Lock down what guests/demo employees can do: assign no roles, restrict default user permissions in the demo workforce tenant, disable guest self-service where possible.
 - Shared demo credentials on a public site = design the account so compromise is meaningless (no privileges, auto-rotated, auto-cleaned).
 
-> ### ⛔ BLOCKER — the B2B door is an open email relay. Resolve before this module ships.
+> ### ✅ RESOLVED by design change, 23 July 2026 — the B2B door never sends mail
+>
+> **What shipped is not what this blocker was written against.** The guest door is a
+> **self-service sign-up user flow** (`B2X_1_B2B`): the visitor authenticates with a
+> provider they already control and the guest object is created on the way through. No
+> address is accepted from a stranger, no `POST /invitations` call is made, and the tenant
+> sends no mail. The relay does not exist to be abused.
+>
+> [Decision 004](docs/decisions/004-b2b-invitation-proof-of-control.md) was written to solve
+> this and is **superseded** rather than implemented. Its proof-of-control reasoning still
+> applies to anything that ever mails a stranger on a visitor's say-so.
+>
+> The original blocker text is kept below, because the threat model is still correct for the
+> design it describes and this is the clearest example in the repo of a security problem
+> removed by changing the design instead of defending it.
+>
+> <details>
+> <summary>The original blocker, as drafted</summary>
 >
 > As drafted, any visitor types any address and the backend calls Graph `POST /invitations`, causing **Microsoft to send real mail from your tenant to a third party who never consented**. A visitor can enter `victim@theircompany.com` repeatedly and your tenant is the sender. The site-wide per-IP rate limiting in section 4 does **not** cover this — the problem isn't volume, it's sending unsolicited mail to a non-consenting address at all. Outcome if abused: your demo tenant gets spam-reported, which is a uniquely bad look for this particular portfolio piece.
 >
@@ -214,12 +231,22 @@ Ordered by build sequence, not homepage order. Each lists: experience, what it p
 > 3. **Drop the live invite** — pre-redeemed guest account, visitor sees the resulting guest token. Zero risk, weakest demo.
 >
 > Decision goes in `docs/decisions/` either way — the writeup is itself interview material.
+>
+> </details>
 
 ---
 
 ### Module 3 — Auth Methods Arena
 
-**Visitor experience:** Try different sign-in methods on demo flows: email + password, email OTP, social (Google), and **passkey**. A step-by-step visualization renders the actual redirect/request/token exchange as it happens (sequence-diagram style, animating each leg).
+> **⚠️ PASSKEY IS DROPPED — [decision 011](docs/decisions/011-drop-passkey-from-auth-methods.md), 24 July 2026.**
+> Passkey registration in an external tenant needs a verified custom URL domain, and Microsoft's
+> how-to requires that domain to be fronted by an **Azure Front Door** instance at roughly $35/month
+> always-on. That is 3.5x the whole budget for one leg of one module. The spec priced the subdomain
+> below as "a plain CNAME"; it is not, and the cost was invisible because the prerequisite was
+> recorded as a DNS record. **The passkey text below is kept for the day the budget changes shape.**
+> The rest of the module ships.
+
+**Visitor experience:** Try different sign-in methods on demo flows: email + password, email OTP, social (Google), and ~~**passkey**~~ (dropped, see above). A step-by-step visualization renders the actual redirect/request/token exchange as it happens (sequence-diagram style, animating each leg).
 
 **Proves:** OAuth2/OIDC fluency plus current-gen authentication methods.
 
@@ -351,8 +378,8 @@ Worth over-engineering: leaking visitor A's sign-in to visitor B is an ordinary 
 | **0** | Tenants + scaffolding | ✅ **Complete.** External ID tenant created; repo initialized and public; Static Web App deployed with placeholder SPA; Azure DNS delegated and apex bound via alias record; budget alert live. **Demo workforce tenant created 17 July**, ahead of need; modules 1, 3, 4 don't use it. The 0.5 gate passed on 20 July and the site is linked. |
 | **0.5** | **Public-readiness gate** | ✅ **Passed 20 July 2026.** Not a build phase — a checklist that must pass before the site is *linked anywhere* (resume, LinkedIn, README), because Phase 1 puts a live sign-up form on the internet. **Rate limiting on every Function that reaches Graph:** now in place ahead of need. A standalone Function App was deployed 21 July ([decision 006](docs/decisions/006-standalone-function-app.md)) with a per-IP limiter live and verified (`200 ×5 → 429`), before any Graph-reaching endpoint exists. `deploy-web.yml` still sets `api_location: ""`; the Function App deploys separately. The first Graph endpoint ([decision 008](docs/decisions/README.md) or Module 2's invite) now ships onto a limiter that already works. **Default user permissions in the External ID tenant:** satisfied structurally rather than by a setting. External-tenant apps are limited to `openid`, `offline_access`, `User.Read` and their own APIs, and customers cannot self-consent, so a demo account has no route to a token that would let it read other users or register an app. Verified from the other end too: a customer account cannot sign in to the Azure portal. **No admin roles on any demo account:** the only non-customer principal is a B2B Member invited from the parent tenant, MFA enforced. Standing GA rather than PIM is a deliberate call given how often the account is used and what the tenant holds. **Budget alert live and RG-scoped** (✅ cannot be fired at $0 spend, so existence is the check). **Secret scanning + push protection** (✅). **No endpoint that emails a third party is reachable** (Module 2 is not in this phase — keep it that way until its blocker is resolved). Note the tenant's security now rests on that one admin account rather than on customer restrictions. |
 | **1** | Module 1 + basic CIAM sign-in | ✅ **Live at https://theidentityplayground.com (16 July 2026).** Sign-up and sign-in both verified in production; the inspector reads the visitor's own ID token and annotates every claim. Google social login is live, so a federated token carries `idp` and runs 18 claims against a local account's 17. Sign-up and sign-in are told apart by a `createddatetime` claim compared against the window the flow ran in, not inferred. Lifecycle now exists: demo accounts are swept 24 to 30 hours after creation by a scheduled job. **The 0.5 gate passed 20 July and the site is linked from the README.** The delete-and-purge path is proven end-to-end as of 22 July. [ADR 003](docs/decisions/003-cross-tenant-graph.md) owns the verification status and is the only place to read it; the one item still open there is billing, not deletion. Phase 2 holds the higher bar. |
-| **2** | Module 7 + Module 2 | Lifecycle cleanup running **and verified by watching a real account expire**; three doors live with comparison table; **Module 2's invitation blocker resolved and the decision written to `docs/decisions/`** — this phase does not ship with an open email relay |
-| **3** | Module 3 | Auth arena incl. passkey. **Custom domain is a prerequisite, not a deliverable of this phase** — it must already be live from Phase 0, since a passkey binds to the domain it was registered against |
+| **2** | Module 7 + Module 2 | ✅ **Complete 24 July 2026.** Lifecycle cleanup running and verified by watching real accounts expire, in **both** tenants: [ADR 003](docs/decisions/003-cross-tenant-graph.md) and [ADR 009](docs/decisions/009-workforce-guest-cleanup.md) own those statuses. Module 2 is live with all three account types. Module 7 renders both sweeps' real run history ([ADR 010](docs/decisions/010-cleanup-status-from-github-api.md)). **The invitation blocker was resolved by removing the invitation**, not by defending it: self-service sign-up means the tenant sends no mail, so the phase ships with no email relay to abuse. [ADR 004](docs/decisions/004-b2b-invitation-proof-of-control.md) is superseded rather than implemented. |
+| **3** | Module 3 | Auth arena: email + password, email OTP, social. **Passkey dropped** ([011](docs/decisions/011-drop-passkey-from-auth-methods.md)) and with it the custom-domain prerequisite, which turned out to require ~$35/mo of Azure Front Door. What remains is tenant config, HAR captures, and wiring onto the timeline that already exists. Open risk is `amr`, not infrastructure: this tenant issues none, so verify the arena can show method differences from the request sequence before building |
 | **4** | Module 6 | Admin's view dashboard |
 | **5** | Module 4 | CA live demo (builds on 3 + 6 plumbing) |
 | **6** | Module 5 | SCIM mock + live provisioning feed |
