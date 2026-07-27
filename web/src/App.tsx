@@ -35,7 +35,7 @@ type Module = {
 const MODULES: Module[] = [
   { phase: 1, name: 'Token Inspector', blurb: 'Sign in, then read your own ID token. Every claim annotated.', status: 'live' },
   { phase: 2, name: 'Member, Guest, Customer', blurb: 'Customer, business guest, or employee. Compare what each token says.', status: 'live' },
-  { phase: 3, name: 'Auth Methods Arena', blurb: 'Password, email OTP, social, passkey. Watch each flow execute.', status: 'planned' },
+  { phase: 3, name: 'Auth Methods Arena', blurb: 'Password, email OTP, social. Watch each flow execute.', status: 'planned' },
   { phase: 4, name: "The Admin's View", blurb: 'A live sign-in log. Yours shows up in it.', status: 'planned' },
   { phase: 5, name: 'Conditional Access, Live', blurb: 'Trip a real CA policy and read the policy that caught you.', status: 'planned' },
   { phase: 6, name: 'Live SCIM Provisioning', blurb: 'Hire a demo employee, watch them provision into a SaaS app in real time.', status: 'planned' },

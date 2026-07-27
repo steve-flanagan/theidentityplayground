@@ -124,7 +124,7 @@ export const CLAIMS: Record<string, ClaimAnnotation> = {
     what: 'HOW the user proved who they are, as an array, e.g. pwd, mfa, otp, fido.',
     why: 'Reflects what actually happened at sign-in, not what policy asked for.',
     gotcha:
-      'This is the claim to watch across Module 3. Sign in with a password and it says pwd; complete MFA and mfa appears; use a passkey and you get fido.',
+      'This is the claim to watch across Module 3. Sign in with a password and it says pwd; complete MFA and mfa appears.',
   },
   acr: {
     title: 'Authentication context class',
