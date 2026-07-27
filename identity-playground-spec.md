@@ -310,6 +310,31 @@ Ordered by build sequence, not homepage order. Each lists: experience, what it p
 
 ### Module 6 — The Admin's View
 
+> **SUPERSEDED IN PART, 27 July 2026. Read this before building.** The design below assumes
+> the visitor watches their own sign-in appear. That was tested and it does not work.
+>
+> - **Measured latency is 7–11 minutes**, not the "1–5 minutes" this section claims (which had
+>   no source). A sign-in stamped `16:08:44Z` was absent at `16:17Z` and present at `16:19Z`.
+> - **A returning visitor may generate no row at all.** v1.0 `auditLogs/signIns` returns
+>   interactive sign-ins only, and a live MSAL session acquires silently.
+> - **Retention in the External ID tenant is 7 days**, not 30. The Basic plan caps it and a P1
+>   does not change it.
+>
+> **Steve's call:** re-point the module to a PII-stripped scroll of the site's real sign-in
+> log, showing genuine successes and failures, honest about the delay as a real enterprise
+> property rather than hiding it. The module is **deferred until the site has traffic** — the
+> scroll is content-starved at current volume. Everything technical about it works: the
+> external tenant serves the log over Graph v1.0 with no premium gate, and the cross-tenant
+> credential path is built.
+>
+> **OPEN, and it is a security question, so it needs Steve rather than a quiet edit:** the
+> privacy rule at the end of this section says everyone else's activity is *aggregate-only*.
+> A scroll of stripped rows is more than aggregate. Stripped rows carry no identifier, so the
+> rule's intent may already be satisfied — but the letter of it is not, and this section is
+> the one place that rule is written down. Resolve it in the ADR, not in code.
+>
+> Owner of the detail: [notes/next-build.md](notes/next-build.md). An ADR is owed.
+
 **Visitor experience:** A read-only "admin dashboard" showing recent sign-in activity in the demo tenants — and the visitor's **own sign-in appears in it** within seconds of them using any other module. Shows: app, identity type, auth method, MFA result, CA policies applied. Sanitized (no IPs/emails beyond the visitor's own session).
 
 **Proves:** Graph API automation, sign-in log analysis, monitoring mindset.

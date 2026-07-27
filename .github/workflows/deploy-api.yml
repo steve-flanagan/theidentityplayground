@@ -7,8 +7,9 @@
 #
 # KEYLESS, like the cleanup workflow. There is no publish profile and no client
 # secret. The job proves who it is with a GitHub OIDC token that Entra trusts
-# through a federated credential on a deploy app registration in the AlinaPAYGO
-# tenant (the one that owns the hosting subscription). Nothing to rotate.
+# through a federated credential on a deploy app registration in the AlinaSF
+# tenant (the one that owns the hosting subscription; its subscription is the one
+# named AlinaPAYGO, which is not the tenant name). Nothing to rotate.
 #
 # The three vars below are IDENTIFIERS, not secrets, so they are repo Actions
 # variables rather than secrets — same stance the project takes on tenant and

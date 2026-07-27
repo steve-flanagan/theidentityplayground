@@ -23,6 +23,13 @@ Module 1, the token inspector, reads the visitor's own ID token and annotates ev
 The sign-in that produced it sits on a timeline built from real captures against this
 tenant. Nothing on it is estimated.
 
+<p align="center">
+  <img src="docs/inspector.png" alt="The token inspector, signed out, showing a sample ID token's seventeen claims grouped by category: identity, issuer and audience, tenant, validity window, protocol. A banner reads 'Decoded, not verified'. The iss claim is expanded, and its annotation warns that the issuer host is not the host you called: endpoints live on the tenant-name subdomain while iss uses the tenant-GUID subdomain." width="860">
+</p>
+
+Every claim expands into what it is, why it is in the token, and the gotcha that bites you
+in production. Regenerate the still with `npm run capture:inspector --prefix web`.
+
 Module 2 puts three account types side by side: a customer, an employee, and a B2B guest.
 The customer and the guest are live sign-ins that mint real tokens. The employee is a
 captured sample, because a visitor cannot be an employee. All three drive the inspector,

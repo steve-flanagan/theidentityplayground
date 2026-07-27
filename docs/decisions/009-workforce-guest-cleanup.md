@@ -56,7 +56,8 @@ separate check: `Get-MgDirectoryRole` returning 2 principals requires
 `az ad app permission admin-consent --id 8bf3c4f7-…` returned *"Resource
 '8bf3c4f7-…' does not exist or one of its queried reference-property objects are not
 present"* — while consent was in fact fine. The CLI was signed in to a different tenant
-(AlinaPAYGO), and `8bf3c4f7` lives in the workforce tenant, so `az` could not see it.
+(AlinaSF, whose *subscription* is named AlinaPAYGO), and `8bf3c4f7` lives in the workforce
+tenant, so `az` could not see it.
 **The error names the app registration and blames it, for what is a tenant-context
 problem.** Same shape as the misleading consent error in
 [003, update 2](003-cross-tenant-graph.md): on this project, wrong answers tend to look
