@@ -12,6 +12,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "capture": "node scripts/capture-demo.mjs",
+    "capture:inspector": "node scripts/capture-inspector.mjs",
     "tour": "node scripts/capture-tour.mjs"
   },
   "dependencies": {

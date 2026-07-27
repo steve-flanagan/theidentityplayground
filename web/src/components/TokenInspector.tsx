@@ -201,6 +201,13 @@ export function TokenInspector({ token, label = 'ID token', live = false }: Prop
         // are long GUIDs that don't lay out flat, so the honest shape is a
         // scrollable reference column, not a squeezed grid.
         <div className="divide-y divide-slate-800/60">
+          {/* Said out loud, because the glyph alone was not enough. A visitor who
+              scrolls this panel and never clicks has read a decoder; the whole
+              point is what sits underneath each row. One line, no theatre, and it
+              names the three things an annotation actually contains. */}
+          <p className="px-4 py-2.5 text-sm text-slate-500">
+            Click any claim: what it is, why it's there, and the gotcha.
+          </p>
           {CATEGORY_ORDER.filter((c) => grouped.has(c)).map((category) => (
             <div key={category} className="p-4">
               <h3
@@ -294,7 +301,21 @@ function ClaimRow({
         <span className={`min-w-0 flex-1 break-all font-mono text-sm ${VALUE_COLOR}`}>
           {timeStr ?? formatClaimValue(value)}
         </span>
-        <span className="shrink-0 text-sm text-slate-600" aria-hidden="true">
+        {/* The affordance, and it has to carry itself. At slate-600 this glyph was
+            invisible in a screenshot and near-invisible on the page, so the only
+            thing telling a visitor these rows open was a hover state — which does
+            not exist on a phone, and a recruiter opens this on a phone. The
+            annotations ARE Module 1, so a visitor who never discovers them has
+            seen a JWT decoder. Boxed and brightened: a bare glyph reads as
+            decoration, a bordered one reads as a control. */}
+        <span
+          className={`grid h-5 w-5 shrink-0 place-items-center rounded border font-mono text-sm leading-none transition ${
+            isExpanded
+              ? 'border-slate-500 bg-slate-700/60 text-slate-200'
+              : 'border-slate-700 text-slate-400'
+          }`}
+          aria-hidden="true"
+        >
           {isExpanded ? '−' : '+'}
         </span>
       </button>
