@@ -327,11 +327,8 @@ Ordered by build sequence, not homepage order. Each lists: experience, what it p
 > external tenant serves the log over Graph v1.0 with no premium gate, and the cross-tenant
 > credential path is built.
 >
-> **OPEN, and it is a security question, so it needs Steve rather than a quiet edit:** the
-> privacy rule at the end of this section says everyone else's activity is *aggregate-only*.
-> A scroll of stripped rows is more than aggregate. Stripped rows carry no identifier, so the
-> rule's intent may already be satisfied — but the letter of it is not, and this section is
-> the one place that rule is written down. Resolve it in the ADR, not in code.
+> The privacy rule at the end of this section is **amended, not relaxed** (Steve, 27 July) to
+> cover a scroll that shows other visitors' rows. See "Privacy rule" below.
 >
 > Owner of the detail: [notes/next-build.md](notes/next-build.md). An ADR is owed.
 
@@ -350,6 +347,16 @@ Ordered by build sequence, not homepage order. Each lists: experience, what it p
 **Privacy rule — filter server-side, by the caller's own `oid`, always.** The API must never return another visitor's log entry to the browser under any circumstance, including "we mask it in the UI." Fetch-all-then-filter-client-side is not acceptable here: the unmasked rows are in the response body, one devtools tab away. The correlation must happen in the Function, scoped to the authenticated caller's `oid`, and only their own rows may leave the backend. Everyone else's activity is aggregate-only (counts, method types, policy names — never identifiers).
 
 Worth over-engineering: leaking visitor A's sign-in to visitor B is an ordinary bug on most sites and a credibility-ending one on a site whose entire thesis is that you understand identity.
+
+**AMENDED 27 July 2026 for the scroll.** The rule above was written for a module that showed you only your own row. The re-pointed module shows the site's whole log, so "aggregate-only" no longer describes what ships. What is *not* relaxed: the strip happens server-side, and no identifying field of any visitor but the caller ever reaches the browser. Three rules replace the one sentence:
+
+1. **Filter by `appId` first, before anything else.** Only the site's own client IDs enter the pipeline. The tenant's log also carries the operator's own Azure Portal and Graph sign-ins, and those must never be candidates for display, stripped or not. Their *pattern* is the leak, not their fields.
+2. **Other visitors' rows are reduced to an allowlist, in the Function, before the response is built.** Permitted: `createdDateTime`, `appDisplayName`, `clientAppUsed`, `isInteractive`, `conditionalAccessStatus`, `appliedConditionalAccessPolicies`, `status.errorCode`, `status.failureReason`, and the parsed `deviceDetail.browser` / `deviceDetail.operatingSystem`. Everything else is dropped, including `ipAddress`, every `location` field, `userPrincipalName`, `userDisplayName`, `userId`, `userAgent`, `correlationId`, `id`, and `deviceDetail.deviceId` / `displayName`.
+3. **Allowlist, never denylist.** A denylist fails open: Microsoft adds a field to the `signIn` resource and it ships to the browser without anyone deciding it should. Construct the response object field by field from what is permitted. Never `delete` keys off the Graph response and forward the remainder.
+
+The caller's own row is the one exception and keeps the original rule exactly: matched server-side on their `oid`, full detail, and only theirs.
+
+A real personal email address (`tlhenkel@gmail.com`) was sitting in this log on 23 July. This is not hypothetical.
 
 ---
 
