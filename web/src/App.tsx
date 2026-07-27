@@ -176,19 +176,25 @@ function App() {
           <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
             The Identity Playground
           </h1>
-          {/* The old version opened "sign in for real", which put the one thing most
-              visitors will not do in front of the one thing they will. The member
-              sample needs no account and drives all three surfaces, so the offer
-              leads with that and keeps signing in as the upgrade it is. */}
+          {/* Two rewrites are baked in here, both from real feedback.
+              1. The version before last opened "sign in for real", which put the
+                 one thing most visitors will not do in front of the one thing
+                 they will.
+              2. The version after that opened "Identity work is invisible in
+                 production. This site makes it visible:" — a thesis statement,
+                 then a colon list. A reader on r/entra called the site "too AI",
+                 and that construction was the loudest reason why.
+              What replaced it says what is on the page and stops. No thesis, no
+              setup-and-payoff, and it names the two modules concretely because
+              the same reader could not tell what the site was meant to prove. */}
           <p className="mt-6 text-lg leading-relaxed text-slate-400">
-            Identity work is invisible in production. This site makes it visible: read a
-            real token claim by claim, and every request that produced it. Load a sample
-            with one click, or sign in and it reads your own.
+            A real Entra ID token, claim by claim, and every request that produced it.
+            Then the same person as a customer, an employee and a B2B guest, with what
+            each one can reach. No account needed.
           </p>
           <p className="mt-4 text-lg leading-relaxed text-slate-400">
-            Built on Microsoft Entra by{' '}
-            <span className="text-slate-200">Steven Flanagan</span>. Every module links to
-            the tenant config and source that produced it.
+            By <span className="text-slate-200">Steven Flanagan</span>. Every module links
+            to the tenant config and source that produced it.
           </p>
         </header>
 
@@ -202,11 +208,28 @@ function App() {
             and then stacks the left column. Below lg the grid is one stacked
             column and nothing is pinned. */}
         <div className="mt-12 grid gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_27rem]">
+          {/* ── ORDER IS DIFFERENT ON A PHONE, AND THAT IS THE POINT ──────────
+              The grid already puts this section first in the DOM so a phone sees
+              the claims before the timeline. That was only half the job: INSIDE
+              the section the sign-in panel sat above the inspector, and on a
+              phone that panel is a full screenful of configuration (sample
+              identities, the SSO checkbox, three paragraphs on prompt=login).
+
+              Measured at 390x844: two entire screenfuls before the first claim,
+              on a 10.6-screenful page. A reader on r/entra said it read as a lot
+              of text and they could not tell what it was meant to prove. Both are
+              the same defect: the proof was below the fold.
+
+              flex + order, so mobile reads heading → token → sign-in, while lg
+              keeps the original heading → sign-in → token. Nothing moves in the
+              DOM, so the reading order for a screen reader follows the visual
+              one at each width. gap-4 replaces the per-child mb-4s, which would
+              otherwise land on the wrong side of a reordered child. */}
           <section
             aria-labelledby="inspector"
-            className="lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto lg:overflow-x-hidden"
+            className="flex flex-col gap-4 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto lg:overflow-x-hidden"
           >
-            <div className="mb-4">
+            <div className="order-1">
               <h2 id="inspector" className="text-sm font-medium uppercase tracking-widest text-slate-500">
                 {guestMode
                   ? 'Your guest claims'
@@ -227,7 +250,7 @@ function App() {
               </p>
             </div>
 
-            <div className="mb-4">
+            <div className="order-3 lg:order-2">
               <SignInPanel
                 onLocalSignOut={() => setLocalSignOutCount((n) => n + 1)}
                 onSimulateMember={() => setActiveSim('member')}
@@ -238,11 +261,13 @@ function App() {
               />
             </div>
 
-            <TokenInspector
-              token={inspectorToken}
-              label={inspectorLabel}
-              live={inspectorLive}
-            />
+            <div className="order-2 lg:order-3">
+              <TokenInspector
+                token={inspectorToken}
+                label={inspectorLabel}
+                live={inspectorLive}
+              />
+            </div>
 
             {/* ── The way to /app2, which was reachable only by typing the URL ──
                 Placed under the token because that is where a reader who has
@@ -263,7 +288,7 @@ function App() {
                 either wants or doesn't, and the same underline treatment /app2
                 uses for its link back here. */}
             {realIdToken && (
-              <p className="mt-4 text-sm leading-relaxed text-slate-400">
+              <p className="order-4 text-sm leading-relaxed text-slate-400">
                 <a
                   href="/app2"
                   className="font-mono text-slate-300 underline decoration-slate-700 underline-offset-4 transition hover:text-emerald-300"
