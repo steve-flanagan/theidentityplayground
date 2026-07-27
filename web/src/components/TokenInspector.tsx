@@ -290,16 +290,30 @@ function ClaimRow({
       <button
         onClick={onToggle}
         aria-expanded={isExpanded}
-        className="flex w-full gap-3 rounded-md px-2 py-1.5 text-left transition hover:bg-slate-800/50"
+        className="flex w-full items-start gap-3 rounded-md px-2 py-1.5 text-left transition hover:bg-slate-800/50"
       >
-        <span className={`flex w-44 shrink-0 items-baseline gap-1.5 font-mono text-sm ${nameColor}`}>
-          {/* A dot for the claims that reveal HOW you signed in — idp, amr. They
-              are the tell, and they earn the extra mark on top of the colour. */}
-          {isSignal && <span className="shrink-0 text-emerald-400" aria-hidden="true">●</span>}
-          {name}
-        </span>
-        <span className={`min-w-0 flex-1 break-all font-mono text-sm ${VALUE_COLOR}`}>
-          {timeStr ?? formatClaimValue(value)}
+        {/* ── NAME OVER VALUE ON A PHONE ────────────────────────────────────
+            The name column is a fixed 11rem. On a 390px screen that leaves
+            about 150px for the value, and `break-all` then shredded every
+            long one: `sub` took four lines, `oid` took six. Seventeen claims
+            at four to six lines each is most of why a reader called the page
+            a lot of text on mobile.
+
+            Stacked, a GUID fits on one line and each claim costs two instead
+            of five. The two-column layout is what the panel WANTS at any real
+            width, so it returns at `sm` and desktop is untouched. */}
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
+          <span
+            className={`flex shrink-0 items-baseline gap-1.5 font-mono text-sm sm:w-44 ${nameColor}`}
+          >
+            {/* A dot for the claims that reveal HOW you signed in — idp, amr. They
+                are the tell, and they earn the extra mark on top of the colour. */}
+            {isSignal && <span className="shrink-0 text-emerald-400" aria-hidden="true">●</span>}
+            {name}
+          </span>
+          <span className={`min-w-0 break-all font-mono text-sm sm:flex-1 ${VALUE_COLOR}`}>
+            {timeStr ?? formatClaimValue(value)}
+          </span>
         </span>
         {/* The affordance, and it has to carry itself. At slate-600 this glyph was
             invisible in a screenshot and near-invisible on the page, so the only
