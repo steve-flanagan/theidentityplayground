@@ -189,7 +189,15 @@ export async function provisionNow(objectId: string): Promise<GraphResult | null
  * The extra Graph call is the cost. It is worth it — without it the endpoint is
  * an unauthenticated delete-any-user-in-the-tenant, bounded only by a rate limit.
  */
-export async function terminateEmployee(objectId: string): Promise<GraphResult> {
+export interface TerminateResult {
+  /** The final Graph call's outcome. 204 means the object is gone. */
+  delete: GraphResult
+  /** The on-demand push, or null if it was never attempted. Reported so a
+   *  terminate that "succeeded" while deactivating nothing is visible. */
+  push?: GraphResult | null
+}
+
+export async function terminateEmployee(objectId: string): Promise<TerminateResult> {
   const lookup = await graphRequest(
     'GET',
     'workforce',
@@ -198,15 +206,17 @@ export async function terminateEmployee(objectId: string): Promise<GraphResult> 
     'writer',
   )
 
-  if (lookup.status !== 200) return lookup
+  if (lookup.status !== 200) return { delete: lookup }
 
   if ((lookup.body as any)?.employeeType !== HIRE_EMPLOYEE_TYPE) {
     // 403 rather than 404: it exists, and we are refusing. Distinguishing the two
     // in the LOG matters for debugging; the handler above collapses both into one
     // opaque answer to the caller, so this leaks nothing outward.
     return {
-      status: 403,
-      body: { error: { code: 'notADemoHire', message: 'object is not a scim-demo hire' } },
+      delete: {
+        status: 403,
+        body: { error: { code: 'notADemoHire', message: 'object is not a scim-demo hire' } },
+      },
     }
   }
 
@@ -236,13 +246,33 @@ export async function terminateEmployee(objectId: string): Promise<GraphResult> 
     { accountEnabled: false },
     'writer',
   )
-  if (disabled.status !== 204) return disabled
+  if (disabled.status !== 204) return { delete: disabled }
 
-  // Push the disable downstream before the object stops existing. A failure here
-  // is not fatal — the account is already disabled, the scheduled cycle would
-  // catch it, and the sweep deletes the object regardless — so the result is
-  // reported rather than thrown.
-  await provisionNow(objectId).catch(() => null)
+  /**
+   * Push the disable downstream before the object stops existing.
+   *
+   * THE RESULT IS REPORTED, NOT SWALLOWED. This was `.catch(() => null)` and that
+   * cost two rounds of diagnosis: terminate reported success while the row it was
+   * meant to deactivate was never touched, and there was nothing to look at. The
+   * hire path had already been fixed for exactly this and the same mistake was
+   * left standing here.
+   *
+   * Still not fatal. The account is already disabled, the scheduled cycle would
+   * catch it, and the sweep deletes the object regardless.
+   */
+  let push: GraphResult | null = null
+  try {
+    push = await provisionNow(objectId)
+  } catch (err: any) {
+    push = { status: 0, body: { error: { code: err?.message ?? 'threw' } } }
+  }
 
-  return graphRequest('DELETE', 'workforce', `/users/${objectId}`, undefined, 'writer')
+  const deleted = await graphRequest(
+    'DELETE',
+    'workforce',
+    `/users/${objectId}`,
+    undefined,
+    'writer',
+  )
+  return { delete: deleted, push }
 }

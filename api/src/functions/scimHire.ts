@@ -125,16 +125,43 @@ async function terminate(
   }
 
   const result = await terminateEmployee(id)
-  if (result.status !== 204) {
-    context.error(`terminate failed: graph ${result.status}`)
+  if (result.delete.status !== 204) {
+    context.error(`terminate failed: graph ${result.delete.status}`)
     return { status: 502, jsonBody: { error: 'could not terminate, see function logs' } }
   }
 
-  context.log(`terminated ${id}`)
-  // Deprovisioning is Entra's job now, and it happens on its own cycle. Saying
-  // so is the honest version; pretending it is instant would be the demo lying
-  // about the thing it exists to show.
-  return { status: 200, jsonBody: { terminated: id, deprovisioningIsAsync: true } }
+  /**
+   * The push's outcome comes back with the answer.
+   *
+   * This used to report a bare success, and it lied twice: terminate returned 200
+   * while the SCIM row it was meant to deactivate was never touched, and there was
+   * nothing in the response to say so. The hire path had already been fixed for
+   * precisely this and the same mistake was left standing here.
+   *
+   * A 200 with deprovisioned:false is the honest answer to "I deleted the user
+   * but the downstream app has not heard about it yet", which is a real state a
+   * provisioning demo should be able to show rather than paper over.
+   */
+  const pushStatus = result.push?.status ?? null
+  const deprovisioned = pushStatus !== null && pushStatus >= 200 && pushStatus < 300
+  if (!deprovisioned) {
+    context.warn(
+      `terminate ${id}: push status=${pushStatus} body=${JSON.stringify(result.push?.body)}`,
+    )
+  }
+
+  context.log(`terminated ${id} deprovisioned=${deprovisioned}`)
+  return {
+    status: 200,
+    jsonBody: {
+      terminated: id,
+      deprovisioned,
+      deprovisionStatus: pushStatus,
+      deprovisionError: deprovisioned
+        ? null
+        : ((result.push?.body as any)?.error?.code ?? 'no push attempted'),
+    },
+  }
 }
 
 app.http('scim-hire', {
