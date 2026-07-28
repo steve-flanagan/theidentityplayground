@@ -7,5 +7,13 @@
     "sourceMap": true,
     "strict": false,
     "esModuleInterop": true
-  }
+  },
+  "exclude": [
+    "dist",
+    "node_modules",
+    // Tests are typechecked by `vitest run`, never emitted. Without this they
+    // land in dist/ and ship to the Function App, which would put vitest on the
+    // runtime's import graph in production.
+    "**/*.test.ts"
+  ]
 }

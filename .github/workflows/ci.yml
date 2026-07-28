@@ -57,6 +57,38 @@ jobs:
         run: npm run lint
         working-directory: web
 
+  # The backend had NO gate until 28 July. `api/` was neither typechecked nor
+  # tested on any PR, so a type error surfaced at deploy time rather than in
+  # review. Added alongside the SCIM endpoint, which authenticates callers and
+  # writes directory objects and is not code that should reach main unchecked.
+  #
+  # NOTE FOR WHOEVER ADDED THIS: a job appearing here does NOT make it a required
+  # check. That is set in the protect-main ruleset and is Steve's to change.
+  api:
+    name: api checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: api
+
+      # Split so a failure names itself, same reasoning as the web job.
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: api
+
+      - name: Test
+        run: npm run test
+        working-directory: api
+
   scripts:
     name: script tests
     runs-on: ubuntu-latest
