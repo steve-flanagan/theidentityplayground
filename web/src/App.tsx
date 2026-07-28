@@ -19,37 +19,6 @@ import {
 // falls back to a clearly-labelled sample so the page still demonstrates
 // something to a visitor who doesn't want an account.
 
-// A union type rather than plain `string`: adding a status the styles don't
-// cover becomes a compile error instead of an undefined class name at runtime.
-type ModuleStatus = 'building' | 'planned' | 'live'
-
-type Module = {
-  phase: number
-  name: string
-  blurb: string
-  status: ModuleStatus
-}
-
-// Homepage roadmap, per spec section 5: "The site is never 'unfinished,' just
-// growing." Update `status` as phases land.
-const MODULES: Module[] = [
-  { phase: 1, name: 'Token Inspector', blurb: 'Sign in, then read your own ID token. Every claim annotated.', status: 'live' },
-  { phase: 2, name: 'Member, Guest, Customer', blurb: 'Customer, business guest, or employee. Compare what each token says.', status: 'live' },
-  { phase: 3, name: 'Auth Methods Arena', blurb: 'Password, email OTP, social. Watch each flow execute.', status: 'planned' },
-  { phase: 4, name: "The Admin's View", blurb: 'A live sign-in log. Yours shows up in it.', status: 'planned' },
-  { phase: 5, name: 'Conditional Access, Live', blurb: 'Trip a real CA policy and read the policy that caught you.', status: 'planned' },
-  { phase: 6, name: 'Live SCIM Provisioning', blurb: 'Hire a demo employee, watch them provision into a SaaS app in real time.', status: 'planned' },
-  { phase: 7, name: 'Self-Destructing Accounts', blurb: 'Every demo account expires. Here is the job that kills them, and its real run history.', status: 'live' },
-]
-
-// Record<ModuleStatus, string> forces this map to stay exhaustive: add a status
-// to the union above without adding styles here and the build fails.
-const STATUS_STYLES: Record<ModuleStatus, string> = {
-  building: 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30',
-  planned: 'bg-slate-500/10 text-slate-400 ring-slate-500/30',
-  live: 'bg-sky-500/10 text-sky-300 ring-sky-500/30',
-}
-
 function App() {
   const { accounts } = useMsal()
 
@@ -164,7 +133,7 @@ function App() {
     // every width; the fix is the cap coming off, not the gutters growing.
     //
     // Nothing runs away as a result. The reading columns cap themselves at
-    // max-w-3xl (header, roadmap, footer, the section blurbs), and the claims
+    // max-w-3xl (header, footer, the section blurbs), and the claims
     // panel is a fixed 27rem in the grid below. The only thing that grows is
     // the timeline's 1fr column, which is the one that wants the room.
     <main className="min-h-screen bg-slate-950 text-slate-300">
@@ -401,34 +370,17 @@ function App() {
           </div>
         </div>
 
-        <section className="mt-16 max-w-3xl" aria-labelledby="roadmap">
-          <h2 id="roadmap" className="text-sm font-medium uppercase tracking-widest text-slate-500">
-            Roadmap
-          </h2>
-          <ul className="mt-6 space-y-3">
-            {MODULES.map((m) => (
-              <li
-                key={m.phase}
-                className="flex gap-4 rounded-lg border border-slate-800 bg-slate-900/50 p-4"
-              >
-                <span className="font-mono text-sm text-slate-600" aria-hidden="true">
-                  {String(m.phase).padStart(2, '0')}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <h3 className="font-medium text-slate-200">{m.name}</h3>
-                    <span
-                      className={`rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ring-1 ring-inset ${STATUS_STYLES[m.status]}`}
-                    >
-                      {m.status}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm leading-relaxed text-slate-500">{m.blurb}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
+        {/* ── THE ROADMAP IS GONE, ON PURPOSE (Steve, 28 July 2026) ──────────
+            It listed seven modules, four of them marked "planned". The spec's
+            framing was "the site is never 'unfinished,' just growing" (§5), but
+            the rendered effect on someone skimming for forty seconds was a
+            majority-grey list of IOUs, and unfinished is the one thing a
+            portfolio artifact cannot afford to read as.
+
+            Three live modules presented as a finished set of demonstrations is
+            a stronger artifact than the same three with four promises under
+            them. What ships next is decided in notes/next-build.md, which is
+            where a roadmap belongs. Not on the homepage. */}
 
         <footer className="mt-16 max-w-3xl border-t border-slate-800 pt-6">
           <p className="text-sm text-slate-600">

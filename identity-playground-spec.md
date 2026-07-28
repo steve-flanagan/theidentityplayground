@@ -419,6 +419,13 @@ A real personal email address (`tlhenkel@gmail.com`) was sitting in this log on 
 
 Each phase is independently shippable. The site is never "unfinished," just growing — put a roadmap on the homepage.
 
+> **REVERSED 28 July 2026 by Steve. The homepage roadmap is removed.** The framing above is
+> sound in theory and was wrong in practice: four of seven rows read `planned`, and to someone
+> skimming for forty seconds that is a majority-grey list of IOUs. Unfinished is the one thing a
+> portfolio artifact cannot read as. What ships next lives in `notes/next-build.md`, which is
+> where a roadmap belongs. See [ADR 012](docs/decisions/012-cross-tenant-graph-keyless.md)'s
+> sibling decision recorded in `notes/next-build.md` under "DECIDED, 28 July 2026".
+
 ### Queued, not scheduled — beyond Entra (Steve, 16 July)
 
 > **Status: an idea on the shelf.** Not a phase, not costed, not decided. Recorded so it
