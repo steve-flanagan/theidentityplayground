@@ -11,16 +11,18 @@
     "prestart": "npm run clean && npm run build",
     "start": "func start",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"No tests yet...\""
+    "test": "vitest run"
   },
   "dependencies": {
     "@azure/data-tables": "^13.3.1",
     "@azure/functions": "^4.0.0",
-    "@azure/identity": "^4.10.0"
+    "@azure/identity": "^4.10.0",
+    "@azure/keyvault-secrets": "^4.11.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "rimraf": "^5.0.0",
     "typescript": "^5.7.2",
-    "rimraf": "^5.0.0"
+    "vitest": "^4.1.10"
   }
 }
