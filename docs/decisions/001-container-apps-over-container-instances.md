@@ -1,5 +1,14 @@
 # 001. Container Apps over Container Instances for the SCIM mock
 
+> **RETIRED 28 July 2026 by [013](013-scim-as-functions.md). Do not build this.**
+> The SCIM endpoint ships as HTTP Functions in the existing Function App, which serves HTTPS,
+> reaches Graph, and is already deployed keyless. **No container is needed at all**, so the
+> question this record answers — which container service — no longer has a subject.
+>
+> That also removes what this record itself called the first genuinely unbounded resource in the
+> design. The comparison below is still a sound piece of work on Container Apps versus Container
+> Instances; it is simply no longer a decision this project has to make.
+
 **Status:** decided 16 July 2026 (spec commit `cd4865a`). **Nothing built.** There is no
 `scim-mock/` directory and no container deployed. Module 5 lands in Phase 6, so this
 decision is priced but not exercised.

@@ -22,6 +22,7 @@ Format: **Context** (what forced a choice) → **Decision** → **Rejected alter
 | 010 | [Module 7 reads GitHub's API instead of publishing its own stats](010-cleanup-status-from-github-api.md) | decided · built · **supersedes 003's stats-publishing scope** |
 | 011 | [Drop passkey from the Auth Methods Arena](011-drop-passkey-from-auth-methods.md) | decided 24 July — the custom URL domain it needs requires ~$35/mo of Azure Front Door |
 | 012 | [Reach Graph in a foreign tenant, keyless](012-cross-tenant-graph-keyless.md) | decided · **proven in production 28 July** · supersedes 003's "untested and unlikely" |
+| 013 | [SCIM as Functions, written to the RFC](013-scim-as-functions.md) | decided · **proven end to end 28 July** · **retires 001's container** · records three Entra deviations |
 
 **005 was withdrawn on 20 July and the number is retired.** It was never a decision.
 On-demand provisioning is the feature built for this case, and the alternative it was
