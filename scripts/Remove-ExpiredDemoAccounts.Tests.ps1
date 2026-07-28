@@ -152,6 +152,9 @@ function New-SyntheticUser {
     [string] $UserType = 'Member',
     # $null is the documented creationType of an ordinary work or school account.
     [string] $CreationType = $null,
+    # $null for everyone except an employee the SCIM module hired. Nothing in
+    # either tenant sets this except that flow.
+    [string] $EmployeeType = $null,
     [switch] $NoCreatedDate,
     [switch] $NoIdentities
   )
@@ -167,7 +170,22 @@ function New-SyntheticUser {
     Identities        = $identities
     UserType          = $UserType
     CreationType      = $CreationType
+    EmployeeType      = $EmployeeType
   }
+}
+
+function New-SyntheticHire {
+  <#
+    What the SCIM module's hire flow produces: an ordinary Member created through
+    Graph, stamped with employeeType so the sweep can see it. Graph gives a
+    Graph-created Member creationType $null, which is why the guest rule cannot.
+  #>
+  param(
+    [string] $Upn,
+    [double] $AgeHours = 100
+  )
+  New-SyntheticUser -Upn $Upn -AgeHours $AgeHours -SignInTypes 'userPrincipalName' `
+    -UserType 'Member' -EmployeeType 'scim-demo'
 }
 
 function New-SyntheticGuest {
@@ -549,6 +567,64 @@ Test-Case 'In Workforce mode signInType is irrelevant' {
   Assert-Equal $null $err 'should not have thrown'
   Assert-Collection @('guest-no-identities@demo') $global:deletedIds `
     'creationType alone identifies it'
+}
+
+Test-Case 'A hired demo employee IS swept' {
+  # The gap this rule exists to close. Before it, a SCIM-hired Member matched
+  # nothing and the site''s self-destruct promise silently excluded the one module
+  # whose subject is the joiner-leaver lifecycle.
+  $users = @(New-SyntheticHire -Upn 'hired@demo' -AgeHours 999)
+  $err = Invoke-Cleanup -Users $users -Parameters $workforce
+  Assert-Equal $null $err 'should not have thrown'
+  Assert-Collection @('hired@demo') $global:deletedIds 'employeeType identifies the hire'
+}
+
+Test-Case 'A hire inside the TTL survives' {
+  # The age guard applies to hires exactly as it does to guests. A rule that
+  # bypassed the TTL would delete an employee mid-demo.
+  $users = @(New-SyntheticHire -Upn 'fresh-hire@demo' -AgeHours 2)
+  $err = Invoke-Cleanup -Users $users -Parameters $workforce
+  Assert-Equal $null $err 'should not have thrown'
+  Assert-Equal 0 $global:deletedIds.Count 'a fresh hire is not expired'
+}
+
+Test-Case 'An ordinary Member with no employeeType is never a candidate' {
+  # THE DANGEROUS DIRECTION. If the hire rule ever widened to "any Member", this
+  # is the user it would delete: a real employee. Member@theidentityplayground.com
+  # is exactly this object.
+  $users = @(New-SyntheticUser -Upn 'real-employee@demo' -UserType 'Member' `
+      -SignInTypes 'userPrincipalName' -AgeHours 999)
+  $err = Invoke-Cleanup -Users $users -Parameters $workforce
+  Assert-Equal $null $err 'should not have thrown'
+  Assert-Equal 0 $global:deletedIds.Count 'a Member without the marker must survive'
+}
+
+Test-Case 'A hire marker on a Guest object does not match' {
+  # Both properties have to agree, the same rule the guest branch is held to. A
+  # stray employeeType on a guest must not make it a hire.
+  $users = @(New-SyntheticUser -Upn 'odd@demo' -UserType 'Guest' `
+      -EmployeeType 'scim-demo' -CreationType 'Invitation' -AgeHours 999)
+  $err = Invoke-Cleanup -Users $users -Parameters $workforce
+  Assert-Equal $null $err 'should not have thrown'
+  Assert-Equal 0 $global:deletedIds.Count 'userType Guest is not a hired Member'
+}
+
+Test-Case 'A wrong employeeType value is not a candidate' {
+  # The marker is an exact match, not a prefix or a contains. A neighbouring value
+  # must not widen the net.
+  $users = @(New-SyntheticUser -Upn 'other@demo' -UserType 'Member' `
+      -EmployeeType 'scim-demo-archived' -SignInTypes 'userPrincipalName' -AgeHours 999)
+  $err = Invoke-Cleanup -Users $users -Parameters $workforce
+  Assert-Equal $null $err 'should not have thrown'
+  Assert-Equal 0 $global:deletedIds.Count 'employeeType must match exactly'
+}
+
+Test-Case 'The hire rule does not leak into ExternalId mode' {
+  # External ID has no hire flow and must not read employeeType at all.
+  $users = @(New-SyntheticHire -Upn 'hired@demo' -AgeHours 999)
+  $err = Invoke-Cleanup -Users $users -Parameters @{ Directory = 'ExternalId' }
+  Assert-Equal $null $err 'should not have thrown'
+  Assert-Equal 0 $global:deletedIds.Count 'ExternalId mode must not read employeeType'
 }
 
 Test-Case 'The two rules do not leak into each other' {

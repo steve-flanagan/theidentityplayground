@@ -20,7 +20,7 @@ Record here as they're created:
 | Azure subscription (hosting) | existing pay-as-you-go |
 | Resource group | `rg-theidentityplayground` |
 | DNS zone | `theidentityplayground.com` — delegated to Azure DNS, verified live |
-| Licence state (P1 / P2 trial + expiry) | _none yet_ |
+| Licence state (P1 / P2 trial + expiry) | **P1 present in the workforce tenant** (reported by Steve, 28 July 2026). It is a **trial**; Steve intends to renew before it lapses. Expiry date not recorded here — the subscription it sits on has an unknown expiry too. |
 
 **DNS delegation — done.** GoDaddy remains the registrar; the zone is authoritative on
 Azure. Confirmed on public resolvers:

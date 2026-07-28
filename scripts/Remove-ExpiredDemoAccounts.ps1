@@ -214,6 +214,28 @@ $demoSignInTypes = @('emailAddress', 'federated')
 $guestCreationType = 'SelfServiceSignUp'
 $guestUserType     = 'Guest'
 
+# The SECOND workforce rule, for accounts the SCIM module hires.
+#
+# A hired demo employee is created through Graph as an ordinary Member. Graph gives
+# it creationType $null and userType Member, so the guest rule above cannot see it,
+# and the site's "every demo account self-destructs" promise would have quietly
+# excluded the one module whose whole subject is the joiner-leaver lifecycle.
+#
+# There is no Graph-semantic marker for "created by us" on a Member, so this one is
+# a convention we set at creation rather than something the directory tells us.
+# employeeType is a first-class user property, it is writable only through Graph,
+# and no self-service path in either tenant sets it — a visitor cannot give
+# themselves one. Paired with userType Member on the same principle as above: one
+# wrong property must not be able to widen the net by itself.
+#
+# THE DIRECTION THIS FAILS IN IS DELIBERATE. If the hire flow ever forgets to stamp
+# employeeType, the account is not swept — a leak, which is visible in the account
+# count and fixable by hand. The opposite arrangement, sweeping every Member without
+# a marker, would delete real employees on a bad day. Leak over over-delete, every
+# time, on a script that holds user-delete in two directories.
+$hireEmployeeType = 'scim-demo'
+$hireUserType     = 'Member'
+
 # UPNs are email addresses and the unattended run's log is public. See idea 5.
 $redactPrincipalNames = $PSBoundParameters.ContainsKey('AccessToken')
 
@@ -253,7 +275,8 @@ Write-Host "As        : $(if ($context.Account) { $context.Account } else { "app
 # The rule this run is about to apply, printed because a run that finds nothing and a
 # run whose rule matches nothing produce the same zero.
 Write-Host "Candidate : $(if ($Directory -eq 'Workforce')
-                          { "creationType $guestCreationType + userType $guestUserType" }
+                          { "creationType $guestCreationType + userType $guestUserType" +
+                            "  OR  employeeType $hireEmployeeType + userType $hireUserType" }
                           else { "signInType in $($demoSignInTypes -join ', ')" })"
 
 $cutoff = (Get-Date).ToUniversalTime().AddHours(-$MaxAgeHours)
@@ -280,7 +303,12 @@ Write-Host "Protected by directory role: $($protectedIds.Count) principal(s)"
 # CreationType has to be in the $select or Graph does not return it at all, and an
 # absent property reads as "not a self-service guest" — a silent skip-everything in
 # the safe direction, which is the hardest kind of wrong to notice.
-$users = Get-MgUser -All -Property 'Id,DisplayName,UserPrincipalName,CreatedDateTime,Identities,UserType,CreationType'
+#
+# EmployeeType is subject to the same rule as CreationType: absent from the $select
+# means Graph does not return it, and an absent property reads as "not a hired demo
+# employee". That is a silent skip-everything in the safe direction, and it is the
+# hardest kind of wrong to notice, so it is named here rather than trusted.
+$users = Get-MgUser -All -Property 'Id,DisplayName,UserPrincipalName,CreatedDateTime,Identities,UserType,CreationType,EmployeeType'
 
 # Counts only, never names. This is the number that tells a zero-candidate run apart
 # from a run whose identification rule matches nothing, which is the failure the
@@ -307,7 +335,15 @@ $expired = foreach ($user in $users) {
     # A guest that came through the B2X_1_B2B user flow, and nothing else. An
     # invited guest is 'Invitation', an employee is null, and userType pins it to
     # a guest object either way.
-    $user.CreationType -eq $guestCreationType -and $user.UserType -eq $guestUserType
+    $isSelfServiceGuest = $user.CreationType -eq $guestCreationType -and
+                          $user.UserType -eq $guestUserType
+
+    # Or an employee the SCIM module hired. Two properties again, and note that
+    # these two rules cannot both be true of one object: a Guest is not a Member.
+    $isHiredEmployee    = $user.EmployeeType -eq $hireEmployeeType -and
+                          $user.UserType -eq $hireUserType
+
+    $isSelfServiceGuest -or $isHiredEmployee
   }
   else {
     $matched = $false
