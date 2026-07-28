@@ -35,7 +35,9 @@ The customer and the guest are live sign-ins that mint real tokens. The employee
 captured sample, because a visitor cannot be an employee. All three drive the inspector,
 the timeline, and a map of what each one can reach.
 
-The other five modules are not built. The roadmap is on the homepage.
+More is planned, but the homepage no longer advertises it. A list of unbuilt modules made a
+finished set of demonstrations read as an unfinished product, so what ships next is tracked in
+the repo rather than promised on the site.
 
 It runs a live sign-up form, and the guest door creates a real directory object. Nothing
 linked to either until the public-readiness checklist in

@@ -1,5 +1,16 @@
 # 003. Cross-tenant Graph for the demo-account cleanup
 
+> **One conclusion in this record was wrong, and [012](012-cross-tenant-graph-keyless.md)
+> corrects it.** This record dismissed a multitenant app registration provisioned into the
+> foreign tenant as *"untested and unlikely"*, on the reasoning that external tenants have a
+> reduced consent surface. It was untested. It was not unlikely: admin consent was accepted in
+> **both** demo tenants on 27 July 2026, and the resulting keyless chain returned Graph data
+> from the deployed Function App on 28 July. The Key Vault certificate fallback this record
+> holds open is therefore dead and should not be built.
+>
+> Everything else here stands. The GitHub Actions OIDC pattern for the scheduled sweeps is
+> unchanged and correct for scheduled work.
+
 **Status:** decided 20 July 2026. Tenant side built and consented; code side built and
 merged. **Run against the tenant twice on 20 July:** a dispatch dry run at 18:06Z and a
 scheduled run at 19:58Z that was armed to delete. Both authenticated and both found zero
