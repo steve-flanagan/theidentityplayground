@@ -44,7 +44,32 @@ import { ClientAssertionCredential, ManagedIdentityCredential } from '@azure/ide
 // Identifiers, not secrets. Same stance the project takes on tenant and client
 // ids everywhere else: they are public by design and live in app settings.
 const UAMI_CLIENT_ID = process.env.GRAPH_UAMI_CLIENT_ID ?? ''
-const APP_CLIENT_ID = process.env.GRAPH_APP_CLIENT_ID ?? ''
+
+/**
+ * TWO app registrations, not one, and the split is the security control.
+ *
+ * Admin consent grants everything an application DECLARES, per tenant. So a
+ * single registration holding both read and write permissions, consented in both
+ * demo tenants, would hand this backend the ability to create and modify users
+ * in the PUBLIC-FACING External ID tenant — which nothing here has any reason to
+ * do. One registration cannot be consented selectively.
+ *
+ *   reader   AuditLog.Read.All + Directory.Read.All. Consented in BOTH tenants.
+ *            Proven working 28 July (ADR 012).
+ *   writer   User.ReadWrite.All + Synchronization.ReadWrite.All. Consented in
+ *            WORKFORCE ONLY, and never provisioned into External ID at all, so
+ *            the write permissions cannot be exercised there even by accident.
+ *
+ * Both federate to the same user-assigned managed identity. The project already
+ * decided this shape once, for the same reason, in notes/next-build.md: "Use a
+ * new read-only app reg, never demo-account-cleanup (it can delete users)."
+ */
+const APPS = {
+  reader: process.env.GRAPH_APP_CLIENT_ID ?? '',
+  writer: process.env.GRAPH_WRITER_APP_CLIENT_ID ?? '',
+} as const
+
+export type AppName = keyof typeof APPS
 
 /**
  * The tenants this backend is allowed to ask for a token for, by name.
@@ -83,20 +108,30 @@ function assertion(): () => Promise<string> {
   }
 }
 
-// One credential per tenant, memoised. ClientAssertionCredential does its own
-// token caching, so rebuilding it per request would throw that away and mint a
-// fresh app token on every call.
-const credentials = new Map<TenantName, ClientAssertionCredential>()
+// One credential per (app, tenant) pair, memoised. ClientAssertionCredential
+// does its own token caching, so rebuilding it per request would throw that away
+// and mint a fresh app token on every call.
+const credentials = new Map<string, ClientAssertionCredential>()
 
-export async function graphTokenFor(tenant: TenantName): Promise<string> {
+export async function graphTokenFor(tenant: TenantName, app: AppName = 'reader'): Promise<string> {
   const tenantId = TENANTS[tenant]
   if (!tenantId) throw new Error(`no tenant id configured for "${tenant}"`)
-  if (!APP_CLIENT_ID) throw new Error('GRAPH_APP_CLIENT_ID is not set')
+  const clientId = APPS[app]
+  if (!clientId) throw new Error(`no client id configured for the "${app}" app registration`)
 
-  let credential = credentials.get(tenant)
+  // Belt to the consent braces. The writer is consented only in workforce, so
+  // asking for an External ID token with it would fail at Entra anyway — but it
+  // would fail as an opaque AADSTS error at the token endpoint, minutes of
+  // confusion away from the actual mistake. Say it here instead.
+  if (app === 'writer' && tenant !== 'workforce') {
+    throw new Error(`the writer app registration is workforce-only; refusing a ${tenant} token`)
+  }
+
+  const key = `${app}:${tenant}`
+  let credential = credentials.get(key)
   if (!credential) {
-    credential = new ClientAssertionCredential(tenantId, APP_CLIENT_ID, assertion())
-    credentials.set(tenant, credential)
+    credential = new ClientAssertionCredential(tenantId, clientId, assertion())
+    credentials.set(key, credential)
   }
 
   const token = await credential.getToken(GRAPH_SCOPE)
@@ -116,10 +151,37 @@ export interface GraphResult {
  * licence gate in an external tenant is unproven by any Microsoft document, and
  * the error code is the answer.
  */
-export async function graphGet(tenant: TenantName, path: string): Promise<GraphResult> {
-  const token = await graphTokenFor(tenant)
+export async function graphGet(
+  tenant: TenantName,
+  path: string,
+  app: AppName = 'reader',
+): Promise<GraphResult> {
+  return graphRequest('GET', tenant, path, undefined, app)
+}
+
+/**
+ * Any Graph call in a foreign tenant. Same non-throwing contract as graphGet:
+ * the status comes back beside the body, because on this project the failures
+ * carry the information. A 403 here names a missing consent, and turning that
+ * into a thrown 500 loses the one detail worth reading.
+ */
+export async function graphRequest(
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  tenant: TenantName,
+  path: string,
+  body?: unknown,
+  app: AppName = 'reader',
+): Promise<GraphResult> {
+  const token = await graphTokenFor(tenant, app)
   const response = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
-    headers: { authorization: `Bearer ${token}` },
+    method,
+    headers: {
+      authorization: `Bearer ${token}`,
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
-  return { status: response.status, body: await response.json().catch(() => null) }
+  // 204 has no body and .json() on it throws.
+  const parsed = response.status === 204 ? null : await response.json().catch(() => null)
+  return { status: response.status, body: parsed }
 }
