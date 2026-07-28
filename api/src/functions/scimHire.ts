@@ -47,17 +47,39 @@ async function hire(_request: HttpRequest, context: InvocationContext): Promise<
   // The scheduled cycle picks the user up within forty minutes regardless; only
   // the immediacy is lost, and immediacy is not worth deleting a real object for.
   let provisioned = false
+  /**
+   * The push's own outcome, returned to the caller.
+   *
+   * It was a bare boolean and that was a mistake worth naming: when the first
+   * live run came back false, there was nothing to go on. This app has no
+   * Application Insights, so "check the logs" is not a two-minute operation, and
+   * two hires were burned guessing. A status code and Graph's error code are not
+   * sensitive — they are the same things Graph would tell any caller holding the
+   * token — and the front end wants them anyway to say WHY a push did not land.
+   */
+  let pushStatus: number | null = null
+  let pushError: string | null = null
+
   try {
     const push = await provisionNow(result.employee.id)
-    provisioned = push !== null && push.status >= 200 && push.status < 300
-    if (push && !provisioned) {
-      context.warn(`provisionOnDemand returned ${push.status}; the scheduled cycle will catch it`)
+    if (push === null) {
+      pushError = 'not configured'
+    } else {
+      pushStatus = push.status
+      provisioned = push.status >= 200 && push.status < 300
+      if (!provisioned) {
+        pushError = (push.body as any)?.error?.code ?? 'unknown'
+        context.warn(
+          `provisionOnDemand returned ${push.status} ${pushError}: ${JSON.stringify(push.body)}`,
+        )
+      }
     }
-  } catch (err) {
+  } catch (err: any) {
+    pushError = err?.message ?? 'threw'
     context.warn('provisionOnDemand threw; the scheduled cycle will catch it', err)
   }
 
-  context.log(`hired ${result.employee.id} provisioned=${provisioned}`)
+  context.log(`hired ${result.employee.id} provisioned=${provisioned} status=${pushStatus}`)
   return {
     status: 201,
     jsonBody: {
@@ -65,6 +87,8 @@ async function hire(_request: HttpRequest, context: InvocationContext): Promise<
       // about to show in its own feed, not a visitor's personal data.
       employee: result.employee,
       provisionedOnDemand: provisioned,
+      provisionStatus: pushStatus,
+      provisionError: pushError,
       // Said out loud so the page can say it out loud. The self-destruct is a
       // feature of the demo, not a footnote.
       selfDestructsWithinHours: 30,

@@ -210,5 +210,39 @@ export async function terminateEmployee(objectId: string): Promise<GraphResult> 
     }
   }
 
+  /**
+   * ── DISABLE, PUSH, THEN DELETE — AND THE ORDER IS THE WHOLE POINT ──────────
+   *
+   * The first version deleted the directory object and stopped. That does not
+   * work, and Steve caught it: on-demand provisioning names a SUBJECT, and a
+   * deleted user cannot be one. Deprovisioning would only ever have happened on
+   * the scheduled cycle, which is stopped, so the leaver half of the demo would
+   * have silently done nothing at all.
+   *
+   * Disabling first fixes it and is more faithful anyway. SCIM deprovisioning IS
+   * `active: false` — Microsoft's own must-support list requires soft-delete via
+   * that flag with the user still returned on GET, and a hard DELETE is the
+   * exception rather than the rule. So the row goes inactive where a visitor can
+   * see it, which is also the more legible thing to watch: a row changing state
+   * says more than a row vanishing.
+   *
+   * The directory object is deleted last, because by then it has served its
+   * purpose and leaving it would lean on the sweep for something we can do now.
+   */
+  const disabled = await graphRequest(
+    'PATCH',
+    'workforce',
+    `/users/${objectId}`,
+    { accountEnabled: false },
+    'writer',
+  )
+  if (disabled.status !== 204) return disabled
+
+  // Push the disable downstream before the object stops existing. A failure here
+  // is not fatal — the account is already disabled, the scheduled cycle would
+  // catch it, and the sweep deletes the object regardless — so the result is
+  // reported rather than thrown.
+  await provisionNow(objectId).catch(() => null)
+
   return graphRequest('DELETE', 'workforce', `/users/${objectId}`, undefined, 'writer')
 }
