@@ -1,5 +1,11 @@
-import { app, type HttpRequest, type HttpResponseInit, type InvocationContext } from '@azure/functions'
+import {
+  app,
+  type HttpRequest,
+  type HttpResponseInit,
+  type InvocationContext,
+} from '@azure/functions'
 import { withRateLimit } from '../lib/rateLimit'
+import { recordEvent } from '../lib/scim/events'
 import { isAuthorised } from '../lib/scim/auth'
 import { applyPatch } from '../lib/scim/patch'
 import {
@@ -90,6 +96,61 @@ function readBodyUser(body: unknown): (Partial<ScimUser> & { userName: string })
     name: b.name,
     emails: Array.isArray(b.emails) ? b.emails : undefined,
     active: typeof b.active === 'boolean' ? b.active : undefined,
+  }
+}
+
+/**
+ * Records the exchange, then answers exactly as it would have.
+ *
+ * ── WHY A WRAPPER AND NOT A LINE IN EACH BRANCH ──────────────────────────────
+ *
+ * The handler below has eleven return points. Recording at each one guarantees a
+ * future branch that forgets, and the branch most likely to be added in a hurry
+ * is an error path — which is the one worth seeing.
+ *
+ * The request body is read from a CLONE. An HttpRequest body is a stream and can
+ * be consumed once; reading it here would leave the handler with nothing, which
+ * would turn "show me the traffic" into "break the endpoint that produces it".
+ *
+ * Recording never affects the response. recordEvent does not throw by
+ * construction, and this wrapper does not await anything that could change what
+ * Entra receives.
+ *
+ * InitHandler is narrower than HttpHandler on purpose: HttpHandler may return a
+ * full HttpResponse, which has no readable `jsonBody`, so the wider type would
+ * force a cast just to record the body.
+ */
+type InitHandler = (
+  request: HttpRequest,
+  context: InvocationContext,
+) => Promise<HttpResponseInit>
+
+function recorded(inner: InitHandler): InitHandler {
+  return async (request: HttpRequest, context: InvocationContext) => {
+    let raw = ''
+    try {
+      raw = await request.clone().text()
+    } catch {
+      // No body, or a runtime without clone(). The exchange is still worth
+      // recording without it.
+    }
+
+    const response = await inner(request, context)
+
+    const url = new URL(request.url)
+    await recordEvent({
+      at: new Date().toISOString(),
+      method: request.method,
+      // Path and query only. The origin is noise and the query carries the
+      // filter, which is the interesting half of Entra's match step.
+      path: `${url.pathname}${url.search}`,
+      status: response.status ?? 200,
+      requestBody: raw,
+      responseSummary:
+        response.jsonBody === undefined ? '' : JSON.stringify(response.jsonBody, null, 2),
+    })
+
+    return response
   }
 }
 
@@ -235,5 +296,8 @@ app.http('scim-users', {
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   authLevel: 'anonymous', // The bearer token is the gate. See scim/auth.ts.
   route: 'scim/Users/{id?}',
-  handler: withRateLimit(handler, { limit: LIMIT, windowSeconds: WINDOW_SECONDS }),
+  // recorded() innermost, so the rate limiter's own 429s are NOT written to the
+  // transcript. Those are us defending ourselves, not Entra talking to us, and
+  // mixing them in would make the protocol story harder to read.
+  handler: withRateLimit(recorded(handler), { limit: LIMIT, windowSeconds: WINDOW_SECONDS }),
 })

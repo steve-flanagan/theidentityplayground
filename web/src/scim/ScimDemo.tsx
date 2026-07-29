@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { API_BASE } from '../lib/apiBase'
+import { ScimTranscript } from './ScimTranscript'
 
 /**
  * Module 5's page. Hire a demo employee in a real Microsoft Entra tenant, watch
@@ -275,6 +276,10 @@ export function ScimDemo() {
             </table>
           </div>
         </section>
+
+        {/* The evidence. Everything above is this site describing itself; this
+            is Entra's own traffic, recorded as it arrived. */}
+        <ScimTranscript />
 
         <footer className="mt-14 border-t border-slate-800 pt-6 text-sm text-slate-600">
           <a href="/" className="underline decoration-slate-700 underline-offset-4 hover:text-slate-400">
