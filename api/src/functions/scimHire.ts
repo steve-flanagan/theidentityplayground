@@ -144,11 +144,19 @@ async function terminate(
    */
   const pushStatus = result.push?.status ?? null
   const deprovisioned = pushStatus !== null && pushStatus >= 200 && pushStatus < 300
-  if (!deprovisioned) {
-    context.warn(
-      `terminate ${id}: push status=${pushStatus} body=${JSON.stringify(result.push?.body)}`,
-    )
-  }
+
+  /**
+   * ALWAYS log the push body, not only on failure.
+   *
+   * A 200 from provisionOnDemand means "I evaluated this user", not "I sent
+   * something". Observed 29 July: a 200 that transmitted nothing, twice, for two
+   * different reasons. The body is a key/value description of what the engine
+   * actually did, and throwing it away on the success path is how both of those
+   * were missed. It is the only place the difference is written down.
+   */
+  context.log(
+    `terminate ${id}: push status=${pushStatus} body=${JSON.stringify(result.push?.body ?? null)}`,
+  )
 
   context.log(`terminated ${id} deprovisioned=${deprovisioned}`)
   return {
@@ -160,6 +168,10 @@ async function terminate(
       deprovisionError: deprovisioned
         ? null
         : ((result.push?.body as any)?.error?.code ?? 'no push attempted'),
+      // Returned so the next diagnosis does not need a log dive. It is Entra's
+      // own account of what it did, and it is the difference between a 200 that
+      // sent a PATCH and a 200 that decided nothing had changed.
+      deprovisionDetail: result.push?.body ?? null,
     },
   }
 }

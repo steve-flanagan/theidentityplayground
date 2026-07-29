@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { API_BASE } from '../lib/apiBase'
 
 /**
  * Module 5's page. Hire a demo employee in a real Microsoft Entra tenant, watch
@@ -34,7 +35,9 @@ interface FeedRow {
   lastModified: string
 }
 
-const API = '/api'
+// Absolute, and apiBase.ts explains at length why a relative '/api' would return
+// 200 with the site's own HTML instead of failing honestly.
+const API = API_BASE
 
 /** Short, local, and never the raw ISO string: the table is the thing being read,
  *  not the timestamps. */
@@ -43,22 +46,51 @@ function shortTime(iso: string): string {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString()
 }
 
+/**
+ * Reads a JSON body, or says plainly that it did not get one.
+ *
+ * This exists because of a real bug caught before it shipped. `/api` on the SWA
+ * origin returns 200 with the site's own HTML (see lib/apiBase.ts), so
+ * `res.json()` threw a parse error miles from the cause while `res.ok` said
+ * everything was fine. A wrong content-type is a CONFIGURATION fault, not a
+ * transient one, and it should name itself.
+ */
+async function readJson(res: Response): Promise<any> {
+  const type = res.headers.get('content-type') ?? ''
+  if (!type.includes('json')) {
+    throw new Error(`expected JSON from the backend, got ${type || 'no content-type'}`)
+  }
+  return res.json()
+}
+
 export function ScimDemo() {
   const [rows, setRows] = useState<FeedRow[]>([])
   const [hired, setHired] = useState<HireResponse | null>(null)
   const [busy, setBusy] = useState<null | 'hire' | 'terminate'>(null)
   const [error, setError] = useState<string | null>(null)
+  const [feedBroken, setFeedBroken] = useState<string | null>(null)
 
   const loadFeed = useCallback(async () => {
     try {
       const res = await fetch(`${API}/scim-demo/feed`)
       if (!res.ok) return
-      const body = (await res.json()) as { employees: FeedRow[] }
+      const body = (await readJson(res)) as { employees: FeedRow[] }
       setRows(body.employees ?? [])
-    } catch {
-      // A feed that fails to load is not worth an error banner: the buttons
-      // still work and the next poll may succeed. Failing loudly here would
-      // make a transient blip look like a broken demo.
+      setFeedBroken(null)
+    } catch (err: any) {
+      // Two different failures, deliberately treated differently.
+      //
+      // A wrong content-type means the backend is misconfigured and the table
+      // will be empty forever. That is exactly the bug that nearly shipped here,
+      // and an empty table quietly claiming "nothing provisioned yet" is how it
+      // would have hidden. It gets said out loud.
+      //
+      // Anything else — a dropped connection, a cold start — may well succeed on
+      // the next load, and an error banner for a blip makes a working demo look
+      // broken. That stays quiet.
+      if (String(err?.message ?? '').startsWith('expected JSON')) {
+        setFeedBroken(err.message)
+      }
     }
   }, [])
 
@@ -71,7 +103,7 @@ export function ScimDemo() {
     setError(null)
     try {
       const res = await fetch(`${API}/scim-demo/hire`, { method: 'POST' })
-      const body = await res.json()
+      const body = await readJson(res)
       if (!res.ok) {
         // 429 is the rate limiter and is the one failure a visitor can cause, so
         // it gets its own sentence rather than a generic error.
@@ -93,7 +125,7 @@ export function ScimDemo() {
     setError(null)
     try {
       const res = await fetch(`${API}/scim-demo/terminate/${hired.employee.id}`, { method: 'POST' })
-      const body = await res.json()
+      const body = await readJson(res)
       if (!res.ok) {
         setError(body?.error ?? 'Terminate failed.')
         return
@@ -162,7 +194,7 @@ export function ScimDemo() {
             </p>
             <p className="mt-2 text-sm text-slate-400">
               {hired.provisionedOnDemand
-                ? 'Entra ran the provisioning rule on demand rather than waiting for its next cycle, so the row below is already there.'
+                ? 'Entra ran the provisioning rule on demand rather than waiting for its next cycle.'
                 : `The on-demand push did not land (${hired.provisionError ?? 'no reason given'}). The scheduled cycle picks it up within forty minutes.`}
             </p>
           </div>
@@ -181,6 +213,16 @@ export function ScimDemo() {
             deletion: the row stays and <span className="font-mono">active</span> goes false. That is
             what the protocol specifies and what Entra actually sends.
           </p>
+
+          {/* Said loudly, because an empty table that claims "nothing provisioned
+              yet" is indistinguishable from a working one, and that is exactly
+              how this class of bug hides. */}
+          {feedBroken && (
+            <p className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-200/80">
+              The table below is empty because the backend is not answering correctly, not because
+              nothing is provisioned. <span className="font-mono text-xs">{feedBroken}</span>
+            </p>
+          )}
 
           <div className="mt-5 overflow-x-auto rounded-xl border border-slate-800">
             <table className="w-full min-w-[36rem] text-left text-sm">
