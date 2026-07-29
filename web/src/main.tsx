@@ -9,6 +9,7 @@ import { clearForeignInteractionLock } from './auth/interactionLock.ts'
 import { completeRedirect } from './auth/redirectBoot.ts'
 import { isApp2Path } from './app2/route.ts'
 import { isGuestPath } from './guest/route.ts'
+import { isScimPath } from './scim/route.ts'
 
 // getElementById returns HTMLElement | null, and createRoot won't accept null.
 // Vite's template silences this with a `!` non-null assertion; an explicit
@@ -40,6 +41,17 @@ if (!rootElement) {
 if (isApp2Path(window.location.pathname)) {
   const { mountApp2 } = await import('./app2/mountApp2.tsx')
   await mountApp2(rootElement)
+} else if (isScimPath(window.location.pathname)) {
+  // The fourth page, and the only one that authenticates NOBODY. No client id, so
+  // none of the reasoning above about a single MSAL instance applies to it: there
+  // is no instance. It sits in this branch anyway because the branch is what
+  // decides which single application boots, and because booting the main app's
+  // MSAL machinery for a page that never signs anyone in would be pure cost.
+  //
+  // Dynamically imported like the others, so a visitor to the homepage never
+  // downloads it.
+  const { mountScim } = await import('./scim/mountScim.tsx')
+  mountScim(rootElement)
 } else if (isGuestPath(window.location.pathname)) {
   // The third page, third client: the workforce app, for a live B2B guest
   // sign-up. Same rule as /app2 — a different client ID means a different page,
