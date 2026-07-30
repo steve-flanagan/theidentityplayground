@@ -451,6 +451,35 @@ export function ScimDemo() {
             neither shows an object moving between two systems. */}
         <ScimPipeline model={pipeline} />
 
+        {/* ── WHEN ENTRA SENDS NOTHING, EXPLAIN IT RATHER THAN HIDE IT ───────
+            Steve's call, and the right one: "Let's keep it and show it."
+
+            This is a real behaviour that anyone who runs provisioning has been
+            bitten by, and a demo that only ever shows the happy path is a worse
+            demo. But an amber "nothing sent" with no explanation just looks
+            broken, and showing a thing is only worth doing if it teaches
+            something. So the page says what happened and why. */}
+        {pipeline.provisioning.state === 'failed' &&
+          pipeline.provisioning.detail === 'nothing sent' && (
+            <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+              <p className="text-sm font-medium text-amber-300">
+                Entra was asked, and sent nothing.
+              </p>
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">
+                The provisioning service compares the attributes it maps and issues a request only
+                when one of them differs. A change it cannot see yet produces a run that reports
+                success and transmits nothing at all, which is why the request above is missing
+                while the call that triggered it returned 200.
+              </p>
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">
+                Nothing is lost. The scheduled cycle picks the user up on its next pass, and the
+                account self-destructs either way. This is left visible on purpose: a successful
+                run that sent no traffic is one of the harder things to notice in production, and
+                it is worth seeing once.
+              </p>
+            </div>
+          )}
+
         {/* ── What just happened, in the backend's own words ──────────────── */}
         {hired && (
           <div className="mt-6 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
