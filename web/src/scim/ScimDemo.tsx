@@ -21,6 +21,7 @@ interface Employee {
 }
 
 interface HireResponse {
+  graphCalls?: string[]
   employee: Employee
   provisionedOnDemand: boolean
   provisionStatus: number | null
@@ -63,6 +64,34 @@ function retryHint(res: Response): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return 'Try again shortly.'
   if (seconds < 90) return `Try again in ${Math.ceil(seconds)} seconds.`
   return `Try again in ${Math.ceil(seconds / 60)} minutes.`
+}
+
+/**
+ * The SCIM requests Entra made since an operation began, split into what it
+ * asked and what we answered.
+ *
+ * Read from the events store rather than written out here. The sequence is
+ * predictable enough that hardcoding it would look identical and be a lie — the
+ * same lie this page has already been corrected for twice.
+ */
+async function scimSince(startedAt: number): Promise<{ scim: string[]; app: string[] }> {
+  try {
+    const res = await fetch(`${API_BASE}/scim-demo/events`)
+    if (!res.ok) return { scim: [], app: [] }
+    const body = (await res.json()) as {
+      events: { at: string; method: string; path: string; status: number }[]
+    }
+    const fresh = (body.events ?? [])
+      .filter((e) => Date.parse(e.at) >= startedAt)
+      .reverse() // the store is newest-first; a ticker reads oldest-first
+    return {
+      // Short enough to go past. /api/scim is on every line and carries nothing.
+      scim: fresh.map((e) => `${e.method} ${e.path.replace('/api/scim', '').split('?')[0]}`),
+      app: fresh.map((e) => `${e.status}`),
+    }
+  } catch {
+    return { scim: [], app: [] }
+  }
 }
 
 async function readJson(res: Response): Promise<any> {
@@ -139,6 +168,7 @@ export function ScimDemo() {
   const hire = async () => {
     setBusy('hire')
     setError(null)
+    const startedAt = Date.now()
     setPipeline({ ...IDLE_PIPELINE, entra: { state: 'working' } })
     try {
       const res = await fetch(`${API}/scim-demo/hire`, { method: 'POST' })
@@ -165,6 +195,7 @@ export function ScimDemo() {
         ...p,
         entra: { state: 'done', detail: hire.employee.userPrincipalName.split('@')[0] },
         provisioning: { state: 'working' },
+        ticker: { entra: hire.graphCalls ?? [], scim: [], app: [] },
       }))
 
       // A beat, so the movement is visible. Both of the first two stages were
@@ -182,6 +213,10 @@ export function ScimDemo() {
             },
         application: { state: 'working' },
       }))
+
+      // The SCIM traffic Entra generated, read back rather than assumed.
+      const traffic = await scimSince(startedAt)
+      setPipeline((p) => ({ ...p, ticker: { entra: [], scim: traffic.scim, app: traffic.app } }))
 
       // And this one is asked, not assumed.
       const landed = await awaitRow(hire.employee.userPrincipalName)
@@ -204,6 +239,7 @@ export function ScimDemo() {
     setBusy('terminate')
     setError(null)
     try {
+      const startedAt = Date.now()
       setPipeline({ ...IDLE_PIPELINE, entra: { state: 'working' } })
       const res = await fetch(`${API}/scim-demo/terminate/${hired.employee.id}`, { method: 'POST' })
       const body = await readJson(res)
@@ -219,12 +255,19 @@ export function ScimDemo() {
       setPipeline((p) => ({
         ...p,
         entra: { state: 'done', detail: 'user deleted' },
+        ticker: { entra: body?.graphCalls ?? [], scim: [], app: [] },
         provisioning: body?.deprovisioned
           ? { state: 'done', detail: 'PATCH /Users' }
           : { state: 'failed', detail: body?.deprovisionError ?? 'nothing sent' },
         application: { state: 'working' },
       }))
       setHired(null)
+
+      const leaveTraffic = await scimSince(startedAt)
+      setPipeline((p) => ({
+        ...p,
+        ticker: { entra: [], scim: leaveTraffic.scim, app: leaveTraffic.app },
+      }))
 
       // Asked, not assumed, exactly as on the way in: the row must actually read
       // inactive before this claims it did.

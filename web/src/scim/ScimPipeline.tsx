@@ -31,6 +31,8 @@
  * on a module that has produced three separate silent no-ops.
  */
 
+import { CallTicker } from './CallTicker'
+
 export type StageState = 'idle' | 'working' | 'done' | 'failed'
 
 export interface PipelineStage {
@@ -42,12 +44,17 @@ export interface PipelineModel {
   entra: PipelineStage
   provisioning: PipelineStage
   application: PipelineStage
+  /** Calls to scroll past each stage. Only ever what actually happened: the
+   *  Graph calls the backend reported making, and the SCIM requests Entra really
+   *  sent. Never a written-out sequence. */
+  ticker?: { entra: string[]; scim: string[]; app: string[] }
 }
 
 export const IDLE_PIPELINE: PipelineModel = {
   entra: { state: 'idle' },
   provisioning: { state: 'idle' },
   application: { state: 'idle' },
+  ticker: { entra: [], scim: [], app: [] },
 }
 
 /** Module 2's palette, deliberately. Same site, same meanings. */
@@ -173,7 +180,8 @@ export function ScimPipeline({ model }: { model: PipelineModel }) {
      */
     <section className="mt-10" aria-label="Provisioning pipeline">
       <div className="flex flex-col items-center gap-1 sm:flex-row sm:items-start sm:justify-center sm:gap-2">
-        <div className="flex flex-col items-center sm:w-40">
+        <div className="flex w-full flex-col items-center sm:w-40">
+          <CallTicker queue={model.ticker?.entra ?? []} />
           <div className="flex h-20 items-center justify-center sm:h-24">
             <Tenant state={model.entra.state} />
           </div>
@@ -182,14 +190,16 @@ export function ScimPipeline({ model }: { model: PipelineModel }) {
 
         {/* Shorter on a phone: the vertical connector is a short line, and a slot
             sized for a triangle left it floating in a column of nothing. */}
-        <div className="flex flex-col items-center sm:w-40">
+        <div className="flex w-full flex-col items-center sm:w-40">
+          <CallTicker queue={model.ticker?.scim ?? []} />
           <div className="flex h-14 w-full items-center justify-center sm:h-24">
             <Pipe state={model.provisioning.state} />
           </div>
           <Label title="SCIM" stage={model.provisioning} />
         </div>
 
-        <div className="flex flex-col items-center sm:w-40">
+        <div className="flex w-full flex-col items-center sm:w-40">
+          <CallTicker queue={model.ticker?.app ?? []} />
           <div className="flex h-20 items-center justify-center sm:h-24">
             <AppBox state={model.application.state} />
           </div>
