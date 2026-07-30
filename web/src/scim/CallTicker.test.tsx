@@ -1,6 +1,6 @@
 import { render, screen, act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CallTicker } from './CallTicker'
+import { CallTicker, LINE_MS, TAIL_MS } from './CallTicker'
 
 /**
  * The ticker plays a queue on timers, which makes it exactly the kind of thing
@@ -10,7 +10,9 @@ import { CallTicker } from './CallTicker'
  * pinned here instead of assumed.
  */
 
-const LINE_MS = 450
+// Imported, not duplicated. It was a local 450 and these two tests failed the
+// moment Steve asked for a slower pace — which is the tests doing their job, and
+// also a copy of a constant that had no business being a copy.
 
 describe('CallTicker', () => {
   beforeEach(() => vi.useFakeTimers())
@@ -46,12 +48,25 @@ describe('CallTicker', () => {
     }
   })
 
+  it('keeps a held line after the queue has gone', () => {
+    // The application column holds the employee's name. Who the app currently
+    // knows about is a standing fact, not an event, so it must outlive the queue.
+    render(<CallTicker queue={['POST /Users 201']} hold="Avery Marchetti" />)
+    act(() => { vi.advanceTimersByTime(LINE_MS + TAIL_MS + 500) })
+    expect(screen.getByText('Avery Marchetti')).toBeTruthy()
+  })
+
+  it('shows a held line even with nothing queued', () => {
+    render(<CallTicker queue={[]} hold="Avery Marchetti" />)
+    expect(screen.getByText('Avery Marchetti')).toBeTruthy()
+  })
+
   it('clears itself afterwards, because the table below is the durable copy', () => {
     render(<CallTicker queue={['POST /users 201']} />)
     act(() => { vi.advanceTimersByTime(LINE_MS) })
     expect(screen.getByText('POST /users 201')).toBeTruthy()
 
-    act(() => { vi.advanceTimersByTime(3000) })
+    act(() => { vi.advanceTimersByTime(LINE_MS + TAIL_MS + 500) })
     expect(screen.queryByText('POST /users 201')).toBeNull()
   })
 

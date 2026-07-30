@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { API_BASE } from '../lib/apiBase'
 import { ScimTranscript } from './ScimTranscript'
 import { IDLE_PIPELINE, ScimPipeline, type PipelineModel } from './ScimPipeline'
+import { LINE_MS, TAIL_MS } from './CallTicker'
 
 /**
  * Module 5's page. Hire a demo employee in a real Microsoft Entra tenant, watch
@@ -188,21 +189,38 @@ export function ScimDemo() {
     return false
   }
 
+  /**
+   * ── ONE SEQUENCE, NOT THREE INDEPENDENT ONES ──────────────────────────────
+   *
+   * Steve, after watching the first version: "The highlights happen instantly
+   * sometimes. I'd rather it sit highlighted on entra, run thru the cmds to
+   * build the user (slower I think), then highlight scim, go thru all those,
+   * then highlight the app."
+   *
+   * So a stage does not advance until the calls above it have finished playing.
+   * The waits below are derived from LINE_MS rather than guessed, so changing the
+   * pace in one constant keeps the choreography correct.
+   *
+   * The calls themselves are still only ever what the backend reported doing.
+   * Pacing is presentation; the content is not.
+   */
+  const playFor = (queue: string[]) =>
+    new Promise((r) => setTimeout(r, queue.length * LINE_MS + TAIL_MS))
+
   const hire = async () => {
     setBusy('hire')
     setError(null)
-    // Snapshot before anything happens, so what appears afterwards is provably new.
+    // Snapshot before anything happens, so what appears afterwards is provably
+    // new. Never a timestamp: the browser clock and Azure's differ by ten
+    // seconds on this machine, which silently emptied this once already.
     const known = await knownEventKeys()
     setPipeline({ ...IDLE_PIPELINE, entra: { state: 'working' } })
+
     try {
       const res = await fetch(`${API}/scim-demo/hire`, { method: 'POST' })
       const body = await readJson(res)
       if (!res.ok) {
         setPipeline({ ...IDLE_PIPELINE, entra: { state: 'failed', detail: 'not created' } })
-        // 429 is the rate limiter and the one failure a visitor can cause, so it
-        // gets its own sentence. The limiter already sends Retry-After, and "a
-        // few minutes" when the real answer is fifty-one is the kind of vagueness
-        // that makes a working site feel broken.
         setError(
           res.status === 429
             ? `Rate limited. ${retryHint(res)} This demo creates real directory objects, so it is capped per IP address.`
@@ -211,44 +229,48 @@ export function ScimDemo() {
         return
       }
 
-      const hire = body as HireResponse
-      setHired(hire)
+      const hired = body as HireResponse
+      setHired(hired)
 
-      // Stage one is a fact by now: Graph returned an object id.
-      setPipeline((p) => ({
-        ...p,
-        entra: { state: 'done', detail: hire.employee.userPrincipalName.split('@')[0] },
-        provisioning: { state: 'working' },
-        ticker: { entra: hire.graphCalls ?? [], scim: [], app: [] },
-      }))
-
-      // A beat, so the movement is visible. Both of the first two stages were
-      // already true when the response arrived; this is the order they really
-      // happened in, spaced out enough to read.
-      await new Promise((r) => setTimeout(r, 700))
+      // ── Entra: hold the highlight while its own calls go past ──────────────
+      const graphCalls = hired.graphCalls ?? []
+      setPipeline((p) => ({ ...p, ticker: { entra: graphCalls, scim: [], app: [] } }))
+      await playFor(graphCalls)
 
       setPipeline((p) => ({
         ...p,
-        provisioning: hire.provisionedOnDemand
-          ? { state: 'done', detail: 'POST /Users' }
-          : {
-              state: 'failed',
-              detail: hire.provisionError ?? 'not sent',
-            },
-        application: { state: 'working' },
+        entra: { state: 'done', detail: hired.employee.userPrincipalName.split('@')[0] },
+        ticker: { entra: [], scim: [], app: [] },
       }))
 
-      // The SCIM traffic Entra generated, read back rather than assumed.
+      // ── SCIM: only now does the pipeline light, and only its calls play ────
       const traffic = await scimSince(known)
-      setPipeline((p) => ({ ...p, ticker: { entra: [], scim: traffic.scim, app: traffic.app } }))
+      setPipeline((p) => ({
+        ...p,
+        provisioning: { state: 'working' },
+        ticker: { entra: [], scim: traffic.scim, app: [] },
+      }))
+      await playFor(traffic.scim)
 
-      // And this one is asked, not assumed.
-      const landed = await awaitRow(hire.employee.userPrincipalName)
+      setPipeline((p) => ({
+        ...p,
+        provisioning: hired.provisionedOnDemand
+          ? { state: 'done', detail: 'POST /Users' }
+          : { state: 'failed', detail: hired.provisionError ?? 'not sent' },
+        ticker: { entra: [], scim: [], app: [] },
+      }))
+
+      // ── The application: asked, never assumed ──────────────────────────────
+      setPipeline((p) => ({ ...p, application: { state: 'working' } }))
+      const landed = await awaitRow(hired.employee.userPrincipalName)
       setPipeline((p) => ({
         ...p,
         application: landed
           ? { state: 'done', detail: 'row created' }
           : { state: 'failed', detail: 'no row yet' },
+        // Held until they are let go or the page is left. Who this app currently
+        // knows about is a standing fact, not an event.
+        held: landed ? hired.employee.displayName : null,
       }))
     } catch {
       setError('Could not reach the backend.')
@@ -264,8 +286,14 @@ export function ScimDemo() {
     setError(null)
     try {
       const known = await knownEventKeys()
-      setPipeline({ ...IDLE_PIPELINE, entra: { state: 'working' } })
-      const res = await fetch(`${API}/scim-demo/terminate/${hired.employee.id}`, { method: 'POST' })
+      const leaving = hired.employee
+      setPipeline((p) => ({
+        ...IDLE_PIPELINE,
+        held: p.held,
+        entra: { state: 'working' },
+      }))
+
+      const res = await fetch(`${API}/scim-demo/terminate/${leaving.id}`, { method: 'POST' })
       const body = await readJson(res)
       if (!res.ok) {
         setPipeline(IDLE_PIPELINE)
@@ -273,24 +301,34 @@ export function ScimDemo() {
         return
       }
 
-      // Same three stages, the other way round. The employee is gone from the
-      // directory, Entra pushes the change, and the app marks the row inactive.
-      const gone = hired.employee.userPrincipalName
+      // Same three stages, the other way round, and the same rule: a stage waits
+      // for the calls above it.
+      const graphCalls: string[] = body?.graphCalls ?? []
+      setPipeline((p) => ({ ...p, ticker: { entra: graphCalls, scim: [], app: [] } }))
+      await playFor(graphCalls)
+
       setPipeline((p) => ({
         ...p,
         entra: { state: 'done', detail: 'user deleted' },
-        ticker: { entra: body?.graphCalls ?? [], scim: [], app: [] },
+        ticker: { entra: [], scim: [], app: [] },
+      }))
+      setHired(null)
+
+      const traffic = await scimSince(known)
+      setPipeline((p) => ({
+        ...p,
+        provisioning: { state: 'working' },
+        ticker: { entra: [], scim: traffic.scim, app: [] },
+      }))
+      await playFor(traffic.scim)
+
+      setPipeline((p) => ({
+        ...p,
         provisioning: body?.deprovisioned
           ? { state: 'done', detail: 'PATCH /Users' }
           : { state: 'failed', detail: body?.deprovisionError ?? 'nothing sent' },
         application: { state: 'working' },
-      }))
-      setHired(null)
-
-      const leaveTraffic = await scimSince(known)
-      setPipeline((p) => ({
-        ...p,
-        ticker: { entra: [], scim: leaveTraffic.scim, app: leaveTraffic.app },
+        ticker: { entra: [], scim: [], app: [] },
       }))
 
       // Asked, not assumed, exactly as on the way in: the row must actually read
@@ -302,7 +340,9 @@ export function ScimDemo() {
           if (feed.ok) {
             const f = (await readJson(feed)) as { employees: FeedRow[] }
             setRows(f.employees ?? [])
-            inactive = (f.employees ?? []).some((r) => r.userName === gone && !r.active)
+            inactive = (f.employees ?? []).some(
+              (r) => r.userName === leaving.userPrincipalName && !r.active,
+            )
           }
         } catch {
           // the loop is the retry
@@ -314,6 +354,8 @@ export function ScimDemo() {
         application: inactive
           ? { state: 'done', detail: 'active false' }
           : { state: 'failed', detail: 'row unchanged' },
+        // The hold ends here. They have been let go.
+        held: null,
       }))
     } catch {
       setError('Could not reach the backend.')
