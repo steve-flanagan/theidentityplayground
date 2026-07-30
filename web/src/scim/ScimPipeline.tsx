@@ -48,6 +48,9 @@ export interface PipelineModel {
    *  Graph calls the backend reported making, and the SCIM requests Entra really
    *  sent. Never a written-out sequence. */
   ticker?: { entra: string[]; scim: string[]; app: string[] }
+  /** Stays above the application after the calls have gone. The employee this
+   *  app currently knows about, which is a standing fact rather than an event. */
+  held?: string | null
 }
 
 export const IDLE_PIPELINE: PipelineModel = {
@@ -55,6 +58,7 @@ export const IDLE_PIPELINE: PipelineModel = {
   provisioning: { state: 'idle' },
   application: { state: 'idle' },
   ticker: { entra: [], scim: [], app: [] },
+  held: null,
 }
 
 /** Module 2's palette, deliberately. Same site, same meanings. */
@@ -199,7 +203,7 @@ export function ScimPipeline({ model }: { model: PipelineModel }) {
         </div>
 
         <div className="flex w-full flex-col items-center sm:w-40">
-          <CallTicker queue={model.ticker?.app ?? []} />
+          <CallTicker queue={model.ticker?.app ?? []} hold={model.held} />
           <div className="flex h-20 items-center justify-center sm:h-24">
             <AppBox state={model.application.state} />
           </div>
