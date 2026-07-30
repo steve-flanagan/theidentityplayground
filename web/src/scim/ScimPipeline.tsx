@@ -1,30 +1,34 @@
 /**
  * Where the user is, right now, on its way from a directory to an application.
  *
- * ── WHY THIS EXISTS ──────────────────────────────────────────────────────────
+ * ── THE BRIEF, IN STEVE'S WORDS ──────────────────────────────────────────────
  *
- * Steve's objection to the first version: "hard to tell what's happening". A
- * transcript and a table are both true and neither shows the JOURNEY. The thing
- * being demonstrated is that an object created in one system arrives in another
- * without anyone touching the second system, and that is a shape, not a list.
+ * "entra tenant triangle shows the user creation stuff. scim calls over the scim
+ * pipeline, then app verification over the app. I don't want it to be crowded,
+ * unclear and clunky."
  *
- * ── WHAT IS REAL AND WHAT IS PRESENTATION, STATED PLAINLY ────────────────────
+ * The last sentence is the governing constraint and it killed the first attempt.
+ * That version was three bordered cards, each with a title, a subtitle AND a
+ * detail line — nine lines of prose to say what a diagram says with three
+ * labels. It was exactly the crowding an old colleague had just complained about
+ * elsewhere on the site.
  *
- * Every stage is backed by evidence the page actually holds:
+ * So: one short label per element, and each label sits ON the thing it describes.
+ * The tenant carries the user, the pipeline carries the SCIM call, the app
+ * carries what it now believes. Nothing explains itself in a paragraph.
  *
- *   Entra          the user object Graph returned, with its real object id
- *   Provisioning   the status provisionOnDemand returned
- *   Application    the row, confirmed by POLLING THE FEED until it appears
+ * Icons are Module 2's, not new ones. AccountTypes.tsx already draws a tenant as
+ * a triangle and an app as a rounded rect with a title bar, and inventing a
+ * second visual language for the same two concepts on the same site is how a
+ * thing starts feeling unclear.
  *
- * The third one genuinely waits. It does not light up because the first two did;
- * it lights up when the row is really there, and it stays pending if it never
- * arrives. That distinction is the whole difference between showing a pipeline
- * and drawing one.
+ * ── WHAT IS REAL AND WHAT IS PRESENTATION ────────────────────────────────────
  *
- * The first two arrive together, because the hire endpoint answers only after
- * both have happened. Revealing them a beat apart is presentation, and it is
- * honest presentation: that IS the order they occurred in. What would not be
- * honest is showing stage three from the same response.
+ * Every state is backed by evidence the page holds: the object Graph returned,
+ * the status provisionOnDemand returned, and the row CONFIRMED BY POLLING THE
+ * FEED. The app stage genuinely waits and says so if the row never arrives. It
+ * does not light because the others did — that difference is the whole point,
+ * on a module that has produced three separate silent no-ops.
  */
 
 export type StageState = 'idle' | 'working' | 'done' | 'failed'
@@ -46,84 +50,151 @@ export const IDLE_PIPELINE: PipelineModel = {
   application: { state: 'idle' },
 }
 
-const RING: Record<StageState, string> = {
-  idle: 'border-slate-800 bg-slate-900/40',
-  working: 'border-sky-500/40 bg-sky-500/5',
-  done: 'border-emerald-500/40 bg-emerald-500/5',
-  failed: 'border-amber-500/40 bg-amber-500/5',
+/** Module 2's palette, deliberately. Same site, same meanings. */
+const COLOR: Record<StageState, string> = {
+  idle: '#334155',
+  working: '#38bdf8',
+  done: '#4ade80',
+  failed: '#fbbf24',
 }
 
-const DOT: Record<StageState, string> = {
-  idle: 'bg-slate-700',
-  working: 'bg-sky-400 animate-pulse',
-  done: 'bg-emerald-400',
-  failed: 'bg-amber-400',
+const TEXT: Record<StageState, string> = {
+  idle: 'text-slate-600',
+  working: 'text-sky-300',
+  done: 'text-emerald-300',
+  failed: 'text-amber-300',
 }
 
-const LABEL: Record<StageState, string> = {
-  idle: 'waiting',
-  working: 'in flight',
-  done: 'done',
-  failed: 'no',
-}
-
-function Stage({
-  title,
-  subtitle,
-  stage,
-}: {
-  title: string
-  subtitle: string
-  stage: PipelineStage
-}) {
+/** The tenant. Same polygon as AccountTypes.tsx, and the figure inside appears
+ *  once the user actually exists in it. */
+function Tenant({ state }: { state: StageState }) {
+  const c = COLOR[state]
+  const filled = state !== 'idle'
   return (
-    <div className={`flex-1 rounded-xl border p-4 transition-colors duration-500 ${RING[stage.state]}`}>
-      <div className="flex items-center gap-2">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[stage.state]}`} aria-hidden="true" />
-        <p className="text-sm font-medium text-slate-200">{title}</p>
-        <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-slate-500">
-          {LABEL[stage.state]}
-        </span>
-      </div>
-      <p className="mt-1 text-xs leading-relaxed text-slate-500">{subtitle}</p>
-      {stage.detail && (
-        <p className="mt-2 font-mono text-xs break-all text-slate-400">{stage.detail}</p>
+    <svg viewBox="0 0 100 90" className="h-auto w-[76px] sm:w-[96px]" aria-hidden="true">
+      <polygon
+        points="50,6 94,84 6,84"
+        fill={filled ? c : 'none'}
+        fillOpacity={filled ? 0.16 : 0}
+        stroke={c}
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+      />
+      {state !== 'idle' && (
+        <g fill="#e2e8f0">
+          <circle cx="50" cy="52" r="6.5" />
+          <path d="M39 76 C39 65 44 61 50 61 C56 61 61 65 61 76 Z" />
+        </g>
       )}
-    </div>
+    </svg>
   )
 }
 
-/** Horizontal on desktop, stacked on a phone, and the arrow turns with it. */
-function Arrow() {
+/** The app. Module 2's rounded rect with a title bar. */
+function AppBox({ state }: { state: StageState }) {
+  const c = COLOR[state]
+  const filled = state !== 'idle'
   return (
-    <div className="flex shrink-0 items-center justify-center text-slate-700" aria-hidden="true">
-      <span className="hidden sm:inline">→</span>
-      <span className="sm:hidden">↓</span>
+    <svg viewBox="0 0 60 50" className="h-auto w-[58px] sm:w-[72px]" aria-hidden="true">
+      <rect
+        x="6"
+        y="6"
+        width="48"
+        height="38"
+        rx="6"
+        fill={filled ? c : 'none'}
+        fillOpacity={filled ? 0.16 : 0}
+        stroke={c}
+        strokeWidth="3"
+      />
+      <line x1="6" y1="17" x2="54" y2="17" stroke={c} strokeWidth="3" />
+    </svg>
+  )
+}
+
+/**
+ * The pipeline itself, and the SCIM call rides on it rather than sitting in a box
+ * beside it. Horizontal on desktop, vertical on a phone, so the arrow always
+ * points the way the eye is already travelling.
+ */
+function Pipe({ state }: { state: StageState }) {
+  const c = COLOR[state]
+  const moving = state === 'working'
+  return (
+    <>
+      <svg viewBox="0 0 100 12" className="hidden h-3 w-full sm:block" aria-hidden="true">
+        <line x1="0" y1="6" x2="92" y2="6" stroke={c} strokeWidth="2.5"
+          strokeDasharray={moving ? '6 5' : undefined}>
+          {/* The only motion on the page, and only while something is in flight.
+              A dashed line that never stops moving is decoration; one that moves
+              exactly when a request is open is information. */}
+          {moving && (
+            <animate attributeName="stroke-dashoffset" from="22" to="0" dur="0.9s" repeatCount="indefinite" />
+          )}
+        </line>
+        <polygon points="92,1 100,6 92,11" fill={c} />
+      </svg>
+      <svg viewBox="0 0 12 60" className="h-12 w-3 sm:hidden" aria-hidden="true">
+        <line x1="6" y1="0" x2="6" y2="52" stroke={c} strokeWidth="2.5"
+          strokeDasharray={moving ? '6 5' : undefined}>
+          {moving && (
+            <animate attributeName="stroke-dashoffset" from="22" to="0" dur="0.9s" repeatCount="indefinite" />
+          )}
+        </line>
+        <polygon points="1,52 6,60 11,52" fill={c} />
+      </svg>
+    </>
+  )
+}
+
+/** One label. Never two. */
+function Label({ title, stage }: { title: string; stage: PipelineStage }) {
+  return (
+    <div className="mt-2 text-center">
+      <p className="text-xs font-medium text-slate-300">{title}</p>
+      <p className={`mt-0.5 font-mono text-[11px] break-all ${TEXT[stage.state]}`}>
+        {stage.detail ?? ' '}
+      </p>
     </div>
   )
 }
 
 export function ScimPipeline({ model }: { model: PipelineModel }) {
   return (
+    /**
+     * Every column gets the SAME fixed-height icon slot, contents centred. The
+     * three shapes are different heights by nature — a triangle is tall, an
+     * arrow is a line — and letting them sit where they fall put the three
+     * labels at three different heights, which reads as an accident rather than
+     * a diagram. One shared baseline is the difference.
+     *
+     * The middle column is capped rather than flex-1 for the same reason: at
+     * full width the arrow floated in the middle of a lot of nothing.
+     */
     <section className="mt-10" aria-label="Provisioning pipeline">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
-        <Stage
-          title="Microsoft Entra ID"
-          subtitle="The employee is created here, as an ordinary directory object."
-          stage={model.entra}
-        />
-        <Arrow />
-        <Stage
-          title="Provisioning service"
-          subtitle="Entra evaluates the scoping filter, then calls the app over SCIM."
-          stage={model.provisioning}
-        />
-        <Arrow />
-        <Stage
-          title="The application"
-          subtitle="This site's own SCIM endpoint. It learns about the hire from Entra, not from us."
-          stage={model.application}
-        />
+      <div className="flex flex-col items-center gap-1 sm:flex-row sm:items-start sm:justify-center sm:gap-2">
+        <div className="flex flex-col items-center sm:w-40">
+          <div className="flex h-20 items-center justify-center sm:h-24">
+            <Tenant state={model.entra.state} />
+          </div>
+          <Label title="Entra tenant" stage={model.entra} />
+        </div>
+
+        {/* Shorter on a phone: the vertical connector is a short line, and a slot
+            sized for a triangle left it floating in a column of nothing. */}
+        <div className="flex flex-col items-center sm:w-40">
+          <div className="flex h-14 w-full items-center justify-center sm:h-24">
+            <Pipe state={model.provisioning.state} />
+          </div>
+          <Label title="SCIM" stage={model.provisioning} />
+        </div>
+
+        <div className="flex flex-col items-center sm:w-40">
+          <div className="flex h-20 items-center justify-center sm:h-24">
+            <AppBox state={model.application.state} />
+          </div>
+          <Label title="The application" stage={model.application} />
+        </div>
       </div>
     </section>
   )

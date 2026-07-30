@@ -149,7 +149,7 @@ export function ScimDemo() {
       // Stage one is a fact by now: Graph returned an object id.
       setPipeline((p) => ({
         ...p,
-        entra: { state: 'done', detail: hire.employee.userPrincipalName },
+        entra: { state: 'done', detail: hire.employee.userPrincipalName.split('@')[0] },
         provisioning: { state: 'working' },
       }))
 
@@ -161,10 +161,10 @@ export function ScimDemo() {
       setPipeline((p) => ({
         ...p,
         provisioning: hire.provisionedOnDemand
-          ? { state: 'done', detail: `provisionOnDemand ${hire.provisionStatus}` }
+          ? { state: 'done', detail: 'POST /Users' }
           : {
               state: 'failed',
-              detail: `${hire.provisionError ?? 'no push'} — the scheduled cycle will catch it`,
+              detail: hire.provisionError ?? 'not sent',
             },
         application: { state: 'working' },
       }))
@@ -206,7 +206,7 @@ export function ScimDemo() {
         ...p,
         entra: { state: 'done', detail: 'user deleted' },
         provisioning: body?.deprovisioned
-          ? { state: 'done', detail: `provisionOnDemand ${body.deprovisionStatus}` }
+          ? { state: 'done', detail: 'PATCH /Users' }
           : { state: 'failed', detail: body?.deprovisionError ?? 'nothing sent' },
         application: { state: 'working' },
       }))
