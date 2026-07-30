@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMsal } from '@azure/msal-react'
+import { SiteNav } from './components/SiteNav'
 import { TokenInspector } from './components/TokenInspector'
 import { JourneyTimeline } from './components/JourneyTimeline'
 import { SignInPanel } from './components/SignInPanel'
-import { AccountTypes } from './components/AccountTypes'
-import { CleanupStatus } from './components/CleanupStatus'
 import { buildSampleToken, buildMemberSampleToken } from './lib/sampleToken'
 import { MEMBER_FLOWS, GUEST_FLOWS } from './lib/journey'
 import { readGuestToken, clearGuestToken } from './guest/handback'
@@ -137,15 +136,21 @@ function App() {
     // panel is a fixed 27rem in the grid below. The only thing that grows is
     // the timeline's 1fr column, which is the one that wants the room.
     <main className="min-h-screen bg-slate-950 text-slate-300">
-      <div className="px-8 pt-16 pb-20">
+      <SiteNav current="/" />
+      <div className="px-8 pt-12 pb-20">
         <header className="max-w-3xl">
           <p className="font-mono text-xs uppercase tracking-widest text-emerald-400">
-            Token inspector · account types
+            Token inspector · sign-in timeline
           </p>
           <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
             The Identity Playground
           </h1>
-          {/* Two rewrites are baked in here, both from real feedback.
+          {/* Three rewrites are baked in here, all from real feedback.
+              0. The second sentence used to promise "the same person as a
+                 customer, an employee and a B2B guest". That module moved to
+                 /accounts, and a card two screens down now says the same thing.
+                 A header promising what the page no longer shows, duplicated by
+                 a link that does, is two problems rather than one.
               1. The version before last opened "sign in for real", which put the
                  one thing most visitors will not do in front of the one thing
                  they will.
@@ -157,9 +162,8 @@ function App() {
               setup-and-payoff, and it names the two modules concretely because
               the same reader could not tell what the site was meant to prove. */}
           <p className="mt-6 text-lg leading-relaxed text-slate-400">
-            A real Entra ID token, claim by claim, and every request that produced it.
-            Then the same person as a customer, an employee and a B2B guest, with what
-            each one can reach. No account needed.
+            A real Entra ID token, claim by claim, and every request that produced it. No
+            account needed.
           </p>
           <p className="mt-4 text-lg leading-relaxed text-slate-400">
             By <span className="text-slate-200">Steven Flanagan</span>. Every module links
@@ -346,66 +350,15 @@ function App() {
             )}
           </section>
 
-            {/* ── Module 2 · account types ───────────────────────────────
-                In the same (left) column as the timeline, so the pinned claims
-                panel on the right stays in view as you scroll from the token
-                flow down into the account-types map. A separate product from
-                the inspector (design.md §6), set off by a top rule. It reads
-                the signed-in state through the shared MSAL instance's hooks,
-                never a second instance. */}
-            <div className="mt-14 border-t border-slate-800 pt-12">
-              <AccountTypes activeKey={guestMode ? 'guest' : simMember ? 'member' : undefined} />
-            </div>
-
-            {/* ── Module 7 · self-destructing accounts ────────────────────
-                Below Module 2, in the same left column, set off by the same
-                rule. It is the proof for a promise the rest of the page keeps
-                making: the sign-in panel, /guest and the account map all tell
-                the visitor their account self-destructs, and this is the only
-                place that shows it happening. Reads GitHub's public API in the
-                browser, so it holds no credential and needs no backend. */}
-            <div className="mt-14 border-t border-slate-800 pt-12">
-              <CleanupStatus />
-            </div>
           </div>
         </div>
 
-        {/* ── Module 5 · live SCIM provisioning ──────────────────────────────
-            A LINK, NOT A FOURTH SECTION. The homepage already runs to 8.6
-            screenfuls on a phone, and an old colleague called the site "a bit
-            crowded/unclear for certain things". Adding provisioning inline would
-            have been the fourth thing stacked in one column.
-
-            It also could not sit here even if there were room: the SCIM page
-            authenticates nobody and the machinery on this page is welded to a
-            signed-in visitor. Its own route is the honest shape, and /app2 and
-            /guest set that precedent twice already.
-
-            Full width rather than tucked in the left column, because unlike the
-            /app2 link this one is NOT gated on being signed in — there is
-            nothing to sign into. It is the one module a visitor can see all of
-            without an account, which is exactly why it should be findable. */}
-        <section className="mt-16 max-w-3xl" aria-labelledby="scim-link">
-          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-            <h2 id="scim-link" className="text-base font-medium text-slate-200">
-              Hire someone, and watch a SaaS app find out
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">
-              A demo employee is created in a real Entra tenant and provisioned into an app over
-              SCIM 2.0. Every request Entra makes is shown as it arrives, including the one that
-              does not follow the specification Microsoft asks you to implement.
-            </p>
-            <p className="mt-3 text-sm">
-              <a
-                href="/scim"
-                className="font-mono text-emerald-300 underline decoration-emerald-500/40 underline-offset-4 transition hover:text-emerald-200"
-              >
-                /scim
-              </a>
-              <span className="text-slate-500"> · no account needed</span>
-            </p>
-          </div>
-        </section>
+        {/* The three module cards that used to sit here are gone. They were
+            navigation, and now there is a nav bar — a second copy at the bottom
+            of a page is how a site ends up telling you the same thing twice. On
+            a wide screen they also sat in a max-w-3xl column with the whole
+            right-hand side empty, which is what made Steve look at the bottom of
+            the page in the first place. */}
 
         {/* ── THE ROADMAP IS GONE, ON PURPOSE (Steve, 28 July 2026) ──────────
             It listed seven modules, four of them marked "planned". The spec's

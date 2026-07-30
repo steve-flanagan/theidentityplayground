@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { API_BASE } from '../lib/apiBase'
 import { ScimTranscript } from './ScimTranscript'
+import { SiteNav } from '../components/SiteNav'
 import { IDLE_PIPELINE, ScimPipeline, type PipelineModel } from './ScimPipeline'
 import { LINE_MS, TAIL_MS } from './CallTicker'
 
@@ -366,7 +367,8 @@ export function ScimDemo() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-300">
-      <div className="mx-auto max-w-4xl px-6 pt-16 pb-24">
+      <SiteNav current="/scim" />
+      <div className="mx-auto max-w-4xl px-6 pt-12 pb-24">
         <p className="font-mono text-xs uppercase tracking-widest text-emerald-400">
           Live SCIM provisioning
         </p>
@@ -509,10 +511,11 @@ export function ScimDemo() {
             is Entra's own traffic, recorded as it arrived. */}
         <ScimTranscript />
 
+        {/* The way back is the nav at the top. This link used to live here and
+            was the reason Steve said there was no way back: it sat under a live
+            transcript, which is to say nowhere. */}
         <footer className="mt-14 border-t border-slate-800 pt-6 text-sm text-slate-600">
-          <a href="/" className="underline decoration-slate-700 underline-offset-4 hover:text-slate-400">
-            Back to the playground
-          </a>
+          Demo tenants only. Every account created here self-destructs.
         </footer>
       </div>
     </main>
