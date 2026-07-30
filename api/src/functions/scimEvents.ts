@@ -27,8 +27,26 @@ const WINDOW_SECONDS = 60
  *  bounded by the expiry timer, not by this. */
 const MAX_EVENTS = 40
 
+/**
+ * ── NO-STORE, AND IT IS NOT BOILERPLATE ──────────────────────────────────────
+ *
+ * Neither read endpoint sent a Cache-Control header, and a bare 200 on a GET is
+ * an invitation: browsers apply heuristic caching to responses that do not say
+ * otherwise. The page calls both of these on a three-second poll and calls them
+ * "live".
+ *
+ * Caught on 30 July by a debug run that fetched this URL twice, four seconds
+ * apart, either side of a hire, and got an identical stale body both times —
+ * while the store demonstrably held the new rows. The transcript and the call
+ * ticker were both reading a frozen copy on the live site.
+ *
+ * A poll against a cacheable URL is not a poll. no-store, explicitly.
+ */
 async function events(_request: HttpRequest): Promise<HttpResponseInit> {
-  return { jsonBody: { events: await listEvents(MAX_EVENTS) } }
+  return {
+    headers: { 'cache-control': 'no-store' },
+    jsonBody: { events: await listEvents(MAX_EVENTS) },
+  }
 }
 
 app.http('scim-events', {
