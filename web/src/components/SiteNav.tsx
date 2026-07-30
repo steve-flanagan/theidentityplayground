@@ -13,6 +13,13 @@
  * wordmark on the left, links on the right, current page marked. Nobody has to
  * learn it, which is the entire point of a convention.
  *
+ * The second attempt was a real bar and he still said "I think they are still too
+ * hard to see". slate-400 at text-sm on a near-black bar is low contrast, and the
+ * items read as captions rather than controls. Now: slate-200 at medium weight,
+ * and the current item carries an underline. Tabs with an underline is about as
+ * well-worn as web navigation gets, and the underline is what makes the group
+ * read as a set of controls rather than a row of words.
+ *
  * STICKY, because the pages it serves are long. /scim runs past a live
  * transcript and the token inspector scrolls for a while; navigation that leaves
  * the screen is navigation you have to hunt for, which is how this started.
@@ -46,7 +53,7 @@ export function SiteNav({ current }: { current: string }) {
     <header className="sticky top-0 z-20 border-b border-slate-800 bg-slate-950/85 backdrop-blur">
       <nav
         aria-label="Modules"
-        className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-6 py-3"
+        className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-8 gap-y-2 px-6 py-3"
       >
         {/* The wordmark links home from every page including home, which is the
             convention and costs nothing. Hidden on the narrowest screens so the
@@ -59,7 +66,7 @@ export function SiteNav({ current }: { current: string }) {
           The Identity Playground
         </a>
 
-        <ul className="flex flex-1 flex-wrap items-center gap-x-5 gap-y-1 sm:justify-end">
+        <ul className="flex flex-1 flex-wrap items-center gap-x-7 gap-y-1 sm:justify-end">
           {ITEMS.map((item) => {
             const isCurrent = item.href === current
             return (
@@ -68,13 +75,16 @@ export function SiteNav({ current }: { current: string }) {
                   // Not a link. A nav item pointing at the page you are already
                   // on is a dead control, and aria-current is how a screen reader
                   // is told where it is.
-                  <span aria-current="page" className="text-sm font-medium text-emerald-300">
+                  <span
+                    aria-current="page"
+                    className="block border-b-2 border-emerald-400 pb-1 text-[0.95rem] font-semibold text-emerald-300"
+                  >
                     {item.label}
                   </span>
                 ) : (
                   <a
                     href={item.href}
-                    className="text-sm text-slate-400 transition hover:text-white"
+                    className="block border-b-2 border-transparent pb-1 text-[0.95rem] font-medium text-slate-200 transition hover:border-slate-600 hover:text-white"
                   >
                     {item.label}
                   </a>
