@@ -370,6 +370,43 @@ function App() {
           </div>
         </div>
 
+        {/* ── Module 5 · live SCIM provisioning ──────────────────────────────
+            A LINK, NOT A FOURTH SECTION. The homepage already runs to 8.6
+            screenfuls on a phone, and an old colleague called the site "a bit
+            crowded/unclear for certain things". Adding provisioning inline would
+            have been the fourth thing stacked in one column.
+
+            It also could not sit here even if there were room: the SCIM page
+            authenticates nobody and the machinery on this page is welded to a
+            signed-in visitor. Its own route is the honest shape, and /app2 and
+            /guest set that precedent twice already.
+
+            Full width rather than tucked in the left column, because unlike the
+            /app2 link this one is NOT gated on being signed in — there is
+            nothing to sign into. It is the one module a visitor can see all of
+            without an account, which is exactly why it should be findable. */}
+        <section className="mt-16 max-w-3xl" aria-labelledby="scim-link">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+            <h2 id="scim-link" className="text-base font-medium text-slate-200">
+              Hire someone, and watch a SaaS app find out
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">
+              A demo employee is created in a real Entra tenant and provisioned into an app over
+              SCIM 2.0. Every request Entra makes is shown as it arrives, including the one that
+              does not follow the specification Microsoft asks you to implement.
+            </p>
+            <p className="mt-3 text-sm">
+              <a
+                href="/scim"
+                className="font-mono text-emerald-300 underline decoration-emerald-500/40 underline-offset-4 transition hover:text-emerald-200"
+              >
+                /scim
+              </a>
+              <span className="text-slate-500"> · no account needed</span>
+            </p>
+          </div>
+        </section>
+
         {/* ── THE ROADMAP IS GONE, ON PURPOSE (Steve, 28 July 2026) ──────────
             It listed seven modules, four of them marked "planned". The spec's
             framing was "the site is never 'unfinished,' just growing" (§5), but
