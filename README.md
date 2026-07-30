@@ -51,10 +51,19 @@ tenant. Nothing on it is estimated.
 Every claim expands into what it is, why it is in the token, and the gotcha that bites you
 in production. Regenerate the still with `npm run capture:inspector --prefix web`.
 
-Module 2 puts three account types side by side: a customer, an employee, and a B2B guest.
-The customer and the guest are live sign-ins that mint real tokens. The employee is a
-captured sample, because a visitor cannot be an employee. All three drive the inspector,
-the timeline, and a map of what each one can reach.
+Module 2, at [/accounts](https://theidentityplayground.com/accounts), puts three account
+types side by side: a customer, an employee, and a B2B guest. The customer and the guest are
+live sign-ins that mint real tokens. The employee is a captured sample, because a visitor
+cannot be an employee.
+
+Module 7, at [/cleanup](https://theidentityplayground.com/cleanup), is the job that deletes
+every demo account, with its real run history.
+
+**Each module is its own page.** They started stacked on the homepage, which ran to nine
+screenfuls on a phone before someone said the site felt crowded. None of them needs the
+sign-in machinery the homepage is built around, so a page each is the honest shape rather
+than a tidying trick. The homepage is now the token inspector and the timeline: your token,
+and the requests that produced it.
 
 More is planned, but the homepage no longer advertises it. A list of unbuilt modules made a
 finished set of demonstrations read as an unfinished product, so what ships next is tracked in

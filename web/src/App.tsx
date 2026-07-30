@@ -3,8 +3,6 @@ import { useMsal } from '@azure/msal-react'
 import { TokenInspector } from './components/TokenInspector'
 import { JourneyTimeline } from './components/JourneyTimeline'
 import { SignInPanel } from './components/SignInPanel'
-import { AccountTypes } from './components/AccountTypes'
-import { CleanupStatus } from './components/CleanupStatus'
 import { buildSampleToken, buildMemberSampleToken } from './lib/sampleToken'
 import { MEMBER_FLOWS, GUEST_FLOWS } from './lib/journey'
 import { readGuestToken, clearGuestToken } from './guest/handback'
@@ -18,6 +16,41 @@ import {
 // Phase 1. Sign in and the inspector reads your real ID token; otherwise it
 // falls back to a clearly-labelled sample so the page still demonstrates
 // something to a visitor who doesn't want an account.
+
+/**
+ * One card per module that lives elsewhere. Three of these replaced two inline
+ * sections and a one-off block, so it is worth being a component rather than
+ * three copies that drift.
+ *
+ * None of them is gated on being signed in. That is deliberate and it is the
+ * difference between these and the /app2 link further up the page: /app2 proves
+ * nothing to a signed-out visitor because they would just be sent to Entra for
+ * credentials, whereas every one of these works with no account at all.
+ */
+function ModuleLink({
+  href,
+  path,
+  title,
+  children,
+}: {
+  href: string
+  path: string
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <a
+      href={href}
+      className="block rounded-xl border border-slate-800 bg-slate-900/40 p-5 transition hover:border-slate-700 hover:bg-slate-900/70"
+    >
+      <h3 className="text-base font-medium text-slate-200">{title}</h3>
+      <p className="mt-2 text-sm leading-relaxed text-slate-400">{children}</p>
+      <p className="mt-3 font-mono text-sm text-emerald-300">
+        {path} <span className="text-slate-500">· no account needed</span>
+      </p>
+    </a>
+  )
+}
 
 function App() {
   const { accounts } = useMsal()
@@ -140,12 +173,17 @@ function App() {
       <div className="px-8 pt-16 pb-20">
         <header className="max-w-3xl">
           <p className="font-mono text-xs uppercase tracking-widest text-emerald-400">
-            Token inspector · account types
+            Token inspector · sign-in timeline
           </p>
           <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
             The Identity Playground
           </h1>
-          {/* Two rewrites are baked in here, both from real feedback.
+          {/* Three rewrites are baked in here, all from real feedback.
+              0. The second sentence used to promise "the same person as a
+                 customer, an employee and a B2B guest". That module moved to
+                 /accounts, and a card two screens down now says the same thing.
+                 A header promising what the page no longer shows, duplicated by
+                 a link that does, is two problems rather than one.
               1. The version before last opened "sign in for real", which put the
                  one thing most visitors will not do in front of the one thing
                  they will.
@@ -157,9 +195,8 @@ function App() {
               setup-and-payoff, and it names the two modules concretely because
               the same reader could not tell what the site was meant to prove. */}
           <p className="mt-6 text-lg leading-relaxed text-slate-400">
-            A real Entra ID token, claim by claim, and every request that produced it.
-            Then the same person as a customer, an employee and a B2B guest, with what
-            each one can reach. No account needed.
+            A real Entra ID token, claim by claim, and every request that produced it. No
+            account needed.
           </p>
           <p className="mt-4 text-lg leading-relaxed text-slate-400">
             By <span className="text-slate-200">Steven Flanagan</span>. Every module links
@@ -346,64 +383,56 @@ function App() {
             )}
           </section>
 
-            {/* ── Module 2 · account types ───────────────────────────────
-                In the same (left) column as the timeline, so the pinned claims
-                panel on the right stays in view as you scroll from the token
-                flow down into the account-types map. A separate product from
-                the inspector (design.md §6), set off by a top rule. It reads
-                the signed-in state through the shared MSAL instance's hooks,
-                never a second instance. */}
-            <div className="mt-14 border-t border-slate-800 pt-12">
-              <AccountTypes activeKey={guestMode ? 'guest' : simMember ? 'member' : undefined} />
-            </div>
-
-            {/* ── Module 7 · self-destructing accounts ────────────────────
-                Below Module 2, in the same left column, set off by the same
-                rule. It is the proof for a promise the rest of the page keeps
-                making: the sign-in panel, /guest and the account map all tell
-                the visitor their account self-destructs, and this is the only
-                place that shows it happening. Reads GitHub's public API in the
-                browser, so it holds no credential and needs no backend. */}
-            <div className="mt-14 border-t border-slate-800 pt-12">
-              <CleanupStatus />
-            </div>
           </div>
         </div>
 
-        {/* ── Module 5 · live SCIM provisioning ──────────────────────────────
-            A LINK, NOT A FOURTH SECTION. The homepage already runs to 8.6
-            screenfuls on a phone, and an old colleague called the site "a bit
-            crowded/unclear for certain things". Adding provisioning inline would
-            have been the fourth thing stacked in one column.
+        {/* ── THE OTHER MODULES, AS LINKS ────────────────────────────────────
+            Module 2 and Module 7 used to sit stacked in the left column above,
+            and the homepage ran to nine screenfuls on a phone. An old colleague
+            called the site "a bit crowded/unclear for certain things" and he was
+            describing this.
 
-            It also could not sit here even if there were room: the SCIM page
-            authenticates nobody and the machinery on this page is welded to a
-            signed-in visitor. Its own route is the honest shape, and /app2 and
-            /guest set that precedent twice already.
+            Each is a separate product with its own subject, and none of them
+            needs the sign-in machinery this page is built around, so a page each
+            is the honest shape rather than a tidying trick. What is left here is
+            Module 1: your token, and the requests that produced it.
 
-            Full width rather than tucked in the left column, because unlike the
-            /app2 link this one is NOT gated on being signed in — there is
-            nothing to sign into. It is the one module a visitor can see all of
-            without an account, which is exactly why it should be findable. */}
-        <section className="mt-16 max-w-3xl" aria-labelledby="scim-link">
-          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-            <h2 id="scim-link" className="text-base font-medium text-slate-200">
-              Hire someone, and watch a SaaS app find out
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">
+            The account map keeps the one thing it would otherwise have lost. On
+            the homepage it knew which identity you were running and lit that row;
+            the link carries it in `as` so the map still opens on you. */}
+        <section className="mt-16 max-w-3xl" aria-labelledby="more">
+          <h2 id="more" className="text-sm font-medium uppercase tracking-widest text-slate-500">
+            The rest of it
+          </h2>
+
+          <div className="mt-6 space-y-3">
+            <ModuleLink
+              href={`/accounts${guestMode ? '?as=guest' : simMember ? '?as=member' : ''}`}
+              path="/accounts"
+              title="One person, three directory objects"
+            >
+              A customer, an employee and a business guest. Pick one and its reach lights up across
+              the tenants, their subscriptions and the app.
+            </ModuleLink>
+
+            <ModuleLink
+              href="/scim"
+              path="/scim"
+              title="Hire someone, and watch a SaaS app find out"
+            >
               A demo employee is created in a real Entra tenant and provisioned into an app over
               SCIM 2.0. Every request Entra makes is shown as it arrives, including the one that
               does not follow the specification Microsoft asks you to implement.
-            </p>
-            <p className="mt-3 text-sm">
-              <a
-                href="/scim"
-                className="font-mono text-emerald-300 underline decoration-emerald-500/40 underline-offset-4 transition hover:text-emerald-200"
-              >
-                /scim
-              </a>
-              <span className="text-slate-500"> · no account needed</span>
-            </p>
+            </ModuleLink>
+
+            <ModuleLink
+              href="/cleanup"
+              path="/cleanup"
+              title="Every demo account deletes itself"
+            >
+              The job that keeps the promise the rest of this site keeps making, and its real run
+              history.
+            </ModuleLink>
           </div>
         </section>
 

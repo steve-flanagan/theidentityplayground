@@ -10,6 +10,8 @@ import { completeRedirect } from './auth/redirectBoot.ts'
 import { isApp2Path } from './app2/route.ts'
 import { isGuestPath } from './guest/route.ts'
 import { isScimPath } from './scim/route.ts'
+import { isAccountsPath } from './accounts/route.ts'
+import { isCleanupPath } from './cleanup/route.ts'
 
 // getElementById returns HTMLElement | null, and createRoot won't accept null.
 // Vite's template silences this with a `!` non-null assertion; an explicit
@@ -52,6 +54,15 @@ if (isApp2Path(window.location.pathname)) {
   // downloads it.
   const { mountScim } = await import('./scim/mountScim.tsx')
   mountScim(rootElement)
+} else if (isAccountsPath(window.location.pathname)) {
+  // Module 2, lifted off the homepage. Authenticates nobody, so it joins /scim
+  // in the group of pages that boot no MSAL instance at all.
+  const { mountAccounts } = await import('./accounts/mountAccounts.tsx')
+  mountAccounts(rootElement)
+} else if (isCleanupPath(window.location.pathname)) {
+  // Module 7, same. Reads GitHub's public API and holds no credential.
+  const { mountCleanup } = await import('./cleanup/mountCleanup.tsx')
+  mountCleanup(rootElement)
 } else if (isGuestPath(window.location.pathname)) {
   // The third page, third client: the workforce app, for a live B2B guest
   // sign-up. Same rule as /app2 — a different client ID means a different page,
