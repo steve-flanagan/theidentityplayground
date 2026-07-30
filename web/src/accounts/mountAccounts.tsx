@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AccountTypes } from '../components/AccountTypes'
+import { SiteNav } from '../components/SiteNav'
 import { activeKeyFrom } from './route'
 
 /**
@@ -16,7 +17,8 @@ export function mountAccounts(rootElement: HTMLElement): void {
   createRoot(rootElement).render(
     <StrictMode>
       <main className="min-h-screen bg-slate-950 text-slate-300">
-        <div className="mx-auto max-w-5xl px-6 pt-16 pb-24">
+        <div className="mx-auto max-w-5xl px-6 pt-10 pb-24">
+          <SiteNav current="/accounts" />
           <p className="font-mono text-xs uppercase tracking-widest text-emerald-400">
             Account types
           </p>
@@ -33,13 +35,11 @@ export function mountAccounts(rootElement: HTMLElement): void {
             <AccountTypes activeKey={activeKey} />
           </div>
 
+          {/* No "back to the playground" here any more. The nav at the top is
+              the way back, and a second one at the bottom is the kind of thing
+              that accumulates until a page has three. */}
           <footer className="mt-14 border-t border-slate-800 pt-6 text-sm text-slate-600">
-            <a
-              href="/"
-              className="underline decoration-slate-700 underline-offset-4 hover:text-slate-400"
-            >
-              Back to the playground
-            </a>
+            Demo tenants only. Every account created here self-destructs.
           </footer>
         </div>
       </main>

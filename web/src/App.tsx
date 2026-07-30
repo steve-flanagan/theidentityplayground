@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMsal } from '@azure/msal-react'
+import { SiteNav } from './components/SiteNav'
 import { TokenInspector } from './components/TokenInspector'
 import { JourneyTimeline } from './components/JourneyTimeline'
 import { SignInPanel } from './components/SignInPanel'
@@ -170,7 +171,8 @@ function App() {
     // panel is a fixed 27rem in the grid below. The only thing that grows is
     // the timeline's 1fr column, which is the one that wants the room.
     <main className="min-h-screen bg-slate-950 text-slate-300">
-      <div className="px-8 pt-16 pb-20">
+      <div className="px-8 pt-10 pb-20">
+        <SiteNav current="/" />
         <header className="max-w-3xl">
           <p className="font-mono text-xs uppercase tracking-widest text-emerald-400">
             Token inspector · sign-in timeline
