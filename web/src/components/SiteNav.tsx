@@ -14,11 +14,18 @@
  * learn it, which is the entire point of a convention.
  *
  * The second attempt was a real bar and he still said "I think they are still too
- * hard to see". slate-400 at text-sm on a near-black bar is low contrast, and the
- * items read as captions rather than controls. Now: slate-200 at medium weight,
- * and the current item carries an underline. Tabs with an underline is about as
- * well-worn as web navigation gets, and the underline is what makes the group
- * read as a set of controls rather than a row of words.
+ * hard to see". Raising the link contrast helped — slate-200 at medium weight,
+ * with the current item underlined — but it was not the actual problem.
+ *
+ * THE ACTUAL PROBLEM, diagnosed by Steve's wife in one sentence: the bar had no
+ * background. It was bg-slate-950/85 sitting on a bg-slate-950 page, so the
+ * header was the same colour as the page and there was no band for the eye to
+ * catch. Every fix before this one adjusted the text inside a container that was
+ * invisible.
+ *
+ * Now slate-900 against a slate-950 page, with a lighter border and a shadow
+ * under it. That is what makes it read as chrome rather than as the first line
+ * of the content — the same reason essentially every site does it.
  *
  * STICKY, because the pages it serves are long. /scim runs past a live
  * transcript and the token inspector scrolls for a while; navigation that leaves
@@ -50,7 +57,7 @@ const ITEMS: NavItem[] = [
 
 export function SiteNav({ current }: { current: string }) {
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-800 bg-slate-950/85 backdrop-blur">
+    <header className="sticky top-0 z-20 border-b border-slate-700/70 bg-slate-900/95 shadow-lg shadow-slate-950/50 backdrop-blur">
       <nav
         aria-label="Modules"
         className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-8 gap-y-2 px-6 py-3"
