@@ -367,8 +367,8 @@ export function ScimDemo() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-300">
-      <div className="mx-auto max-w-4xl px-6 pt-10 pb-24">
-        <SiteNav current="/scim" />
+      <SiteNav current="/scim" />
+      <div className="mx-auto max-w-4xl px-6 pt-12 pb-24">
         <p className="font-mono text-xs uppercase tracking-widest text-emerald-400">
           Live SCIM provisioning
         </p>

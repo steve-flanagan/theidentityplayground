@@ -18,41 +18,6 @@ import {
 // falls back to a clearly-labelled sample so the page still demonstrates
 // something to a visitor who doesn't want an account.
 
-/**
- * One card per module that lives elsewhere. Three of these replaced two inline
- * sections and a one-off block, so it is worth being a component rather than
- * three copies that drift.
- *
- * None of them is gated on being signed in. That is deliberate and it is the
- * difference between these and the /app2 link further up the page: /app2 proves
- * nothing to a signed-out visitor because they would just be sent to Entra for
- * credentials, whereas every one of these works with no account at all.
- */
-function ModuleLink({
-  href,
-  path,
-  title,
-  children,
-}: {
-  href: string
-  path: string
-  title: string
-  children: React.ReactNode
-}) {
-  return (
-    <a
-      href={href}
-      className="block rounded-xl border border-slate-800 bg-slate-900/40 p-5 transition hover:border-slate-700 hover:bg-slate-900/70"
-    >
-      <h3 className="text-base font-medium text-slate-200">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-slate-400">{children}</p>
-      <p className="mt-3 font-mono text-sm text-emerald-300">
-        {path} <span className="text-slate-500">· no account needed</span>
-      </p>
-    </a>
-  )
-}
-
 function App() {
   const { accounts } = useMsal()
 
@@ -171,8 +136,8 @@ function App() {
     // panel is a fixed 27rem in the grid below. The only thing that grows is
     // the timeline's 1fr column, which is the one that wants the room.
     <main className="min-h-screen bg-slate-950 text-slate-300">
-      <div className="px-8 pt-10 pb-20">
-        <SiteNav current="/" />
+      <SiteNav current="/" />
+      <div className="px-8 pt-12 pb-20">
         <header className="max-w-3xl">
           <p className="font-mono text-xs uppercase tracking-widest text-emerald-400">
             Token inspector · sign-in timeline
@@ -388,55 +353,12 @@ function App() {
           </div>
         </div>
 
-        {/* ── THE OTHER MODULES, AS LINKS ────────────────────────────────────
-            Module 2 and Module 7 used to sit stacked in the left column above,
-            and the homepage ran to nine screenfuls on a phone. An old colleague
-            called the site "a bit crowded/unclear for certain things" and he was
-            describing this.
-
-            Each is a separate product with its own subject, and none of them
-            needs the sign-in machinery this page is built around, so a page each
-            is the honest shape rather than a tidying trick. What is left here is
-            Module 1: your token, and the requests that produced it.
-
-            The account map keeps the one thing it would otherwise have lost. On
-            the homepage it knew which identity you were running and lit that row;
-            the link carries it in `as` so the map still opens on you. */}
-        <section className="mt-16 max-w-3xl" aria-labelledby="more">
-          <h2 id="more" className="text-sm font-medium uppercase tracking-widest text-slate-500">
-            The rest of it
-          </h2>
-
-          <div className="mt-6 space-y-3">
-            <ModuleLink
-              href={`/accounts${guestMode ? '?as=guest' : simMember ? '?as=member' : ''}`}
-              path="/accounts"
-              title="One person, three directory objects"
-            >
-              A customer, an employee and a business guest. Pick one and its reach lights up across
-              the tenants, their subscriptions and the app.
-            </ModuleLink>
-
-            <ModuleLink
-              href="/scim"
-              path="/scim"
-              title="Hire someone, and watch a SaaS app find out"
-            >
-              A demo employee is created in a real Entra tenant and provisioned into an app over
-              SCIM 2.0. Every request Entra makes is shown as it arrives, including the one that
-              does not follow the specification Microsoft asks you to implement.
-            </ModuleLink>
-
-            <ModuleLink
-              href="/cleanup"
-              path="/cleanup"
-              title="Every demo account deletes itself"
-            >
-              The job that keeps the promise the rest of this site keeps making, and its real run
-              history.
-            </ModuleLink>
-          </div>
-        </section>
+        {/* The three module cards that used to sit here are gone. They were
+            navigation, and now there is a nav bar — a second copy at the bottom
+            of a page is how a site ends up telling you the same thing twice. On
+            a wide screen they also sat in a max-w-3xl column with the whole
+            right-hand side empty, which is what made Steve look at the bottom of
+            the page in the first place. */}
 
         {/* ── THE ROADMAP IS GONE, ON PURPOSE (Steve, 28 July 2026) ──────────
             It listed seven modules, four of them marked "planned". The spec's

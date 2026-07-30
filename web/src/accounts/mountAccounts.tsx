@@ -17,8 +17,8 @@ export function mountAccounts(rootElement: HTMLElement): void {
   createRoot(rootElement).render(
     <StrictMode>
       <main className="min-h-screen bg-slate-950 text-slate-300">
-        <div className="mx-auto max-w-5xl px-6 pt-10 pb-24">
-          <SiteNav current="/accounts" />
+        <SiteNav current="/accounts" />
+        <div className="mx-auto max-w-5xl px-6 pt-12 pb-24">
           <p className="font-mono text-xs uppercase tracking-widest text-emerald-400">
             Account types
           </p>
