@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { API_BASE } from '../lib/apiBase'
 import { ScimTranscript } from './ScimTranscript'
+import { IDLE_PIPELINE, ScimPipeline, type PipelineModel } from './ScimPipeline'
 
 /**
  * Module 5's page. Hire a demo employee in a real Microsoft Entra tenant, watch
@@ -70,6 +71,7 @@ export function ScimDemo() {
   const [busy, setBusy] = useState<null | 'hire' | 'terminate'>(null)
   const [error, setError] = useState<string | null>(null)
   const [feedBroken, setFeedBroken] = useState<string | null>(null)
+  const [pipeline, setPipeline] = useState<PipelineModel>(IDLE_PIPELINE)
 
   const loadFeed = useCallback(async () => {
     try {
@@ -99,22 +101,85 @@ export function ScimDemo() {
     void loadFeed()
   }, [loadFeed])
 
+  /**
+   * Waits for the row to actually appear in the application, and says so if it
+   * does not.
+   *
+   * THIS IS THE HONEST PART OF THE PIPELINE. The other two stages are known the
+   * moment the hire endpoint answers; this one is only known by asking the
+   * downstream app. Marking it done off the same response would be drawing a
+   * pipeline rather than showing one, and it would have hidden every silent
+   * no-op this module has already produced.
+   */
+  const awaitRow = async (userName: string): Promise<boolean> => {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        const res = await fetch(`${API}/scim-demo/feed`)
+        if (res.ok) {
+          const body = (await readJson(res)) as { employees: FeedRow[] }
+          setRows(body.employees ?? [])
+          if ((body.employees ?? []).some((r) => r.userName === userName)) return true
+        }
+      } catch {
+        // Keep trying; the loop is the retry.
+      }
+      await new Promise((r) => setTimeout(r, 1200))
+    }
+    return false
+  }
+
   const hire = async () => {
     setBusy('hire')
     setError(null)
+    setPipeline({ ...IDLE_PIPELINE, entra: { state: 'working' } })
     try {
       const res = await fetch(`${API}/scim-demo/hire`, { method: 'POST' })
       const body = await readJson(res)
       if (!res.ok) {
+        setPipeline({ ...IDLE_PIPELINE, entra: { state: 'failed', detail: 'not created' } })
         // 429 is the rate limiter and is the one failure a visitor can cause, so
         // it gets its own sentence rather than a generic error.
         setError(res.status === 429 ? 'Rate limited. Try again in a few minutes.' : (body?.error ?? 'Hire failed.'))
         return
       }
-      setHired(body as HireResponse)
-      await loadFeed()
+
+      const hire = body as HireResponse
+      setHired(hire)
+
+      // Stage one is a fact by now: Graph returned an object id.
+      setPipeline((p) => ({
+        ...p,
+        entra: { state: 'done', detail: hire.employee.userPrincipalName.split('@')[0] },
+        provisioning: { state: 'working' },
+      }))
+
+      // A beat, so the movement is visible. Both of the first two stages were
+      // already true when the response arrived; this is the order they really
+      // happened in, spaced out enough to read.
+      await new Promise((r) => setTimeout(r, 700))
+
+      setPipeline((p) => ({
+        ...p,
+        provisioning: hire.provisionedOnDemand
+          ? { state: 'done', detail: 'POST /Users' }
+          : {
+              state: 'failed',
+              detail: hire.provisionError ?? 'not sent',
+            },
+        application: { state: 'working' },
+      }))
+
+      // And this one is asked, not assumed.
+      const landed = await awaitRow(hire.employee.userPrincipalName)
+      setPipeline((p) => ({
+        ...p,
+        application: landed
+          ? { state: 'done', detail: 'row created' }
+          : { state: 'failed', detail: 'no row yet' },
+      }))
     } catch {
       setError('Could not reach the backend.')
+      setPipeline(IDLE_PIPELINE)
     } finally {
       setBusy(null)
     }
@@ -125,14 +190,50 @@ export function ScimDemo() {
     setBusy('terminate')
     setError(null)
     try {
+      setPipeline({ ...IDLE_PIPELINE, entra: { state: 'working' } })
       const res = await fetch(`${API}/scim-demo/terminate/${hired.employee.id}`, { method: 'POST' })
       const body = await readJson(res)
       if (!res.ok) {
+        setPipeline(IDLE_PIPELINE)
         setError(body?.error ?? 'Terminate failed.')
         return
       }
+
+      // Same three stages, the other way round. The employee is gone from the
+      // directory, Entra pushes the change, and the app marks the row inactive.
+      const gone = hired.employee.userPrincipalName
+      setPipeline((p) => ({
+        ...p,
+        entra: { state: 'done', detail: 'user deleted' },
+        provisioning: body?.deprovisioned
+          ? { state: 'done', detail: 'PATCH /Users' }
+          : { state: 'failed', detail: body?.deprovisionError ?? 'nothing sent' },
+        application: { state: 'working' },
+      }))
       setHired(null)
-      await loadFeed()
+
+      // Asked, not assumed, exactly as on the way in: the row must actually read
+      // inactive before this claims it did.
+      let inactive = false
+      for (let attempt = 0; attempt < 10 && !inactive; attempt++) {
+        try {
+          const feed = await fetch(`${API}/scim-demo/feed`)
+          if (feed.ok) {
+            const f = (await readJson(feed)) as { employees: FeedRow[] }
+            setRows(f.employees ?? [])
+            inactive = (f.employees ?? []).some((r) => r.userName === gone && !r.active)
+          }
+        } catch {
+          // the loop is the retry
+        }
+        if (!inactive) await new Promise((r) => setTimeout(r, 1200))
+      }
+      setPipeline((p) => ({
+        ...p,
+        application: inactive
+          ? { state: 'done', detail: 'active false' }
+          : { state: 'failed', detail: 'row unchanged' },
+      }))
     } catch {
       setError('Could not reach the backend.')
     } finally {
@@ -184,6 +285,10 @@ export function ScimDemo() {
             {error}
           </p>
         )}
+
+        {/* The journey, because a transcript and a table are both true and
+            neither shows an object moving between two systems. */}
+        <ScimPipeline model={pipeline} />
 
         {/* ── What just happened, in the backend's own words ──────────────── */}
         {hired && (
