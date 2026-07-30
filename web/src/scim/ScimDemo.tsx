@@ -67,14 +67,37 @@ function retryHint(res: Response): string {
 }
 
 /**
- * The SCIM requests Entra made since an operation began, split into what it
- * asked and what we answered.
+ * The SCIM requests Entra made during an operation, found by NOVELTY rather than
+ * by time.
  *
- * Read from the events store rather than written out here. The sequence is
- * predictable enough that hardcoding it would look identical and be a lie — the
- * same lie this page has already been corrected for twice.
+ * ── WHY NOT A TIMESTAMP, WHICH IS THE OBVIOUS WAY ────────────────────────────
+ *
+ * It was a timestamp, and it silently returned nothing on the live site while
+ * every other part of the page worked. The filter compared `Date.now()` in the
+ * browser against `at` values stamped by the Function App — TWO DIFFERENT CLOCKS.
+ * Steve's machine runs roughly 10-12 seconds ahead of Azure, which is plenty to
+ * make "events at or after I started" reject events created four seconds later.
+ *
+ * Measured 30 July 2026: a hire whose events the server stamped 15:17:48–50 had
+ * a client `startedAt` of about 15:18:00. Filtering by time found 0 of 3.
+ * Filtering by novelty found 3 of 3, in the same run.
+ *
+ * Client clocks are not authoritative for anything a server wrote. Snapshot what
+ * exists, do the thing, take what appeared. No clock is involved and none can
+ * drift.
  */
-async function scimSince(startedAt: number): Promise<{ scim: string[]; app: string[] }> {
+async function knownEventKeys(): Promise<Set<string>> {
+  try {
+    const res = await fetch(`${API_BASE}/scim-demo/events`)
+    if (!res.ok) return new Set()
+    const body = (await res.json()) as { events: { at: string }[] }
+    return new Set((body.events ?? []).map((e) => e.at))
+  } catch {
+    return new Set()
+  }
+}
+
+async function scimSince(known: Set<string>): Promise<{ scim: string[]; app: string[] }> {
   try {
     const res = await fetch(`${API_BASE}/scim-demo/events`)
     if (!res.ok) return { scim: [], app: [] }
@@ -82,7 +105,7 @@ async function scimSince(startedAt: number): Promise<{ scim: string[]; app: stri
       events: { at: string; method: string; path: string; status: number }[]
     }
     const fresh = (body.events ?? [])
-      .filter((e) => Date.parse(e.at) >= startedAt)
+      .filter((e) => !known.has(e.at))
       .reverse() // the store is newest-first; a ticker reads oldest-first
     return {
       // Short enough to go past. /api/scim is on every line and carries nothing.
@@ -168,7 +191,8 @@ export function ScimDemo() {
   const hire = async () => {
     setBusy('hire')
     setError(null)
-    const startedAt = Date.now()
+    // Snapshot before anything happens, so what appears afterwards is provably new.
+    const known = await knownEventKeys()
     setPipeline({ ...IDLE_PIPELINE, entra: { state: 'working' } })
     try {
       const res = await fetch(`${API}/scim-demo/hire`, { method: 'POST' })
@@ -215,7 +239,7 @@ export function ScimDemo() {
       }))
 
       // The SCIM traffic Entra generated, read back rather than assumed.
-      const traffic = await scimSince(startedAt)
+      const traffic = await scimSince(known)
       setPipeline((p) => ({ ...p, ticker: { entra: [], scim: traffic.scim, app: traffic.app } }))
 
       // And this one is asked, not assumed.
@@ -239,7 +263,7 @@ export function ScimDemo() {
     setBusy('terminate')
     setError(null)
     try {
-      const startedAt = Date.now()
+      const known = await knownEventKeys()
       setPipeline({ ...IDLE_PIPELINE, entra: { state: 'working' } })
       const res = await fetch(`${API}/scim-demo/terminate/${hired.employee.id}`, { method: 'POST' })
       const body = await readJson(res)
@@ -263,7 +287,7 @@ export function ScimDemo() {
       }))
       setHired(null)
 
-      const leaveTraffic = await scimSince(startedAt)
+      const leaveTraffic = await scimSince(known)
       setPipeline((p) => ({
         ...p,
         ticker: { entra: [], scim: leaveTraffic.scim, app: leaveTraffic.app },
