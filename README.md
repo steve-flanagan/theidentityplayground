@@ -17,7 +17,28 @@ Built by Steven Flanagan.
 
 ## Status
 
-Modules 1 and 2 are built and deployed.
+Modules 1, 2 and 5 are built and deployed, along with the self-destruct job behind all of
+them.
+
+Module 5, live SCIM provisioning, is at
+[/scim](https://theidentityplayground.com/scim) and needs no account at all. Press a button
+and a demo employee is created in a real Entra tenant, then provisioned into a downstream app
+over SCIM 2.0. That app is this site's own endpoint, and Entra calls it exactly as it calls
+any SaaS app.
+
+<p align="center">
+  <img src="docs/scim.gif" alt="The provisioning pipeline running. The Entra tenant triangle lights first and its Graph calls scroll past above it, POST /users and provisionOnDemand. The tenant then turns green and the SCIM connector lights, with Entra's own requests scrolling past: two match queries and a POST /Users. Finally the application box lights and holds the new employee's name." width="860">
+</p>
+
+Every line above those icons is a request that actually happened, collected as it was made
+rather than written out. Underneath, the page shows the full transcript with real bodies,
+including the PATCH Entra sends to disable a user, which does not follow the SCIM
+specification Microsoft asks you to implement. `Boolean("False")` is `true`, so an endpoint
+that trusts the spec there enables every account it was told to disable and reports success
+at both ends. The reasoning is in [ADR 013](docs/decisions/013-scim-as-functions.md).
+
+Regenerate the clip with `npm run capture:scim --prefix web`. It drives a real hire, so it
+creates a real demo employee, which self-destructs like any other.
 
 Module 1, the token inspector, reads the visitor's own ID token and annotates every claim.
 The sign-in that produced it sits on a timeline built from real captures against this
@@ -38,6 +59,20 @@ the timeline, and a map of what each one can reach.
 More is planned, but the homepage no longer advertises it. A list of unbuilt modules made a
 finished set of demonstrations read as an unfinished product, so what ships next is tracked in
 the repo rather than promised on the site.
+
+## What it costs to run
+
+About ten dollars a month, and that constraint has decided real architecture rather than
+just being noted. Static Web Apps on the free tier, Azure Functions on consumption, Table
+Storage, a DNS zone, and one Entra ID P1 for the features that need it.
+
+The SCIM endpoint runs as Functions in the existing app rather than as a container, which
+removed the only unbounded resource the design had
+([ADR 013](docs/decisions/013-scim-as-functions.md) retires
+[ADR 001](docs/decisions/001-container-apps-over-container-instances.md)). Passkeys were
+dropped from a planned module because the custom URL domain they require in an external
+tenant needs Azure Front Door at roughly $35/month, three and a half times the whole budget
+([ADR 011](docs/decisions/011-drop-passkey-from-auth-methods.md)).
 
 It runs a live sign-up form, and the guest door creates a real directory object. Nothing
 linked to either until the public-readiness checklist in

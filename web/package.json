@@ -13,7 +13,8 @@
     "preview": "vite preview",
     "capture": "node scripts/capture-demo.mjs",
     "capture:inspector": "node scripts/capture-inspector.mjs",
-    "tour": "node scripts/capture-tour.mjs"
+    "tour": "node scripts/capture-tour.mjs",
+    "capture:scim": "node scripts/capture-scim.mjs"
   },
   "dependencies": {
     "@azure/msal-browser": "^5.17.1",
