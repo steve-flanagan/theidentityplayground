@@ -23,9 +23,13 @@
  * catch. Every fix before this one adjusted the text inside a container that was
  * invisible.
  *
- * Now slate-900 against a slate-950 page, with a lighter border and a shadow
+ * Now slate-800 against a slate-950 page, with a lighter border and a shadow
  * under it. That is what makes it read as chrome rather than as the first line
  * of the content — the same reason essentially every site does it.
+ *
+ * slate-900 was the first attempt and Steve asked for brighter still. Measured,
+ * the bar sits at oklab lightness 0.279 against the page at 0.129 — better than
+ * double, which is what a header needs when the page it sits on is nearly black.
  *
  * STICKY, because the pages it serves are long. /scim runs past a live
  * transcript and the token inspector scrolls for a while; navigation that leaves
@@ -57,7 +61,7 @@ const ITEMS: NavItem[] = [
 
 export function SiteNav({ current }: { current: string }) {
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-700/70 bg-slate-900/95 shadow-lg shadow-slate-950/50 backdrop-blur">
+    <header className="sticky top-0 z-20 border-b border-slate-600/70 bg-slate-800/95 shadow-lg shadow-slate-950/60 backdrop-blur">
       <nav
         aria-label="Modules"
         className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-8 gap-y-2 px-6 py-3"
