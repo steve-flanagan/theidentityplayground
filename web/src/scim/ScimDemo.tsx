@@ -57,6 +57,14 @@ function shortTime(iso: string): string {
  * everything was fine. A wrong content-type is a CONFIGURATION fault, not a
  * transient one, and it should name itself.
  */
+/** Turns the limiter's Retry-After seconds into something a person reads. */
+function retryHint(res: Response): string {
+  const seconds = Number(res.headers.get('retry-after') ?? '')
+  if (!Number.isFinite(seconds) || seconds <= 0) return 'Try again shortly.'
+  if (seconds < 90) return `Try again in ${Math.ceil(seconds)} seconds.`
+  return `Try again in ${Math.ceil(seconds / 60)} minutes.`
+}
+
 async function readJson(res: Response): Promise<any> {
   const type = res.headers.get('content-type') ?? ''
   if (!type.includes('json')) {
@@ -137,9 +145,15 @@ export function ScimDemo() {
       const body = await readJson(res)
       if (!res.ok) {
         setPipeline({ ...IDLE_PIPELINE, entra: { state: 'failed', detail: 'not created' } })
-        // 429 is the rate limiter and is the one failure a visitor can cause, so
-        // it gets its own sentence rather than a generic error.
-        setError(res.status === 429 ? 'Rate limited. Try again in a few minutes.' : (body?.error ?? 'Hire failed.'))
+        // 429 is the rate limiter and the one failure a visitor can cause, so it
+        // gets its own sentence. The limiter already sends Retry-After, and "a
+        // few minutes" when the real answer is fifty-one is the kind of vagueness
+        // that makes a working site feel broken.
+        setError(
+          res.status === 429
+            ? `Rate limited. ${retryHint(res)} This demo creates real directory objects, so it is capped per IP address.`
+            : (body?.error ?? 'Hire failed.'),
+        )
         return
       }
 

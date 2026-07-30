@@ -11,9 +11,10 @@ import { hireEmployee, provisionNow, terminateEmployee } from '../lib/scim/hire'
  * That is the whole demo and it is also the most dangerous surface on the site,
  * so the controls are stated here rather than left to be inferred:
  *
- *   1. RATE LIMIT, hard. Five per hour per IP. Every call writes to a real
- *      tenant, and unlike the SCIM endpoint there is no bearer token upstream of
- *      it — the caller is the public internet.
+ *   1. RATE LIMIT, per IP, and hire is tighter than terminate. Every hire
+ *      writes to a real tenant, and unlike the SCIM endpoint there is no bearer
+ *      token upstream of it: the caller is the public internet. See the limits
+ *      below for why the two are not the same number.
  *   2. THE SWEEP. Every hire carries employeeType 'scim-demo', so the workforce
  *      cleanup deletes it within 24-30 hours whatever happens here. That is the
  *      backstop that makes an anonymous create acceptable at all.
@@ -28,9 +29,37 @@ import { hireEmployee, provisionNow, terminateEmployee } from '../lib/scim/hire'
  * becomes delete-anyone. It is constrained below.
  */
 
-// Deliberately mean. A visitor needs one or two goes to see the demo, not fifty.
-const LIMIT = 5
-const WINDOW_SECONDS = 3600
+/**
+ * ── TWO BUDGETS, NOT ONE, AND THEY ARE NOT THE SAME SIZE ─────────────────────
+ *
+ * These shared one allowance of 5/hour and it was wrong twice over.
+ *
+ * A hire-then-terminate cycle costs TWO, so a visitor could not complete three
+ * cycles before being cut off. Found the way these things are always found: an
+ * automated test run and Steve's own browser share an egress IP, and the demo
+ * locked its author out.
+ *
+ * WHICH IS THE SMALLER HALF OF THE PROBLEM. This site is aimed at enterprise
+ * identity people, and an office egresses from one address. Under a per-IP limit,
+ * the first person at a company to try the demo spends the budget for everyone
+ * behind that NAT. A limit tuned for one abusive visitor punishes exactly the
+ * audience the module was built for.
+ *
+ * So: hire is raised, and terminate is loosened much further, because the two
+ * directions are not equally risky. Creating writes a real directory object.
+ * Deleting removes one, is bounded by what already exists, and cannot touch
+ * anything that is not a scim-demo hire (terminateEmployee reads employeeType
+ * before it deletes). Throttling cleanup as hard as creation is backwards.
+ *
+ * The real backstops are unchanged and they are not this limiter: every hire
+ * self-destructs within 30 hours, and the sweep aborts rather than truncating if
+ * it ever finds more than it expects.
+ */
+const HIRE_LIMIT = 20
+const HIRE_WINDOW_SECONDS = 3600
+
+const TERMINATE_LIMIT = 60
+const TERMINATE_WINDOW_SECONDS = 3600
 
 async function hire(_request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
   const result = await hireEmployee()
@@ -180,12 +209,12 @@ app.http('scim-hire', {
   methods: ['POST'],
   authLevel: 'anonymous',
   route: 'scim-demo/hire',
-  handler: withRateLimit(hire, { limit: LIMIT, windowSeconds: WINDOW_SECONDS }),
+  handler: withRateLimit(hire, { limit: HIRE_LIMIT, windowSeconds: HIRE_WINDOW_SECONDS }),
 })
 
 app.http('scim-terminate', {
   methods: ['POST'],
   authLevel: 'anonymous',
   route: 'scim-demo/terminate/{id}',
-  handler: withRateLimit(terminate, { limit: LIMIT, windowSeconds: WINDOW_SECONDS }),
+  handler: withRateLimit(terminate, { limit: TERMINATE_LIMIT, windowSeconds: TERMINATE_WINDOW_SECONDS }),
 })
