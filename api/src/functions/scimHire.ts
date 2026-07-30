@@ -90,7 +90,7 @@ async function hire(_request: HttpRequest, context: InvocationContext): Promise<
   let pushError: string | null = null
 
   try {
-    const push = await provisionNow(result.employee.id)
+    const push = await provisionNow(result.employee.id, result.calls)
     if (push === null) {
       pushError = 'not configured'
     } else {
@@ -118,6 +118,9 @@ async function hire(_request: HttpRequest, context: InvocationContext): Promise<
       provisionedOnDemand: provisioned,
       provisionStatus: pushStatus,
       provisionError: pushError,
+      // The Graph calls this hire actually made, in order, for the page's ticker.
+      // Real, not a hardcoded sequence: if a loop ran four times it says four.
+      graphCalls: result.calls,
       // Said out loud so the page can say it out loud. The self-destruct is a
       // feature of the demo, not a footnote.
       selfDestructsWithinHours: 30,
@@ -201,6 +204,7 @@ async function terminate(
       // own account of what it did, and it is the difference between a 200 that
       // sent a PATCH and a 200 that decided nothing had changed.
       deprovisionDetail: result.push?.body ?? null,
+      graphCalls: result.calls,
     },
   }
 }

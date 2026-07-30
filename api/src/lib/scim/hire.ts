@@ -38,6 +38,29 @@ const SYNC_JOB_ID = process.env.SCIM_SYNC_JOB_ID ?? ''
 /** Optional. Names which synchronization rule to run; absent, Entra picks. */
 const SYNC_RULE_ID = process.env.SCIM_SYNC_RULE_ID ?? ''
 
+/**
+ * The Graph calls an operation actually made, in order, for the page's ticker.
+ *
+ * ── WHY COLLECTED RATHER THAN WRITTEN OUT ON THE FRONT END ───────────────────
+ *
+ * The sequence is deterministic, so the page could hardcode it and nobody would
+ * notice. That would be a lie of exactly the kind this module has spent three
+ * rounds removing: a caption describing traffic nobody captured. If the
+ * read-back loop runs four times, the ticker shows four reads. If terminate
+ * refuses, the ticker stops where the code stopped.
+ *
+ * Method, path and status. No bodies: these go to a public page and a Graph body
+ * names tenants, object ids and error detail.
+ */
+export type CallLog = string[]
+
+function note(log: CallLog, method: string, path: string, status: number): void {
+  // The query string is dropped except for $select, which is the interesting
+  // part of the read-before-delete and is short enough to read going past.
+  const shown = path.includes('$select') ? path : path.split('?')[0]
+  log.push(`${method} ${shown} ${status}`)
+}
+
 export interface HiredEmployee {
   id: string
   displayName: string
@@ -80,6 +103,8 @@ function pick<T>(list: readonly T[]): T {
 export interface HireResult {
   ok: boolean
   employee?: HiredEmployee
+  /** What Graph was actually asked, in order. */
+  calls: CallLog
   /** Graph's status, kept because a 403 here names a missing consent and that is
    *  the single most likely thing to be wrong on first run. */
   status: number
@@ -87,7 +112,9 @@ export interface HireResult {
 }
 
 export async function hireEmployee(): Promise<HireResult> {
-  if (!WORKFORCE_DOMAIN) return { ok: false, status: 0, error: 'WORKFORCE_UPN_DOMAIN is not set' }
+  const calls: CallLog = []
+  if (!WORKFORCE_DOMAIN)
+    return { ok: false, status: 0, error: 'WORKFORCE_UPN_DOMAIN is not set', calls }
 
   const given = pick(FIRST_NAMES)
   const family = pick(LAST_NAMES)
@@ -114,11 +141,14 @@ export async function hireEmployee(): Promise<HireResult> {
     'writer',
   )
 
+  note(calls, 'POST', '/users', created.status)
+
   if (created.status !== 201) {
     return {
       ok: false,
       status: created.status,
       error: (created.body as any)?.error?.code ?? 'user creation failed',
+      calls,
     }
   }
 
@@ -126,6 +156,7 @@ export async function hireEmployee(): Promise<HireResult> {
   return {
     ok: true,
     status: 201,
+    calls,
     employee: {
       id: body.id,
       displayName: body.displayName,
@@ -148,9 +179,9 @@ export async function hireEmployee(): Promise<HireResult> {
  * directory object because a convenience call 500'd would be trading a correct
  * outcome for a tidy one.
  */
-export async function provisionNow(objectId: string): Promise<GraphResult | null> {
+export async function provisionNow(objectId: string, log?: CallLog): Promise<GraphResult | null> {
   if (!SYNC_SP_ID || !SYNC_JOB_ID) return null
-  return graphRequest(
+  const result = await graphRequest(
     'POST',
     'workforce',
     `/servicePrincipals/${SYNC_SP_ID}/synchronization/jobs/${SYNC_JOB_ID}/provisionOnDemand`,
@@ -164,6 +195,8 @@ export async function provisionNow(objectId: string): Promise<GraphResult | null
     },
     'writer',
   )
+  if (log) note(log, 'POST', '/synchronization/jobs/../provisionOnDemand', result.status)
+  return result
 }
 
 /**
@@ -192,12 +225,15 @@ export async function provisionNow(objectId: string): Promise<GraphResult | null
 export interface TerminateResult {
   /** The final Graph call's outcome. 204 means the object is gone. */
   delete: GraphResult
+  /** What Graph was actually asked, in order. */
+  calls: CallLog
   /** The on-demand push, or null if it was never attempted. Reported so a
    *  terminate that "succeeded" while deactivating nothing is visible. */
   push?: GraphResult | null
 }
 
 export async function terminateEmployee(objectId: string): Promise<TerminateResult> {
+  const calls: CallLog = []
   const lookup = await graphRequest(
     'GET',
     'workforce',
@@ -206,7 +242,8 @@ export async function terminateEmployee(objectId: string): Promise<TerminateResu
     'writer',
   )
 
-  if (lookup.status !== 200) return { delete: lookup }
+  note(calls, 'GET', '/users/{id}?$select=employeeType', lookup.status)
+  if (lookup.status !== 200) return { delete: lookup, calls }
 
   if ((lookup.body as any)?.employeeType !== HIRE_EMPLOYEE_TYPE) {
     // 403 rather than 404: it exists, and we are refusing. Distinguishing the two
@@ -217,6 +254,7 @@ export async function terminateEmployee(objectId: string): Promise<TerminateResu
         status: 403,
         body: { error: { code: 'notADemoHire', message: 'object is not a scim-demo hire' } },
       },
+      calls,
     }
   }
 
@@ -246,7 +284,8 @@ export async function terminateEmployee(objectId: string): Promise<TerminateResu
     { accountEnabled: false },
     'writer',
   )
-  if (disabled.status !== 204) return { delete: disabled }
+  note(calls, 'PATCH', '/users/{id} accountEnabled:false', disabled.status)
+  if (disabled.status !== 204) return { delete: disabled, calls }
 
   /**
    * ── READ THE DISABLE BACK BEFORE PUSHING IT ──────────────────────────────
@@ -275,6 +314,7 @@ export async function terminateEmployee(objectId: string): Promise<TerminateResu
       undefined,
       'writer',
     )
+    note(calls, 'GET', '/users/{id}?$select=accountEnabled', check.status)
     if (check.status === 200 && (check.body as any)?.accountEnabled === false) break
     await new Promise((r) => setTimeout(r, 750))
   }
@@ -293,7 +333,7 @@ export async function terminateEmployee(objectId: string): Promise<TerminateResu
    */
   let push: GraphResult | null = null
   try {
-    push = await provisionNow(objectId)
+    push = await provisionNow(objectId, calls)
   } catch (err: any) {
     push = { status: 0, body: { error: { code: err?.message ?? 'threw' } } }
   }
@@ -305,5 +345,6 @@ export async function terminateEmployee(objectId: string): Promise<TerminateResu
     undefined,
     'writer',
   )
-  return { delete: deleted, push }
+  note(calls, 'DELETE', '/users/{id}', deleted.status)
+  return { delete: deleted, push, calls }
 }
