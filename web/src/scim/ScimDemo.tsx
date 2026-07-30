@@ -88,6 +88,31 @@ function retryHint(res: Response): string {
  * exists, do the thing, take what appeared. No clock is involved and none can
  * drift.
  */
+/**
+ * What the SCIM stage should say, derived from the traffic we actually observed.
+ *
+ * ── THIS REPLACED A HARDCODED STRING, AND THAT STRING WAS A LIE ──────────────
+ *
+ * The stage used to read `detail: 'PATCH /Users'` whenever the backend reported
+ * `deprovisioned: true`. But `deprovisioned` only means provisionOnDemand
+ * returned 200, and a 200 from provisionOnDemand means "I evaluated the user",
+ * NOT "I sent something". This module has now produced that silent no-op four
+ * separate times.
+ *
+ * Steve hit it on the live site: Entra sent nothing, the store recorded no PATCH,
+ * and the pipeline cheerfully announced "PATCH /Users" anyway. The application
+ * stage was the only honest thing on screen, because it polls for the row.
+ *
+ * So the label comes from the events. No traffic, no claim.
+ */
+function scimLabel(calls: string[], expect: 'POST' | 'PATCH'): string | null {
+  const match = calls.find((c) => c.startsWith(expect))
+  if (match) return match
+  // Entra was asked and chose to send nothing. That IS the interesting outcome on
+  // a page about provisioning, so it is stated rather than dressed up.
+  return calls.length > 0 ? calls[calls.length - 1] : null
+}
+
 async function knownEventKeys(): Promise<Set<string>> {
   try {
     const res = await fetch(`${API_BASE}/scim-demo/events`)
@@ -253,11 +278,16 @@ export function ScimDemo() {
       }))
       await playFor(traffic.scim)
 
+      // Derived from what Entra actually sent us, never from the push's status.
+      const posted = scimLabel(traffic.scim, 'POST')
       setPipeline((p) => ({
         ...p,
-        provisioning: hired.provisionedOnDemand
-          ? { state: 'done', detail: 'POST /Users' }
-          : { state: 'failed', detail: hired.provisionError ?? 'not sent' },
+        provisioning: posted
+          ? { state: 'done', detail: posted }
+          : {
+              state: 'failed',
+              detail: hired.provisionedOnDemand ? 'nothing sent' : (hired.provisionError ?? 'not sent'),
+            },
         ticker: { entra: [], scim: [], app: [] },
       }))
 
@@ -323,11 +353,17 @@ export function ScimDemo() {
       }))
       await playFor(traffic.scim)
 
+      // Same rule on the way out: a 200 from provisionOnDemand is not evidence
+      // that a PATCH was sent, and saying so was how this bug reached production.
+      const patched = scimLabel(traffic.scim, 'PATCH')
       setPipeline((p) => ({
         ...p,
-        provisioning: body?.deprovisioned
-          ? { state: 'done', detail: 'PATCH /Users' }
-          : { state: 'failed', detail: body?.deprovisionError ?? 'nothing sent' },
+        provisioning: patched
+          ? { state: 'done', detail: patched }
+          : {
+              state: 'failed',
+              detail: body?.deprovisioned ? 'nothing sent' : (body?.deprovisionError ?? 'not sent'),
+            },
         application: { state: 'working' },
         ticker: { entra: [], scim: [], app: [] },
       }))
