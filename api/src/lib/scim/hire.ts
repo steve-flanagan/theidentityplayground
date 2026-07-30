@@ -249,6 +249,37 @@ export async function terminateEmployee(objectId: string): Promise<TerminateResu
   if (disabled.status !== 204) return { delete: disabled }
 
   /**
+   * ── READ THE DISABLE BACK BEFORE PUSHING IT ──────────────────────────────
+   *
+   * Observed 29 July: a terminate issued seconds after the hire returned
+   * `provisionOnDemand` 200 and changed nothing. The row's lastModified never
+   * moved. A terminate driven through the page, with a few more seconds between
+   * the two calls, worked.
+   *
+   * The provisioning engine compares mapped values and sends nothing when they
+   * match. If it reads the user before the disable is visible to it, it computes
+   * active:true, finds active:true already in the target, and reports success
+   * having transmitted nothing. Same silent no-op as the IsSoftDeleted mapping
+   * bug, arriving by a different road.
+   *
+   * Reading it back is not a proof — Graph may serve this from a replica the
+   * provisioning engine does not read — but it is cheap, it is principled, and it
+   * beats a magic sleep. If it never settles we push anyway and report what
+   * happened rather than pretending.
+   */
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const check = await graphRequest(
+      'GET',
+      'workforce',
+      `/users/${objectId}?$select=id,accountEnabled`,
+      undefined,
+      'writer',
+    )
+    if (check.status === 200 && (check.body as any)?.accountEnabled === false) break
+    await new Promise((r) => setTimeout(r, 750))
+  }
+
+  /**
    * Push the disable downstream before the object stops existing.
    *
    * THE RESULT IS REPORTED, NOT SWALLOWED. This was `.catch(() => null)` and that

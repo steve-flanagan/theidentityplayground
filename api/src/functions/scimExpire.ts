@@ -1,5 +1,6 @@
 import { app, type InvocationContext, type Timer } from '@azure/functions'
 import { expireUsers } from '../lib/scim/store'
+import { expireEvents } from '../lib/scim/events'
 
 /**
  * Expires SCIM rows on a timer. The downstream app's half of the self-destruct
@@ -40,6 +41,18 @@ const CEILING = Number(process.env.SCIM_EXPIRY_CEILING ?? '50')
 
 export async function scimExpire(_timer: Timer, context: InvocationContext): Promise<void> {
   const result = await expireUsers(TTL_HOURS, CEILING)
+
+  /**
+   * The transcript expires too, and on the SAME clock as the rows it describes.
+   *
+   * A transcript that outlived its rows would show a hire whose employee no
+   * longer exists anywhere, which is a worse lie than showing nothing. No ceiling
+   * here: unlike users, an event is a log line, deleting the wrong one loses
+   * nothing recoverable, and the count scales with traffic rather than with
+   * anything a mistake could inflate.
+   */
+  const eventsDeleted = await expireEvents(TTL_HOURS)
+  context.log(`scim expiry: events deleted=${eventsDeleted}`)
 
   // Counts, never userNames. This log is operator-facing but the rows describe
   // people who signed up on a public website, and the PowerShell sweep already
