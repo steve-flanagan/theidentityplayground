@@ -25,13 +25,23 @@ azureauth.json
 # ---------------------------------------------------------------------------
 # Capture artifacts
 # ---------------------------------------------------------------------------
-# The tour video and its poster frame are distribution assets, not repo assets:
-# they get regenerated every time a module ships and git would keep every 2 MB
-# version forever. docs/demo.gif IS committed, because the README renders it.
-# Regenerate both with `npm run tour --prefix web`.
-docs/tour.mp4
+# Videos are distribution assets, not repo assets: they get regenerated every
+# time a module ships and git would keep every multi-MB version forever. The
+# GIFs and PNGs the README renders (docs/demo.gif, docs/scim.gif,
+# docs/inspector.png) ARE committed. Regenerate the tour with
+# `npm run tour --prefix web`.
+docs/*.mp4
 docs/tour-thumb.png
 .tour-recording/
+
+# Standalone dev harnesses. Each is an extra Vite entry point plus its React
+# root, used to render one module in isolation so a capture script can film it
+# without the rest of the site around it. They are scaffolding for the capture
+# runs, not part of the shipped app, so they stay on disk and out of git.
+web/capture.html
+web/src/capture.tsx
+web/module2.html
+web/src/module2.tsx
 
 # ---------------------------------------------------------------------------
 # Node / Vite / React  (web/, api/, scim-mock/)
