@@ -105,12 +105,43 @@ function retryHint(res: Response): string {
  *
  * So the label comes from the events. No traffic, no claim.
  */
-function scimLabel(calls: string[], expect: 'POST' | 'PATCH'): string | null {
-  const match = calls.find((c) => c.startsWith(expect))
-  if (match) return match
-  // Entra was asked and chose to send nothing. That IS the interesting outcome on
-  // a page about provisioning, so it is stated rather than dressed up.
-  return calls.length > 0 ? calls[calls.length - 1] : null
+/**
+ * What the SCIM stage is allowed to claim, derived only from requests Entra
+ * actually sent us.
+ *
+ * The write is the whole point: a POST on the way in, a PATCH on the way out.
+ * Nothing else changes the downstream app, so when the write is absent the
+ * stage has NOT succeeded, however much other traffic went past.
+ *
+ * ── WHY THIS IS NOT JUST `calls.find()` ──────────────────────────────────────
+ *
+ * Entra reads before it writes. A terminate that decides nothing differs still
+ * leaves two GETs in the events store, and the previous version of this
+ * function fell back to returning the LAST call when it found no write. So a
+ * run that transmitted no change lit the stage green and labelled it
+ * `GET /Users/<id>`, sitting next to an amber "row unchanged".
+ *
+ * Steve caught that on the live site, for the second time. It is the same false
+ * claim the hardcoded `PATCH /Users` string made, reached a different way: the
+ * label was true, and the state it was attached to was not.
+ *
+ * Observed 31 July, his run: `GET /Users?filter=...` then
+ * `GET /Users/dd8dcb72-44ce-4db8-a192-e53df5eec334`, and no PATCH. A terminate
+ * eight minutes earlier sent the same two reads AND a PATCH. Reads are what
+ * both runs have in common, which is exactly why they prove nothing.
+ */
+export function scimOutcome(
+  calls: string[],
+  expect: 'POST' | 'PATCH',
+): { write: string | null; readOnly: boolean } {
+  const write = calls.find((c) => c.startsWith(expect)) ?? null
+  return {
+    write,
+    // Read-and-decline and total silence teach different things, so the page
+    // distinguishes them: one is the attribute comparison declining to act, the
+    // other is a run that never reached this endpoint at all.
+    readOnly: write === null && calls.length > 0,
+  }
 }
 
 async function knownEventKeys(): Promise<Set<string>> {
@@ -159,6 +190,11 @@ export function ScimDemo() {
   const [error, setError] = useState<string | null>(null)
   const [feedBroken, setFeedBroken] = useState<string | null>(null)
   const [pipeline, setPipeline] = useState<PipelineModel>(IDLE_PIPELINE)
+  // Whether the last run reached us without a write, and which way. Held as its
+  // own state rather than inferred from the stage's label: the explanation
+  // panel used to fire on `detail === 'nothing sent'`, so it went silent the
+  // moment the label became more accurate. Display copy is not a control flag.
+  const [noWrite, setNoWrite] = useState<null | 'silent' | 'read-only'>(null)
 
   // The feed arrives oldest-first, because /Users pages in creation order and
   // the table below reads through the same store call. That put every new hire
@@ -250,6 +286,8 @@ export function ScimDemo() {
   const hire = async () => {
     setBusy('hire')
     setError(null)
+    // Cleared per run, so the panel never explains the previous one.
+    setNoWrite(null)
     // Snapshot before anything happens, so what appears afterwards is provably
     // new. Never a timestamp: the browser clock and Azure's differ by ten
     // seconds on this machine, which silently emptied this once already.
@@ -293,14 +331,19 @@ export function ScimDemo() {
       await playFor(traffic.scim)
 
       // Derived from what Entra actually sent us, never from the push's status.
-      const posted = scimLabel(traffic.scim, 'POST')
+      const scim = scimOutcome(traffic.scim, 'POST')
+      setNoWrite(scim.write || !hired.provisionedOnDemand ? null : scim.readOnly ? 'read-only' : 'silent')
       setPipeline((p) => ({
         ...p,
-        provisioning: posted
-          ? { state: 'done', detail: posted }
+        provisioning: scim.write
+          ? { state: 'done', detail: scim.write }
           : {
               state: 'failed',
-              detail: hired.provisionedOnDemand ? 'nothing sent' : (hired.provisionError ?? 'not sent'),
+              detail: !hired.provisionedOnDemand
+                ? (hired.provisionError ?? 'not sent')
+                : scim.readOnly
+                  ? 'no POST sent'
+                  : 'nothing sent',
             },
         ticker: { entra: [], scim: [], app: [] },
       }))
@@ -329,6 +372,7 @@ export function ScimDemo() {
     if (!hired) return
     setBusy('terminate')
     setError(null)
+    setNoWrite(null)
     try {
       const known = await knownEventKeys()
       const leaving = hired.employee
@@ -369,14 +413,19 @@ export function ScimDemo() {
 
       // Same rule on the way out: a 200 from provisionOnDemand is not evidence
       // that a PATCH was sent, and saying so was how this bug reached production.
-      const patched = scimLabel(traffic.scim, 'PATCH')
+      const scim = scimOutcome(traffic.scim, 'PATCH')
+      setNoWrite(scim.write || !body?.deprovisioned ? null : scim.readOnly ? 'read-only' : 'silent')
       setPipeline((p) => ({
         ...p,
-        provisioning: patched
-          ? { state: 'done', detail: patched }
+        provisioning: scim.write
+          ? { state: 'done', detail: scim.write }
           : {
               state: 'failed',
-              detail: body?.deprovisioned ? 'nothing sent' : (body?.deprovisionError ?? 'not sent'),
+              detail: !body?.deprovisioned
+                ? (body?.deprovisionError ?? 'not sent')
+                : scim.readOnly
+                  ? 'no PATCH sent'
+                  : 'nothing sent',
             },
         application: { state: 'working' },
         ticker: { entra: [], scim: [], app: [] },
@@ -473,26 +522,29 @@ export function ScimDemo() {
             demo. But an amber "nothing sent" with no explanation just looks
             broken, and showing a thing is only worth doing if it teaches
             something. So the page says what happened and why. */}
-        {pipeline.provisioning.state === 'failed' &&
-          pipeline.provisioning.detail === 'nothing sent' && (
-            <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
-              <p className="text-sm font-medium text-amber-300">
-                Entra was asked, and sent nothing.
-              </p>
-              <p className="mt-2 text-sm leading-relaxed text-slate-400">
-                The provisioning service compares the attributes it maps and issues a request only
-                when one of them differs. A change it cannot see yet produces a run that reports
-                success and transmits nothing at all, which is why the request above is missing
-                while the call that triggered it returned 200.
-              </p>
-              <p className="mt-2 text-sm leading-relaxed text-slate-400">
-                Nothing is lost. The scheduled cycle picks the user up on its next pass, and the
-                account self-destructs either way. This is left visible on purpose: a successful
-                run that sent no traffic is one of the harder things to notice in production, and
-                it is worth seeing once.
-              </p>
-            </div>
-          )}
+        {noWrite && (
+          <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+            <p className="text-sm font-medium text-amber-300">
+              {noWrite === 'read-only'
+                ? 'Entra read the user, then sent no change.'
+                : 'Entra was asked, and sent nothing.'}
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">
+              The provisioning service compares the attributes it maps and issues a write only when
+              one of them differs.{' '}
+              {noWrite === 'read-only'
+                ? 'Here it found nothing it maps had changed, so the reads above are the whole of the traffic and no write followed.'
+                : 'Here it found nothing it maps had changed and never called this endpoint at all.'}{' '}
+              The call that triggered it still returned 200.
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">
+              Nothing is lost. The scheduled cycle picks the user up on its next pass, and the
+              account self-destructs either way. This is left visible on purpose: a successful run
+              that changed nothing is one of the harder things to notice in production, and it is
+              worth seeing once.
+            </p>
+          </div>
+        )}
 
         {/* ── What just happened, in the backend's own words ──────────────── */}
         {hired && (
