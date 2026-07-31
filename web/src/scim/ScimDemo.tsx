@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { API_BASE } from '../lib/apiBase'
 import { ScimTranscript } from './ScimTranscript'
 import { SiteNav } from '../components/SiteNav'
@@ -159,6 +159,20 @@ export function ScimDemo() {
   const [error, setError] = useState<string | null>(null)
   const [feedBroken, setFeedBroken] = useState<string | null>(null)
   const [pipeline, setPipeline] = useState<PipelineModel>(IDLE_PIPELINE)
+
+  // The feed arrives oldest-first, because /Users pages in creation order and
+  // the table below reads through the same store call. That put every new hire
+  // on the last row, off the bottom of a long table, which is the one row the
+  // visitor just caused and wants to see. Sorted for display only — the SCIM
+  // endpoint's own paging order is unchanged, since Entra reads that one.
+  //
+  // Sorted rather than reversed: `rows` is written from three different fetch
+  // sites and a reverse would silently depend on all three agreeing on order.
+  // useMemo so this recomputes when the feed changes, not on every poll tick.
+  const newestFirst = useMemo(
+    () => [...rows].sort((a, b) => b.created.localeCompare(a.created)),
+    [rows],
+  )
 
   const loadFeed = useCallback(async () => {
     try {
@@ -539,7 +553,7 @@ export function ScimDemo() {
                     </td>
                   </tr>
                 )}
-                {rows.map((r) => (
+                {newestFirst.map((r) => (
                   <tr key={r.id}>
                     <td className="px-4 py-3 text-slate-200">{r.displayName ?? '—'}</td>
                     <td className="px-4 py-3 font-mono text-xs break-all text-slate-400">
