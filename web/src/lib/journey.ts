@@ -644,7 +644,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
     humanDoing: 'picking a sign-up provider',
     summary: 'Routed into the B2X_1_B2B self-service sign-up user flow.',
     detail: {
-      what: 'The authorize redirects into a named user flow — tfp is "trust framework policy" — rather than the default sign-in.',
+      what: 'The authorize redirects into a named user flow rather than the default sign-in. tfp is "trust framework policy".',
       why: 'The app registration is bound to the B2X_1_B2B self-service sign-up flow.',
       gotcha:
         'The user flow is the knob. It decides which providers the create-account screen offers (email, Microsoft, GitHub and Google here) and which attributes the sign-up collects, with no app code involved.',
@@ -677,7 +677,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
       what: 'The attributes the user flow collected are posted, validated, and written as a new external user.',
       why: 'First time through: there is no guest object yet, so one is created here.',
       gotcha:
-        'This is the create step, and it is why a sign-up costs more than a sign-in. A returning guest never posts SelfAsserted — the object already exists. Writing a directory object is the expensive part of identity, the same thing the customer sign-up shows on /createuser.',
+        'This is the create step, and it is why a sign-up costs more than a sign-in. A returning guest never posts SelfAsserted, because the object already exists. Writing a directory object is the expensive part of identity, the same thing the customer sign-up shows on /createuser.',
     },
   },
   '/{tid}/B2X_1_B2B/api/SelfAsserted/confirmed': {
@@ -700,7 +700,7 @@ const ANNOTATIONS: Record<string, Annotation> = {
     actor: 'entra',
     summary: 'The identity-experience-framework federation completes.',
     detail: {
-      what: 'The IEF — the orchestration engine behind the user flow — finishes the federated sign-up and hands back an authorization code.',
+      what: 'The IEF, the orchestration engine behind the user flow, finishes the federated sign-up and hands back an authorization code.',
       why: 'A user flow is an IEF policy underneath, and this is its last server-side step before the redirect home.',
       gotcha:
         'The few screens you clicked through are an IEF orchestration. This is where it signs off, which is why a workforce guest sign-up carries an oauth2ief the CIAM customer flow does not.',
