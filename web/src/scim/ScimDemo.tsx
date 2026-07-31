@@ -514,34 +514,32 @@ export function ScimDemo() {
             neither shows an object moving between two systems. */}
         <ScimPipeline model={pipeline} />
 
-        {/* ── WHEN ENTRA SENDS NOTHING, EXPLAIN IT RATHER THAN HIDE IT ───────
-            Steve's call, and the right one: "Let's keep it and show it."
+        {/* ── WHEN ENTRA SENDS NOTHING, SAY WHY ─────────────────────────────
+            Steve's call to keep the no-op visible rather than hide it. But the
+            first version explained the mechanism without naming the cause, and
+            he asked the obvious question back: why doesn't Entra see the change?
 
-            This is a real behaviour that anyone who runs provisioning has been
-            bitten by, and a demo that only ever shows the happy path is a worse
-            demo. But an amber "nothing sent" with no explanation just looks
-            broken, and showing a thing is only worth doing if it teaches
-            something. So the page says what happened and why. */}
+            The answer is in the events store. Terminate disables the account,
+            reads the disable back off Graph, then pushes. Those are not the same
+            read the provisioning engine does, and roughly half the runs show it
+            reading a copy where the account is still enabled: 02:29:37 sent a
+            PATCH, 02:30:19 sent the same two GETs and no PATCH. It is not a
+            function of elapsed time, which is what rules out "wait longer".
+
+            Kept to three sentences. The previous copy ran to two paragraphs and
+            ended on "worth seeing once", which is the register he keeps
+            striking out. */}
         {noWrite && (
           <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
             <p className="text-sm font-medium text-amber-300">
               {noWrite === 'read-only'
-                ? 'Entra read the user, then sent no change.'
-                : 'Entra was asked, and sent nothing.'}
+                ? 'Entra read the user and sent no change.'
+                : 'Entra never called this endpoint.'}
             </p>
             <p className="mt-2 text-sm leading-relaxed text-slate-400">
-              The provisioning service compares the attributes it maps and issues a write only when
-              one of them differs.{' '}
-              {noWrite === 'read-only'
-                ? 'Here it found nothing it maps had changed, so the reads above are the whole of the traffic and no write followed.'
-                : 'Here it found nothing it maps had changed and never called this endpoint at all.'}{' '}
-              The call that triggered it still returned 200.
-            </p>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">
-              Nothing is lost. The scheduled cycle picks the user up on its next pass, and the
-              account self-destructs either way. This is left visible on purpose: a successful run
-              that changed nothing is one of the harder things to notice in production, and it is
-              worth seeing once.
+              The provisioning service writes only when what it reads differs from what it last
+              synced. The change had not reached the replica it reads, so it found nothing to send
+              and still reported success. The scheduled cycle catches the user on its next pass.
             </p>
           </div>
         )}
