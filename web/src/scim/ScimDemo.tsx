@@ -194,7 +194,14 @@ export function ScimDemo() {
   // own state rather than inferred from the stage's label: the explanation
   // panel used to fire on `detail === 'nothing sent'`, so it went silent the
   // moment the label became more accurate. Display copy is not a control flag.
-  const [noWrite, setNoWrite] = useState<null | 'silent' | 'read-only'>(null)
+  //
+  // Direction is carried too, because the two have different causes and only
+  // one of them is explainable. A leaver's no-op is the attribute mapping; a
+  // joiner's is not, so the panel must not offer the mapping as the reason.
+  const [noWrite, setNoWrite] = useState<null | {
+    kind: 'silent' | 'read-only'
+    direction: 'hire' | 'leave'
+  }>(null)
 
   // The feed arrives oldest-first, because /Users pages in creation order and
   // the table below reads through the same store call. That put every new hire
@@ -332,7 +339,11 @@ export function ScimDemo() {
 
       // Derived from what Entra actually sent us, never from the push's status.
       const scim = scimOutcome(traffic.scim, 'POST')
-      setNoWrite(scim.write || !hired.provisionedOnDemand ? null : scim.readOnly ? 'read-only' : 'silent')
+      setNoWrite(
+        scim.write || !hired.provisionedOnDemand
+          ? null
+          : { kind: scim.readOnly ? 'read-only' : 'silent', direction: 'hire' },
+      )
       setPipeline((p) => ({
         ...p,
         provisioning: scim.write
@@ -414,7 +425,11 @@ export function ScimDemo() {
       // Same rule on the way out: a 200 from provisionOnDemand is not evidence
       // that a PATCH was sent, and saying so was how this bug reached production.
       const scim = scimOutcome(traffic.scim, 'PATCH')
-      setNoWrite(scim.write || !body?.deprovisioned ? null : scim.readOnly ? 'read-only' : 'silent')
+      setNoWrite(
+        scim.write || !body?.deprovisioned
+          ? null
+          : { kind: scim.readOnly ? 'read-only' : 'silent', direction: 'leave' },
+      )
       setPipeline((p) => ({
         ...p,
         provisioning: scim.write
@@ -514,35 +529,52 @@ export function ScimDemo() {
             neither shows an object moving between two systems. */}
         <ScimPipeline model={pipeline} />
 
-        {/* ── WHEN ENTRA SENDS NOTHING, EXPLAIN IT RATHER THAN HIDE IT ───────
-            Steve's call, and the right one: "Let's keep it and show it."
+        {/* ── WHEN ENTRA SENDS NOTHING, SAY WHY ─────────────────────────────
+            Steve's call to keep the no-op visible rather than hide it. But the
+            first version explained the mechanism without naming the cause, and
+            he asked the obvious question back: why doesn't Entra see the change?
 
-            This is a real behaviour that anyone who runs provisioning has been
-            bitten by, and a demo that only ever shows the happy path is a worse
-            demo. But an amber "nothing sent" with no explanation just looks
-            broken, and showing a thing is only worth doing if it teaches
-            something. So the page says what happened and why. */}
+            The answer is the attribute mapping, confirmed in the portal on
+            31 July: `active` is still the stock
+            `Switch([IsSoftDeleted], , "False", "True", "True", "False")`.
+            Terminate disables the account first, and disabling does not
+            soft-delete it, so nothing the mapping reads has changed.
+
+            An earlier version of this panel blamed replication lag. That was
+            wrong, and it was wrong because it was inferred from traffic rather
+            than read off the blade.
+
+            THE THIRD SENTENCE IS NOT OPTIONAL. notes/linkedin-module5-post-draft.md
+            records Steve's ruling that this mapping is the NON-GALLERY TEMPLATE,
+            not general Entra behaviour, and that presenting it as the latter
+            draws justified pushback from everyone whose gallery app has never
+            behaved this way. The site is public and permanent, so it scopes the
+            claim in the same breath as it makes it.
+
+            Only the leaver path says any of this. A joiner's no-op has a
+            different cause and the mapping is not it. */}
         {noWrite && (
           <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
             <p className="text-sm font-medium text-amber-300">
-              {noWrite === 'read-only'
-                ? 'Entra read the user, then sent no change.'
-                : 'Entra was asked, and sent nothing.'}
+              {noWrite.kind === 'read-only'
+                ? 'Entra read the user and sent no change.'
+                : 'Entra never called this endpoint.'}
             </p>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">
-              The provisioning service compares the attributes it maps and issues a write only when
-              one of them differs.{' '}
-              {noWrite === 'read-only'
-                ? 'Here it found nothing it maps had changed, so the reads above are the whole of the traffic and no write followed.'
-                : 'Here it found nothing it maps had changed and never called this endpoint at all.'}{' '}
-              The call that triggered it still returned 200.
-            </p>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">
-              Nothing is lost. The scheduled cycle picks the user up on its next pass, and the
-              account self-destructs either way. This is left visible on purpose: a successful run
-              that changed nothing is one of the harder things to notice in production, and it is
-              worth seeing once.
-            </p>
+            {noWrite.direction === 'leave' ? (
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">
+                This job maps <span className="font-mono">active</span> from{' '}
+                <span className="font-mono">IsSoftDeleted</span>, not{' '}
+                <span className="font-mono">accountEnabled</span>. Terminate disables the account,
+                and a disabled account is not soft-deleted, so nothing the mapping reads changed
+                and no write followed. That is the non-gallery template, not how a gallery
+                connector behaves.
+              </p>
+            ) : (
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">
+                The provisioning service writes only when what it reads differs from what it last
+                synced. It found no difference when it evaluated this user, so nothing was sent.
+              </p>
+            )}
           </div>
         )}
 
