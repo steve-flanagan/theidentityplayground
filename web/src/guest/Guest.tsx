@@ -47,18 +47,21 @@ export function Guest({
         <h1 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
           Sign in as a guest
         </h1>
+        {/* "validate" became "decode" on Steve's call. The inspector already
+            says "Decoded, not verified" and credits MSAL with the validation, so
+            the two pages were telling opposite stories about the same token. */}
         <p className="mt-6 text-lg leading-relaxed text-slate-400">
-          This one is live, not a sample. You become a real B2B guest in the workforce tenant, a
-          self-service sign-up the first time and a sign-in after, with Microsoft or Google, and
-          whichever you pick becomes your home realm. Your token comes back to the inspector and
-          Module 2 on the main page, and the account self-destructs on the cleanup job, the same as
-          every demo account here.
+          Live data, not a sample. You become a real B2B guest in the workforce tenant. Pick a
+          Microsoft or Google account, and we pass the sign-in request to them and decode the login
+          token on return. Your token comes back to the inspector and the account self-destructs on
+          a cleanup job.
         </p>
         <p className="mt-4 text-sm leading-relaxed text-slate-500">
-          The screen also offers email and GitHub. Email is home-realm discovery, not a sign-up: it
-          looks the address up against Entra tenants and rejects anything it does not find, so a
-          personal address comes back as an error. GitHub is not federated here and does nothing.
-          Use one of the two above.
+          The screen also offers email and GitHub by default. Email is home-realm discovery, not a
+          sign-up: it looks the address up against Entra tenants and rejects anything it does not
+          find, so a personal address comes back as an error. This can cause a lot of confusion for
+          business consultants. GitHub is not federated here and does nothing. It was left in to
+          show the defaults.
         </p>
 
         <div className="mt-8">

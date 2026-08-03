@@ -23,12 +23,21 @@ export function mountAccounts(rootElement: HTMLElement): void {
             Account types
           </p>
           <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white">
-            One person, three directory objects
+            Three distinct account types
           </h1>
+          {/* The last sentence replaces "PAM is used to minimize this exposure",
+              which read as a claim that this site runs PAM. It does not, and the
+              word appears nowhere in the repo. Steve's actual point was the
+              inverse: no background checks, no governance, no privileged access
+              management here, which is exactly why the employee is a captured
+              sample rather than an account anyone can sign into. That reasoning
+              was previously asserted by the word "sample" and nowhere explained. */}
           <p className="mt-6 max-w-3xl text-lg leading-relaxed text-slate-400">
-            A customer, an employee and a business guest. Pick one and its reach lights up across
-            the tenants, their subscriptions and the app. The text is identical in all three; only
-            what it can touch moves.
+            A customer, an employee and a business guest. Pick one and you can see its potential
+            impact. Customers are isolated to your business apps, whereas employees and business
+            guests can reach company assets. Handing out a real employee account takes background
+            checks, governance and privileged access management. This site has none of those, so the
+            employee here is a captured sample.
           </p>
 
           <div className="mt-12">
