@@ -214,12 +214,12 @@ function App() {
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-slate-400">
                 {guestMode
-                  ? 'The real token from your guest sign-in, every claim annotated. Note the workforce tenant, your external home realm, and the idp claim that gives it away.'
+                  ? 'The real token from your guest sign-in. Note the idp claim.'
                   : simMember
-                    ? 'A workforce member’s captured token, shown as a sample. Every claim annotated, with the member’s values.'
+                    ? 'This is a real recorded login. Member accounts should be treated with extreme care and governed by applicable PAM or governance policies.'
                     : realIdToken
-                      ? 'The real token you were just issued, every claim annotated: what it is, why it’s in your token, and which tenant configuration produced it.'
-                      : 'A sample, until you sign in. Then this reads your own real token: same claims, your values.'}
+                      ? 'The real token you were just issued. Check any claim and see what it is, why it’s in your token, and which tenant configuration produced it.'
+                      : 'A sample. If you sign in, you will see your real token.'}
               </p>
             </div>
 
@@ -277,12 +277,12 @@ function App() {
             <section aria-labelledby="journey">
             <div className="mb-5">
               <h2 id="journey" className="text-sm font-medium uppercase tracking-widest text-slate-500">
-                How those claims got there
+                See the sign-in flow
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
-                Every request in a real sign-in, measured. The entire flow stays on the overview bar;
-                below it each step sits on its own axis. Click slices for details and code examples
-                where applicable.
+                Explore real sign-up and sign-in data. Dive into each section for details on the
+                underlying network calls. See how it's done in MSAL, with examples and links
+                straight to this application's own GitHub.
               </p>
             </div>
 

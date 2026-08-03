@@ -178,12 +178,14 @@ export function CleanupStatus() {
   return (
     <section aria-labelledby="cleanup">
       <h2 id="cleanup" className="text-lg font-medium">
-        Every demo account here deletes itself
+        Every account created on this site self-destructs
       </h2>
+      {/* Steve cut "by a scheduled job with no human in the loop", which left
+          "that job's run history" pointing at nothing. Fixed by dropping the
+          possessive rather than reinstating the clause he deliberately removed. */}
       <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400">
-        Accounts made on this site are removed 24 to 30 hours after they are created, by a
-        scheduled job with no human in the loop. Below is that job's real run history, read
-        live from GitHub. Each mark is a run and links to its log.
+        Accounts made on this site are removed 24 to 30 hours after they are created. Below is the
+        real run history, live from GitHub. Click on each notch to see log details.
       </p>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">

@@ -487,15 +487,22 @@ export function ScimDemo() {
           Live SCIM provisioning
         </p>
         <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white">
-          Hire someone, and watch a SaaS app find out
+          Hire someone, sync them to your SaaS apps
         </h1>
         <p className="mt-6 text-lg leading-relaxed text-slate-400">
           A demo employee is created in a real Microsoft Entra tenant, then provisioned into the app
-          below over SCIM 2.0. That app is this site's own endpoint, and Entra calls it exactly as it
-          calls any SaaS app. No account needed.
+          below over SCIM 2.0. This is a simple application that shows its users' status, but since
+          SCIM is a universal protocol, this sync engine will work with most enterprise
+          applications.
         </p>
+        {/* Two mechanisms, named separately, because they are separate on purpose.
+            GitHub Actions deletes the directory object; an Azure Functions timer
+            expires the row. ADR 013 and decision 009 both turn on keeping them
+            apart, so one job never holds delete rights over two systems at once.
+            Steve's draft credited GitHub Actions with both. */}
         <p className="mt-4 text-lg leading-relaxed text-slate-400">
-          Every hire deletes itself within 30 hours. So does the row it creates.
+          Every hire is deleted from both systems within 30 hours. GitHub Actions removes the Entra
+          account, and a separate timer expires the row in the app.
         </p>
 
         {/* ── The two buttons ─────────────────────────────────────────────── */}
