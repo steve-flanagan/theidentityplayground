@@ -216,7 +216,7 @@ function App() {
                 {guestMode
                   ? 'The real token from your guest sign-in. Note the idp claim.'
                   : simMember
-                    ? 'This is a real recorded login. Member accounts should be treated with extreme care and governed by applicable PAM or governance policies.'
+                    ? 'This is a real recorded login. Member accounts reach company assets, so they do not get handed out.'
                     : realIdToken
                       ? 'The real token you were just issued. Check any claim and see what it is, why it’s in your token, and which tenant configuration produced it.'
                       : 'A sample. If you sign in, you will see your real token.'}
